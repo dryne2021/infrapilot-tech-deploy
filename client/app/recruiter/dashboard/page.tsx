@@ -41,9 +41,11 @@ export default function RecruiterPage() {
   const [isGeneratingResume, setIsGeneratingResume] = useState(false)
   const [resumeGenerationHistory, setResumeGenerationHistory] = useState<any[]>([])
 
-  // ✅ NEW - Change 1: Add these 2 state variables
+  // ✅ NEW - Add these state variables
   const [resumeError, setResumeError] = useState('')
-  const [apiBaseUrl] = useState('http://localhost:5000')
+  
+  // ✅ FIXED: Use environment variable for API base URL (best practice)
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || ''
   
   const router = useRouter()
 
