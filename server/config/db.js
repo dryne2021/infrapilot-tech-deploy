@@ -2,14 +2,16 @@ const mongoose = require('mongoose');
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/infrapilot-tech', {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    // Ensure MONGO_URI is provided
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is missing. Please set it in Render Environment Variables.");
+    }
+
+    const conn = await mongoose.connect(process.env.MONGO_URI);
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);
   } catch (error) {
-    console.error(`Error: ${error.message}`);
+    console.error(`MongoDB connection error: ${error.message}`);
     process.exit(1);
   }
 };
