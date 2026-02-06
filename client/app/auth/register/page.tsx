@@ -1,5 +1,6 @@
 'use client';
 
+import API_BASE_URL from "@/utils/apiBase";
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -57,15 +58,16 @@ export default function RegisterPage() {
         })
       };
 
-      const response = await fetch('http://localhost:5000/api/v1/auth/register', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+const response = await fetch(`${API_BASE_URL}/api/v1/auth/register`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify(payload),
+});
 
-      const result = await response.json();
+const result = await response.json();
+
 
       if (response.ok) {
         // Store token in localStorage

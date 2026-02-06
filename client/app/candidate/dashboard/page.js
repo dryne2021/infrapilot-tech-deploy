@@ -1,5 +1,6 @@
 'use client'
 
+import API_BASE_URL from "@/utils/apiBase";
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
