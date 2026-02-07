@@ -4,7 +4,47 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 export default function RecruiterPage() {
-  // ... [ALL EXISTING STATE VARIABLES REMAIN THE SAME] ...
+  const [user, setUser] = useState<any>(null)
+  const [assignedCandidates, setAssignedCandidates] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const [showCandidateDetails, setShowCandidateDetails] = useState(false)
+  const [candidateJobs, setCandidateJobs] = useState([])
+  const [stats, setStats] = useState({
+    totalAssigned: 0,
+    activeSubscriptions: 0,
+    pendingFollowups: 0,
+    interviewsThisWeek: 0
+  })
+  const [editingJob, setEditingJob] = useState(null)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [jobFormData, setJobFormData] = useState({
+    jobTitle: '',
+    company: '',
+    description: '',
+    status: 'Applied',
+    resumeStatus: 'Pending',
+    matchScore: 70,
+    salaryRange: ''
+  })
+  const [isClockedIn, setIsClockedIn] = useState(false)
+  const [clockInTime, setClockInTime] = useState<Date | null>(null)
+  const [currentSessionDuration, setCurrentSessionDuration] = useState(0)
+  const [totalWorkedToday, setTotalWorkedToday] = useState(0)
+  const [workSessions, setWorkSessions] = useState<any[]>([])
+  
+  // ✅ MAKE SURE THESE STATE VARIABLES ARE DECLARED:
+  // Resume Generation State
+  const [showResumeGenerator, setShowResumeGenerator] = useState(false)
+  const [jobIdForResume, setJobIdForResume] = useState('')
+  const [jobDescriptionForResume, setJobDescriptionForResume] = useState('')
+  const [generatedResume, setGeneratedResume] = useState('')
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false)
+  const [resumeGenerationHistory, setResumeGenerationHistory] = useState<any[]>([])
+  const [resumeError, setResumeError] = useState('')
+  
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || ''
+  const router = useRouter()
 
   // ✅ ADD THIS HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
@@ -28,11 +68,9 @@ export default function RecruiterPage() {
     // Ensure experience is an array with proper structure
     if (!Array.isArray(structuredCandidate.experience)) {
       if (typeof structuredCandidate.experience === 'string') {
-        // If it's a string, try to parse it or create basic structure
         try {
           structuredCandidate.experience = JSON.parse(structuredCandidate.experience);
         } catch {
-          // If parsing fails, create an empty array
           structuredCandidate.experience = [];
         }
       } else {
@@ -80,7 +118,6 @@ export default function RecruiterPage() {
     
     // Add missing fields if they don't exist
     if (!structuredCandidate.experienceYears) {
-      // Estimate years based on skills count
       structuredCandidate.experienceYears = Math.max(3, Math.floor(structuredCandidate.skills.length / 2));
     }
     
@@ -320,8 +357,6 @@ export default function RecruiterPage() {
     }
   };
 
-  // ... [ALL OTHER FUNCTIONS AND JSX REMAIN THE SAME] ...
-
   // In the viewCandidateDetails function, also ensure structure
   const viewCandidateDetails = (candidate) => {
     // ✅ Ensure candidate data is structured before using it
@@ -334,5 +369,5 @@ export default function RecruiterPage() {
     setShowCandidateDetails(true);
   };
 
-  // ... [REST OF THE COMPONENT REMAINS THE SAME] ...
+  // ... [REST OF THE ORIGINAL COMPONENT FUNCTIONS AND JSX REMAIN HERE] ...
 }
