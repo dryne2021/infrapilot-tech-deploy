@@ -4,6 +4,41 @@ const { GoogleGenerativeAI } = require("@google/generative-ai");
 const fs = require("fs").promises;
 const path = require("path");
 
+// Helper function to fix template issues
+async function fixTemplateContent(templatePath) {
+  try {
+    // Read the template
+    const content = await fs.readFile(templatePath, "binary");
+    const PizZip = require("pizzip");
+    const zip = new PizZip(content);
+    
+    // Get the main document XML
+    let xmlContent = zip.files["word/document.xml"].asText();
+    
+    // Fix common template issues:
+    
+    // 1. Fix split template tags (like {{CERT\nIFICATIONS}} or {{CERTIFICATIONS\n}})
+    xmlContent = xmlContent.replace(/\{\{([^}]*)\n([^}]*)\}\}/g, '{{$1$2}}');
+    
+    // 2. Fix tags with spaces or line breaks inside
+    xmlContent = xmlContent.replace(/\{\{\s*([^}]+)\s*\}\}/g, '{{$1}}');
+    
+    // 3. Make sure all tags are on single lines
+    xmlContent = xmlContent.replace(/(\{\{[^}]*\}\})/g, (match) => {
+      return match.replace(/\n/g, '').replace(/\r/g, '');
+    });
+    
+    // Update the zip with fixed content
+    zip.files["word/document.xml"] = xmlContent;
+    
+    return zip.generate({ type: "nodebuffer", compression: "DEFLATE" });
+    
+  } catch (error) {
+    console.error("Template fix failed:", error.message);
+    throw error;
+  }
+}
+
 // Helper function to generate DOCX from template
 async function generateResumeDocxFromTemplate(resumeJson) {
   try {
@@ -15,11 +50,18 @@ async function generateResumeDocxFromTemplate(resumeJson) {
     
     console.log("📄 Loading template from:", templatePath);
     
-    // Read the template file
-    const templateContent = await fs.readFile(templatePath, "binary");
+    // First, try to fix any template issues
+    let fixedBuffer;
+    try {
+      fixedBuffer = await fixTemplateContent(templatePath);
+    } catch (fixError) {
+      console.log("⚠️ Could not fix template, using original:", fixError.message);
+      // Use original if fix fails
+      fixedBuffer = await fs.readFile(templatePath, "binary");
+    }
     
-    // Create a zip instance
-    const zip = new PizZip(templateContent);
+    // Create a zip instance from the (possibly fixed) template
+    const zip = new PizZip(fixedBuffer);
     
     // Initialize docxtemplater
     const doc = new Docxtemplater(zip, {
@@ -27,7 +69,7 @@ async function generateResumeDocxFromTemplate(resumeJson) {
       linebreaks: true,
     });
     
-    // Format skills for template - bullet points
+    // Format skills for template - simple bullet points
     let skillsText = "";
     if (Array.isArray(resumeJson.skills) && resumeJson.skills.length > 0) {
       skillsText = resumeJson.skills.map(skill => `• ${skill}`).join("\n");
@@ -47,25 +89,25 @@ async function generateResumeDocxFromTemplate(resumeJson) {
         const startDate = exp.startDate || exp.start || exp.from || "";
         const endDate = exp.endDate || exp.end || exp.to || (exp.current ? "Present" : "");
         
-        // Format description as bullet points
+        // Format description
         let description = "";
         if (exp.description) {
           if (Array.isArray(exp.description)) {
             description = exp.description.map(item => `  ◦ ${item}`).join("\n");
           } else if (typeof exp.description === "string") {
-            // Split by newlines or periods
-            const points = exp.description.split(/[\.\n]/)
+            // Clean and format description
+            const points = exp.description
+              .replace(/\. /g, '.\n')
+              .split('\n')
               .filter(point => point.trim().length > 0)
-              .map(point => point.trim());
+              .map(point => `  ◦ ${point.trim()}`);
             
-            if (points.length > 0) {
-              description = points.map(point => `  ◦ ${point}`).join("\n");
-            } else {
-              description = "  ◦ Experience details not provided";
-            }
+            description = points.join("\n");
           }
-        } else {
-          description = "  ◦ Experience details not provided";
+        }
+        
+        if (!description) {
+          description = "  ◦ Responsibilities and achievements in this role";
         }
         
         const dateRange = startDate && endDate ? `${startDate} – ${endDate}` : (startDate || endDate || "");
@@ -107,9 +149,8 @@ async function generateResumeDocxFromTemplate(resumeJson) {
       certificationsText = "• Certifications not specified";
     }
     
-    // Set the template variables - EXACTLY as they appear in your template
+    // Create template data - using EXACT variable names from your template
     const templateData = {
-      // NOTE: These variable names must match EXACTLY what's in your Word template
       FULL_NAME: resumeJson.fullName || "Candidate Name",
       EMAIL: resumeJson.email || "email@example.com",
       PHONE: resumeJson.phone || "(123) 456-7890",
@@ -121,10 +162,21 @@ async function generateResumeDocxFromTemplate(resumeJson) {
       CERTIFICATIONS: certificationsText
     };
     
-    console.log("📝 Template variables being set:", Object.keys(templateData));
+    console.log("📝 Setting template variables:", Object.keys(templateData));
     
-    // Render the document
-    doc.render(templateData);
+    // Try to render
+    try {
+      doc.render(templateData);
+    } catch (renderError) {
+      console.error("❌ Render error:", renderError.message);
+      
+      // Try alternative approach: create a simple template
+      if (renderError.message.includes("duplicate") || renderError.message.includes("tag")) {
+        console.log("🔄 Creating simple template as fallback...");
+        return await createSimpleDocx(resumeJson);
+      }
+      throw renderError;
+    }
     
     // Get the buffer
     const buf = doc.getZip().generate({
@@ -137,29 +189,89 @@ async function generateResumeDocxFromTemplate(resumeJson) {
   } catch (error) {
     console.error("❌ Error generating DOCX:", error.message);
     
-    // Debug: Check what's in the template
+    // Final fallback: create a simple document
     try {
-      const templatePath = path.join(__dirname, "..", "templates", "resume_template.docx");
-      const templateContent = await fs.readFile(templatePath, "binary");
-      const PizZip = require("pizzip");
-      const zip = new PizZip(templateContent);
-      const xmlContent = zip.files["word/document.xml"].asText();
-      
-      // Find all template variables in the document
-      const variableRegex = /\{\{([^}]+)\}\}/g;
-      let match;
-      const templateVariables = [];
-      while ((match = variableRegex.exec(xmlContent)) !== null) {
-        templateVariables.push(match[1].trim());
-      }
-      
-      console.log("🔍 Found these variables in template:", templateVariables);
-      console.log("📋 Trying to set these variables:", Object.keys(templateData || {}));
-      
-    } catch (debugError) {
-      console.error("Debug failed:", debugError.message);
+      return await createSimpleDocx(resumeJson);
+    } catch (fallbackError) {
+      console.error("❌ Even fallback failed:", fallbackError.message);
+      throw error;
     }
+  }
+}
+
+// Fallback function to create a simple DOCX without template
+async function createSimpleDocx(resumeJson) {
+  try {
+    console.log("🔄 Creating simple DOCX as fallback");
     
+    // Create a minimal document using docx library as fallback
+    const { Document, Packer, Paragraph, TextRun } = require("docx");
+    
+    const doc = new Document({
+      sections: [{
+        properties: {},
+        children: [
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: resumeJson.fullName || "Resume",
+                bold: true,
+                size: 32,
+              }),
+            ],
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: `${resumeJson.email || ""} | ${resumeJson.phone || ""} | ${resumeJson.location || ""}`,
+                size: 24,
+              }),
+            ],
+          }),
+          new Paragraph({ children: [new TextRun({ text: "" })] }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "PROFESSIONAL SUMMARY",
+                bold: true,
+                size: 28,
+              }),
+            ],
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: resumeJson.summary || "Professional summary",
+                size: 24,
+              }),
+            ],
+          }),
+          new Paragraph({ children: [new TextRun({ text: "" })] }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: "SKILLS",
+                bold: true,
+                size: 28,
+              }),
+            ],
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: Array.isArray(resumeJson.skills) ? resumeJson.skills.join(", ") : (resumeJson.skills || ""),
+                size: 24,
+              }),
+            ],
+          }),
+        ],
+      }],
+    });
+    
+    return Packer.toBuffer(doc);
+    
+  } catch (error) {
+    console.error("❌ Simple DOCX creation failed:", error.message);
     throw error;
   }
 }
@@ -167,13 +279,12 @@ async function generateResumeDocxFromTemplate(resumeJson) {
 // Extract JSON from AI response
 function extractJson(text) {
   try {
-    // Clean the text
     let cleanedText = text.trim();
     
-    // Remove markdown code blocks
+    // Remove markdown
     cleanedText = cleanedText.replace(/```json\s*/gi, '').replace(/```\s*/gi, '');
     
-    // Find JSON object
+    // Find JSON
     const jsonStart = cleanedText.indexOf('{');
     const jsonEnd = cleanedText.lastIndexOf('}');
     
@@ -182,11 +293,9 @@ function extractJson(text) {
       return JSON.parse(jsonStr);
     }
     
-    // Try parsing the whole text
     return JSON.parse(cleanedText);
   } catch (error) {
-    console.error("❌ JSON extraction error:", error.message);
-    console.log("Raw text (first 500 chars):", text.substring(0, 500));
+    console.error("❌ JSON extraction failed:", error.message);
     return null;
   }
 }
@@ -206,15 +315,15 @@ function buildResumePrompt(candidateData, jobDescription) {
     certifications = []
   } = candidateData;
 
-  return `You are a professional resume writer. Create a tailored resume in JSON format.
+  return `Create a resume in JSON format using ONLY candidate's provided information.
 
-CANDIDATE INFORMATION:
+CANDIDATE:
 - Name: ${fullName}
-- Target Role: ${targetRole || "Not specified"}
-- Location: ${location || "Not specified"}
-- Email: ${email || "Not specified"}
-- Phone: ${phone || "Not specified"}
-- Summary: ${summary || "Not provided"}
+- Target Role: ${targetRole || ""}
+- Location: ${location || ""}
+- Email: ${email || ""}
+- Phone: ${phone || ""}
+- Summary: ${summary || ""}
 - Skills: ${JSON.stringify(skills)}
 - Experience: ${JSON.stringify(experience)}
 - Education: ${JSON.stringify(education)}
@@ -223,44 +332,42 @@ CANDIDATE INFORMATION:
 JOB DESCRIPTION:
 ${jobDescription}
 
-OUTPUT FORMAT (JSON ONLY):
+OUTPUT JSON:
 {
   "fullName": "${fullName}",
   "email": "${email || ""}",
   "phone": "${phone || ""}",
   "location": "${location || ""}",
-  "summary": "Write a 2-3 sentence professional summary based on the candidate's background and tailored to the job description.",
-  "skills": ["List relevant skills from candidate data"],
+  "summary": "Professional summary here",
+  "skills": ["skill1", "skill2"],
   "experience": [
     {
-      "jobTitle": "Job title from candidate data",
-      "company": "Company from candidate data",
-      "location": "Location from candidate data",
-      "startDate": "Start date (Month YYYY)",
-      "endDate": "End date (Month YYYY) or 'Present'",
-      "description": "Write 3-4 bullet point achievements. Start each with action verbs."
+      "jobTitle": "Job title",
+      "company": "Company",
+      "location": "Location",
+      "startDate": "Month YYYY",
+      "endDate": "Month YYYY",
+      "description": "Achievement 1. Achievement 2."
     }
   ],
   "education": [
     {
-      "degree": "Degree from candidate data",
-      "school": "School from candidate data",
-      "location": "Location from candidate data",
-      "graduationYear": "Year from candidate data"
+      "degree": "Degree",
+      "school": "School",
+      "location": "Location",
+      "graduationYear": "YYYY"
     }
   ],
-  "certifications": ["List certifications from candidate data"]
+  "certifications": ["cert1", "cert2"]
 }
 
 RULES:
-1. Use ONLY information provided by the candidate
-2. Do NOT invent companies, schools, or experiences
-3. Tailor content to match job requirements
-4. Focus on achievements and results
-5. Use professional language`;
+1. Use only candidate's information
+2. No invented data
+3. Tailor to job description`;
 }
 
-// ---------- Resume generation (Gemini) ----------
+// ---------- Resume generation ----------
 exports.generateResume = async (req, res) => {
   try {
     console.log("✅ /api/v1/resume/generate hit");
@@ -279,21 +386,15 @@ exports.generateResume = async (req, res) => {
       jobDescription,
     } = req.body;
 
-    if (!fullName) {
-      return res.status(400).json({ message: "Candidate name is required" });
-    }
-
-    if (!jobDescription) {
-      return res.status(400).json({
-        message: "Job description is required.",
+    if (!fullName || !jobDescription) {
+      return res.status(400).json({ 
+        message: "Name and job description are required" 
       });
     }
 
-    console.log("👤 Generating for:", fullName);
-
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ message: "GEMINI_API_KEY is missing" });
+      return res.status(500).json({ message: "API key missing" });
     }
 
     const candidateData = {
@@ -312,11 +413,9 @@ exports.generateResume = async (req, res) => {
 
     const prompt = buildResumePrompt(candidateData, jobDescription);
     
-    const finalPrompt = `IMPORTANT: Return ONLY valid JSON. No explanations, no markdown.
+    const finalPrompt = `Return ONLY JSON:\n\n${prompt}`;
 
-${prompt}`;
-
-    console.log("🤖 Sending to Gemini...");
+    console.log("🤖 Calling AI...");
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
@@ -330,41 +429,27 @@ ${prompt}`;
     const result = await model.generateContent(finalPrompt);
     const rawText = result?.response?.text() || "";
 
-    console.log("📄 AI Response received");
+    console.log("📄 AI response received");
 
-    const resumeJson = extractJson(rawText);
+    let resumeJson = extractJson(rawText);
 
+    // If JSON extraction fails, use candidate data directly
     if (!resumeJson) {
-      console.error("❌ JSON extraction failed, using fallback");
-      // Create fallback resume from candidate data
-      const fallbackResume = {
+      console.log("⚠️ Using candidate data directly");
+      resumeJson = {
         fullName,
         email: email || "",
         phone: phone || "",
         location: location || "",
-        summary: summary || `Experienced ${targetRole || "professional"} with skills in ${candidateData.skills.slice(0, 3).join(", ")}.`,
+        summary: summary || `Experienced ${targetRole || "professional"}.`,
         skills: candidateData.skills,
-        experience: candidateData.experience.map(exp => ({
-          jobTitle: exp.jobTitle || exp.title || "",
-          company: exp.company || exp.employer || "",
-          location: exp.location || "",
-          startDate: exp.startDate || exp.start || "",
-          endDate: exp.endDate || exp.end || (exp.current ? "Present" : ""),
-          description: exp.description || "Responsibilities and achievements in this role."
-        })),
+        experience: candidateData.experience,
         education: candidateData.education,
         certifications: candidateData.certifications
       };
-      
-      const docBuffer = await generateResumeDocxFromTemplate(fallbackResume);
-      
-      const fileName = `Resume_${fullName.replace(/\s+/g, "_")}.docx`;
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
-      return res.send(docBuffer);
     }
 
-    console.log("✅ Resume JSON generated");
+    console.log("✅ Generating DOCX...");
 
     // Generate DOCX
     const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
@@ -383,7 +468,7 @@ ${prompt}`;
     return res.send(docBuffer);
 
   } catch (error) {
-    console.error("❌ Error:", error.message);
+    console.error("❌ Final error:", error.message);
     
     return res.status(500).json({
       message: "Resume generation failed",
@@ -392,7 +477,7 @@ ${prompt}`;
   }
 };
 
-// ---------- Simple resume generation ----------
+// ---------- Simple resume ----------
 exports.generateSimpleResume = async (req, res) => {
   try {
     console.log("✅ /api/v1/resume/simple hit");
@@ -410,16 +495,15 @@ exports.generateSimpleResume = async (req, res) => {
     } = req.body;
 
     if (!fullName) {
-      return res.status(400).json({ message: "Candidate name is required" });
+      return res.status(400).json({ message: "Name required" });
     }
 
-    // Create resume from direct data
     const resumeJson = {
       fullName,
       email: email || "",
       phone: phone || "",
       location: location || "",
-      summary: summary || `Experienced professional seeking new opportunities.`,
+      summary: summary || `Professional resume for ${fullName}.`,
       skills: Array.isArray(skills) ? skills : 
              typeof skills === "string" ? skills.split(",").map(s => s.trim()).filter(s => s) : [],
       experience: Array.isArray(experience) ? experience : [],
@@ -429,7 +513,6 @@ exports.generateSimpleResume = async (req, res) => {
 
     console.log("📝 Generating simple resume");
 
-    // Generate DOCX
     const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
 
     const fileName = `Resume_${fullName.replace(/\s+/g, "_")}.docx`;
@@ -446,7 +529,7 @@ exports.generateSimpleResume = async (req, res) => {
     return res.send(docBuffer);
 
   } catch (error) {
-    console.error("❌ Error in simple resume:", error.message);
+    console.error("❌ Simple resume error:", error.message);
     return res.status(500).json({
       message: "Failed to generate resume",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
@@ -454,7 +537,7 @@ exports.generateSimpleResume = async (req, res) => {
   }
 };
 
-// ---------- Download existing resume ----------
+// ---------- Download resume ----------
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     console.log("📥 /api/v1/resume/download hit");
@@ -471,61 +554,31 @@ exports.downloadResumeAsWord = async (req, res) => {
       certifications = "" 
     } = req.query;
 
-    // Helper function
+    // Helper
     const safeDecode = (str) => {
       if (!str) return "";
       try {
         return decodeURIComponent(str);
-      } catch (e) {
+      } catch {
         return str;
       }
     };
 
-    // Parse JSON or use as text
-    let experienceArray = [];
-    if (experience) {
-      try {
-        const decoded = safeDecode(experience);
-        experienceArray = JSON.parse(decoded);
-      } catch (e) {
-        experienceArray = [{
-          jobTitle: "Professional Role",
-          company: "Company",
-          description: safeDecode(experience)
-        }];
-      }
-    }
-
-    let educationArray = [];
-    if (education) {
-      try {
-        const decoded = safeDecode(education);
-        educationArray = JSON.parse(decoded);
-      } catch (e) {
-        educationArray = [{
-          degree: "Degree",
-          school: "Institution",
-          description: safeDecode(education)
-        }];
-      }
-    }
-
-    // Create resume object
+    // Parse data
     const resumeJson = {
       fullName: safeDecode(name),
       email: safeDecode(email),
       phone: safeDecode(phone),
       location: safeDecode(location),
-      summary: safeDecode(summary) || "Professional resume",
+      summary: safeDecode(summary) || `Resume for ${safeDecode(name)}`,
       skills: skills ? safeDecode(skills).split(",").map(s => s.trim()).filter(s => s) : [],
-      experience: experienceArray,
-      education: educationArray,
+      experience: experience ? JSON.parse(safeDecode(experience)) : [],
+      education: education ? JSON.parse(safeDecode(education)) : [],
       certifications: certifications ? safeDecode(certifications).split(",").map(c => c.trim()).filter(c => c) : []
     };
 
-    console.log("📝 Generating DOCX from query data");
+    console.log("📝 Generating from query");
 
-    // Generate DOCX
     const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
 
     const fileName = `Resume_${resumeJson.fullName.replace(/\s+/g, "_")}.docx`;
@@ -542,98 +595,59 @@ exports.downloadResumeAsWord = async (req, res) => {
     return res.send(docBuffer);
 
   } catch (error) {
-    console.error("❌ Error:", error.message);
+    console.error("❌ Download error:", error.message);
     
     res.status(500).json({
       success: false,
       message: "Failed to create document",
-      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
 
-// ---------- Test template ----------
-exports.testTemplate = async (req, res) => {
+// ---------- Fix template endpoint ----------
+exports.fixTemplate = async (req, res) => {
   try {
-    console.log("🔧 Testing template");
+    console.log("🔧 Fixing template...");
     
-    // Test data
-    const testResume = {
-      fullName: "John Doe",
-      email: "john.doe@example.com",
-      phone: "(123) 456-7890",
-      location: "New York, NY",
-      summary: "Experienced software developer with 5+ years in web application development. Skilled in JavaScript, React, and Node.js. Passionate about creating efficient and scalable solutions.",
-      skills: ["JavaScript", "React", "Node.js", "Python", "AWS", "Docker", "Git", "REST APIs"],
-      experience: [
-        {
-          jobTitle: "Senior Software Developer",
-          company: "Tech Solutions Inc",
-          location: "New York, NY",
-          startDate: "January 2020",
-          endDate: "Present",
-          description: "Developed customer-facing web applications using modern frameworks. Led a team of 3 developers. Implemented CI/CD pipelines reducing deployment time by 60%."
-        },
-        {
-          jobTitle: "Software Developer",
-          company: "Digital Innovations",
-          location: "Boston, MA",
-          startDate: "June 2017",
-          endDate: "December 2019",
-          description: "Built RESTful APIs and frontend interfaces. Collaborated with UX designers to implement responsive designs. Reduced page load time by 40% through optimization."
-        }
-      ],
-      education: [
-        {
-          degree: "Bachelor of Science in Computer Science",
-          school: "State University",
-          location: "Boston, MA",
-          graduationYear: "2017",
-          gpa: "3.8"
-        }
-      ],
-      certifications: ["AWS Certified Developer", "React Professional Certification", "Scrum Master Certified"]
-    };
+    const templatePath = path.join(__dirname, "..", "templates", "resume_template.docx");
     
-    const docBuffer = await generateResumeDocxFromTemplate(testResume);
+    // Read and fix template
+    const content = await fs.readFile(templatePath, "binary");
+    const PizZip = require("pizzip");
+    const zip = new PizZip(content);
     
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="Test_Resume.docx"`
-    );
+    let xmlContent = zip.files["word/document.xml"].asText();
     
-    return res.send(docBuffer);
+    // Find all template variables
+    const variableRegex = /\{\{([^}]+)\}\}/g;
+    let match;
+    const variables = [];
     
-  } catch (error) {
-    console.error("❌ Test error:", error.message);
-    
-    // Try to diagnose the template issue
-    try {
-      const templatePath = path.join(__dirname, "..", "templates", "resume_template.docx");
-      const content = await fs.readFile(templatePath, "binary");
-      const PizZip = require("pizzip");
-      const zip = new PizZip(content);
-      const xml = zip.files["word/document.xml"].asText();
-      
-      const vars = [];
-      const regex = /\{\{([^}]+)\}\}/g;
-      let match;
-      while ((match = regex.exec(xml)) !== null) {
-        vars.push(match[1].trim());
-      }
-      
-      console.log("🔍 Variables in template:", vars);
-      
-    } catch (e) {
-      console.error("Could not analyze template:", e.message);
+    while ((match = variableRegex.exec(xmlContent)) !== null) {
+      variables.push(match[1].trim());
     }
     
+    console.log("🔍 Found variables:", variables);
+    
+    // Show problematic areas
+    const lines = xmlContent.split('\n');
+    lines.forEach((line, index) => {
+      if (line.includes('{{') && line.includes('}}')) {
+        console.log(`Line ${index + 1}: ${line.substring(0, 100)}`);
+      }
+    });
+    
+    return res.json({
+      success: true,
+      variables,
+      message: "Template analyzed. Check console for details."
+    });
+    
+  } catch (error) {
+    console.error("❌ Fix template error:", error.message);
     return res.status(500).json({
-      message: "Template test failed",
+      success: false,
+      message: "Failed to analyze template",
       error: error.message
     });
   }
