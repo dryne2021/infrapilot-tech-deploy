@@ -424,18 +424,6 @@ export default function RecruiterPage() {
     }
   };
 
-  // In the viewCandidateDetails function, also ensure structure
-  const viewCandidateDetails = (candidate) => {
-    // ✅ Ensure candidate data is structured before using it
-    const structuredCandidate = ensureCandidateDataStructure(candidate);
-    setSelectedCandidate(structuredCandidate);
-    
-    // Generate mock job applications for this candidate
-    const mockJobs = generateMockJobs(structuredCandidate);
-    setCandidateJobs(mockJobs);
-    setShowCandidateDetails(true);
-  };
-
   // ✅ ADD THESE MISSING FUNCTIONS TOO (from your original code)
   const extractSkillsFromDescription = (description: string) => {
     const skills = []
@@ -524,10 +512,69 @@ export default function RecruiterPage() {
     }
   }
 
-  // ... [ADD THE REST OF YOUR ORIGINAL FUNCTIONS HERE] ...
-  
-  // This is just a placeholder - you need to copy the rest of your original JSX code here
+  // ✅ ADD THIS FUNCTION - Generate mock jobs for candidates
+  const generateMockJobs = (candidate) => {
+    const jobTitles = [
+      'Senior Software Engineer',
+      'Full Stack Developer',
+      'Frontend Developer',
+      'Backend Developer',
+      'DevOps Engineer',
+      'Data Scientist',
+      'Product Manager',
+      'UX Designer'
+    ]
+    
+    const companies = [
+      'Google', 'Microsoft', 'Amazon', 'Apple', 'Meta',
+      'Netflix', 'Uber', 'Airbnb', 'Stripe', 'Salesforce'
+    ]
+    
+    const statuses = ['Applied', 'Under Review', 'Interview', 'Offer', 'Rejected']
+    
+    const jobs = []
+    const numJobs = Math.floor(Math.random() * 5) + 1 // 1-5 jobs
+    
+    for (let i = 0; i < numJobs; i++) {
+      const jobTitle = jobTitles[Math.floor(Math.random() * jobTitles.length)]
+      const company = companies[Math.floor(Math.random() * companies.length)]
+      const status = statuses[Math.floor(Math.random() * statuses.length)]
+      const daysAgo = Math.floor(Math.random() * 30)
+      const appliedDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
+      
+      jobs.push({
+        id: `job_${candidate.id}_${i}`,
+        jobTitle,
+        company,
+        description: `${jobTitle} position at ${company}. Looking for candidates with ${candidate.experienceYears || 3}+ years experience in ${candidate.skills || 'relevant technologies'}.`,
+        status,
+        appliedDate: appliedDate.toISOString(),
+        resumeStatus: ['Submitted', 'Reviewed', 'Pending'][Math.floor(Math.random() * 3)],
+        matchScore: Math.floor(Math.random() * 30) + 70, // 70-100%
+        salaryRange: `$${Math.floor(Math.random() * 50) + 100}k - $${Math.floor(Math.random() * 50) + 150}k`
+      })
+    }
+    
+    return jobs
+  }
+
+  // In the viewCandidateDetails function, also ensure structure
+  const viewCandidateDetails = (candidate) => {
+    // ✅ Ensure candidate data is structured before using it
+    const structuredCandidate = ensureCandidateDataStructure(candidate);
+    setSelectedCandidate(structuredCandidate);
+    
+    // Generate mock job applications for this candidate
+    const mockJobs = generateMockJobs(structuredCandidate);
+    setCandidateJobs(mockJobs);
+    setShowCandidateDetails(true);
+  };
+
+  // ... [REST OF YOUR ORIGINAL FUNCTIONS AND JSX REMAIN HERE] ...
+
+  // IMPORTANT: You need to copy ALL the JSX/UI code from your original file here
+  // The return statement below is just a placeholder - replace it with your original JSX
   return (
-    <div>Recruiter Dashboard - Make sure to copy your original JSX here</div>
+    <div>Recruiter Dashboard - Replace this with your original JSX code</div>
   )
 }
