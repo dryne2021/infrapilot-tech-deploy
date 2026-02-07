@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import CandidateManagement from './CandidateManagement'
 import PlanManagement from './PlanManagement'
 import RecruiterManagement from './RecruiterManagement'
@@ -30,7 +31,7 @@ export default function AdminPage() {
       const adminAuth = localStorage.getItem('admin_authenticated')
       
       if (!userStr) {
-        router.push('/admin/login')
+        router.push('/login')  // Changed from '/admin/login'
         return
       }
       
@@ -38,7 +39,7 @@ export default function AdminPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'admin' || adminAuth !== 'true') {
-          router.push('/admin/login')
+          router.push('/login')  // Changed from '/admin/login'
           return
         }
         
@@ -48,7 +49,7 @@ export default function AdminPage() {
         
       } catch {
         localStorage.clear()
-        router.push('/admin/login')
+        router.push('/login')  // Changed from '/admin/login'
       } finally {
         setLoading(false)
       }
@@ -172,7 +173,7 @@ export default function AdminPage() {
     localStorage.removeItem('infrapilot_user')
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('admin_authenticated')
-    router.push('/admin/login')
+    router.push('/login')  // Changed from '/admin/login'
   }
 
   const refreshDashboard = () => {
@@ -202,23 +203,38 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-          <div>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
-                <span className="text-white text-lg font-bold">IP</span>
+        {/* Header with Logo */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
+          <div className="flex items-center gap-4">
+            {/* Logo Container */}
+            <div className="relative">
+              <div className="relative w-20 h-20 md:w-24 md:h-24 rounded-2xl overflow-hidden shadow-xl shadow-blue-200/50 border-4 border-white bg-white">
+                <Image
+                  src="/logo.jpeg"
+                  alt="Infrapilot Logo"
+                  width={96}
+                  height={96}
+                  className="object-cover w-full h-full"
+                  priority
+                />
               </div>
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-900 to-blue-700 bg-clip-text text-transparent">
-                InfraPilot Admin
-              </h1>
+              <div className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full animate-pulse flex items-center justify-center">
+                <span className="text-white text-xs font-bold">IP</span>
+              </div>
             </div>
-            <p className="text-slate-600 mt-1">Welcome back, <span className="font-semibold text-blue-800">{user.name}</span></p>
-            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-gradient-to-r from-emerald-100 to-emerald-50 border border-emerald-200 rounded-full">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
-              <span className="text-xs font-medium text-emerald-700">Admin Authenticated</span>
+            
+            <div>
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-blue-900 to-blue-700 bg-clip-text text-transparent">
+                InfraPilot Admin Portal
+              </h1>
+              <p className="text-slate-600 mt-1">Welcome back, <span className="font-semibold text-blue-800">{user.name}</span></p>
+              <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 bg-gradient-to-r from-emerald-100 to-emerald-50 border border-emerald-200 rounded-full">
+                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                <span className="text-xs font-medium text-emerald-700">Admin Authenticated</span>
+              </div>
             </div>
           </div>
+          
           <div className="flex flex-wrap gap-3">
             <button
               onClick={refreshDashboard}
@@ -230,7 +246,7 @@ export default function AdminPage() {
               Refresh
             </button>
             <button
-              onClick={() => router.push('/admin/login')}
+              onClick={() => router.push('/login')}  // Changed from '/admin/login'
               className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-200 shadow-md hover:shadow-lg shadow-blue-200"
             >
               Switch Admin
@@ -502,11 +518,22 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* System Info */}
+              {/* System Info with Logo */}
               <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-2xl shadow-xl p-6 hover:shadow-2xl transition-all duration-300">
-                <div className="mb-6">
-                  <h3 className="text-xl font-bold text-white mb-2">System Overview</h3>
-                  <p className="text-blue-100 opacity-90">InfraPilot Admin Control Panel</p>
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden border-2 border-white/20">
+                    <Image
+                      src="/logo.jpeg"
+                      alt="Infrapilot Logo"
+                      width={64}
+                      height={64}
+                      className="object-cover w-full h-full"
+                    />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white mb-1">System Overview</h3>
+                    <p className="text-blue-100 opacity-90">InfraPilot Admin Control Panel</p>
+                  </div>
                 </div>
                 
                 <div className="space-y-4 mb-8">
@@ -733,11 +760,22 @@ export default function AdminPage() {
         {activeTab === 'settings' && (
           <div className="bg-gradient-to-br from-white to-slate-50 rounded-2xl shadow-lg border border-slate-100 p-6">
             <div className="flex justify-between items-center mb-6">
-              <div>
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-900 to-blue-700 bg-clip-text text-transparent">
-                  System Settings
-                </h2>
-                <p className="text-slate-600">Configure system preferences and settings</p>
+              <div className="flex items-center gap-4">
+                <div className="relative w-20 h-20 rounded-xl overflow-hidden border-4 border-white">
+                  <Image
+                    src="/logo.jpeg"
+                    alt="Infrapilot Logo"
+                    width={80}
+                    height={80}
+                    className="object-cover w-full h-full"
+                  />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-900 to-blue-700 bg-clip-text text-transparent">
+                    System Settings
+                  </h2>
+                  <p className="text-slate-600">Configure system preferences and settings</p>
+                </div>
               </div>
             </div>
             
@@ -905,19 +943,42 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-8 pt-6 border-t border-slate-200 text-center">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg flex items-center justify-center">
-              <span className="text-white text-xs font-bold">IP</span>
+        {/* Footer with Logo */}
+        <div className="mt-8 pt-6 border-t border-slate-200">
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-white shadow-md">
+                <Image
+                  src="/logo.jpeg"
+                  alt="Infrapilot Logo"
+                  width={48}
+                  height={48}
+                  className="object-cover w-full h-full"
+                />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-slate-600">
+                  InfraPilot Tech Admin Portal • Version 2.2.0 • {new Date().getFullYear()}
+                </p>
+                <p className="text-xs text-slate-400">
+                  Need help? Contact support@infrapilot.com
+                </p>
+              </div>
             </div>
-            <p className="text-sm font-medium text-slate-600">
-              InfraPilot Tech Admin Portal • Version 2.2.0 • {new Date().getFullYear()}
-            </p>
+            
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-slate-500">Powered by</span>
+              <div className="relative w-16 h-8">
+                <Image
+                  src="/logo.jpeg"
+                  alt="Infrapilot Logo"
+                  width={64}
+                  height={32}
+                  className="object-contain w-full h-full"
+                />
+              </div>
+            </div>
           </div>
-          <p className="text-xs text-slate-400">
-            Need help? Contact support@infrapilot.com
-          </p>
         </div>
       </div>
     </div>
@@ -1841,7 +1902,18 @@ const CredentialsManager = () => {
 
       {/* Instructions */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6">
-        <h3 className="font-bold text-blue-800 mb-3 text-lg">📋 Manual Credential Creation Instructions:</h3>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-white">
+            <Image
+              src="/logo.jpeg"
+              alt="Infrapilot Logo"
+              width={48}
+              height={48}
+              className="object-cover w-full h-full"
+            />
+          </div>
+          <h3 className="font-bold text-blue-800 text-lg">📋 Manual Credential Creation Instructions:</h3>
+        </div>
         <ul className="text-blue-700 space-y-3">
           <li className="flex items-start gap-3">
             <div className="w-6 h-6 bg-gradient-to-br from-blue-600 to-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-sm">

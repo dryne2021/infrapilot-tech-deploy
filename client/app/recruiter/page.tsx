@@ -576,7 +576,7 @@ export default function RecruiterPage() {
       const recruiterId = localStorage.getItem('recruiter_id')
       
       if (!userStr || !recruiterAuth || recruiterAuth !== 'true') {
-        router.push('/recruiter/login')
+        router.push('/login')  // Changed from '/recruiter/login'
         return
       }
       
@@ -584,7 +584,7 @@ export default function RecruiterPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'recruiter') {
-          router.push('/recruiter/login')
+          router.push('/login')  // Changed from '/recruiter/login'
           return
         }
         
@@ -646,7 +646,7 @@ export default function RecruiterPage() {
         localStorage.removeItem('infrapilot_token')
         localStorage.removeItem('recruiter_authenticated')
         localStorage.removeItem('recruiter_id')
-        router.push('/recruiter/login')
+        router.push('/login')  // Changed from '/recruiter/login'
       } finally {
         setLoading(false)
       }
@@ -776,7 +776,7 @@ export default function RecruiterPage() {
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('recruiter_authenticated')
     localStorage.removeItem('recruiter_id')
-    router.push('/recruiter/login')
+    router.push('/login')  // Changed from '/recruiter/login'
   }
 
   const updateCandidateStatus = (candidateId, newStatus) => {
@@ -890,29 +890,29 @@ export default function RecruiterPage() {
     const colors = {
       free: 'bg-gray-100 text-gray-900',
       silver: 'bg-gray-300 text-gray-900',
-      gold: 'bg-yellow-100 text-yellow-900',
+      gold: 'bg-yellow-100 text-gray-900',
       platinum: 'bg-gray-200 text-gray-900',
-      enterprise: 'bg-purple-100 text-purple-900'
+      enterprise: 'bg-purple-100 text-gray-900'
     }
-    return colors[plan] || 'bg-blue-100 text-blue-900'
+    return colors[plan] || 'bg-blue-100 text-gray-900'
   }
 
   const getStatusColor = (status) => {
     const colors = {
-      'Applied': 'bg-blue-100 text-blue-900',
-      'Under Review': 'bg-yellow-100 text-yellow-900',
-      'Interview': 'bg-purple-100 text-purple-900',
-      'Offer': 'bg-green-100 text-green-900',
-      'Rejected': 'bg-red-100 text-red-900'
+      'Applied': 'bg-blue-100 text-gray-900',
+      'Under Review': 'bg-yellow-100 text-gray-900',
+      'Interview': 'bg-purple-100 text-gray-900',
+      'Offer': 'bg-green-100 text-gray-900',
+      'Rejected': 'bg-red-100 text-gray-900'
     }
     return colors[status] || 'bg-gray-100 text-gray-900'
   }
 
   const getResumeColor = (status) => {
     const colors = {
-      'Submitted': 'bg-green-100 text-green-900',
-      'Reviewed': 'bg-blue-100 text-blue-900',
-      'Pending': 'bg-yellow-100 text-yellow-900'
+      'Submitted': 'bg-green-100 text-gray-900',
+      'Reviewed': 'bg-blue-100 text-gray-900',
+      'Pending': 'bg-yellow-100 text-gray-900'
     }
     return colors[status] || 'bg-gray-100 text-gray-900'
   }
@@ -957,7 +957,7 @@ export default function RecruiterPage() {
               <h1 className="text-xl md:text-2xl font-bold text-gray-900 tracking-tight">Infrapilot Tech</h1>
               <p className="text-sm md:text-base text-blue-600 font-medium">Job Application Support Platform</p>
               <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">Recruiter Portal</span>
+                <span className="text-xs bg-blue-100 text-gray-900 px-2 py-1 rounded-full">Recruiter Portal</span>
                 <span className="text-xs text-gray-500">v2.1</span>
               </div>
             </div>
@@ -967,7 +967,7 @@ export default function RecruiterPage() {
           <div className="flex flex-col items-end space-y-2">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-600 font-semibold text-sm">
+                <span className="text-gray-900 font-semibold text-sm">
                   {user.name?.[0]?.toUpperCase() || 'R'}
                 </span>
               </div>
@@ -978,7 +978,7 @@ export default function RecruiterPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => router.push('/recruiter/login')}
+                onClick={() => router.push('/login')}  // Changed from '/recruiter/login'
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 border border-gray-300"
               >
                 Switch Account
@@ -1001,13 +1001,13 @@ export default function RecruiterPage() {
             <h2 className="text-xl md:text-2xl font-bold text-gray-900">👔 Recruiter Dashboard</h2>
             <p className="text-gray-600 mt-1">Welcome back, <span className="font-semibold text-blue-700">{user.name}</span></p>
             <div className="flex flex-wrap gap-2 mt-2">
-              <span className="px-3 py-1 bg-blue-100 text-blue-900 rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-blue-100 text-gray-900 rounded-full text-xs font-medium">
                 {user.department}
               </span>
-              <span className="px-3 py-1 bg-green-100 text-green-900 rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-green-100 text-gray-900 rounded-full text-xs font-medium">
                 {user.specialization}
               </span>
-              <span className="px-3 py-1 bg-purple-100 text-purple-900 rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-purple-100 text-gray-900 rounded-full text-xs font-medium">
                 Recruiter
               </span>
             </div>
@@ -1079,7 +1079,7 @@ export default function RecruiterPage() {
                 </p>
               </div>
               <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isClockedIn ? 'bg-green-100 animate-pulse' : 'bg-gray-100'}`}>
-                <span className={isClockedIn ? 'text-green-600' : 'text-gray-600'}>
+                <span className={isClockedIn ? 'text-green-600' : 'text-gray-900'}>
                   {isClockedIn ? '⏰' : '🕒'}
                 </span>
               </div>
@@ -1103,7 +1103,7 @@ export default function RecruiterPage() {
                 <p className="text-2xl font-bold mt-1 text-gray-900">{stats.totalAssigned}</p>
               </div>
               <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                <span className="text-blue-600">👥</span>
+                <span className="text-gray-900">👥</span>
               </div>
             </div>
           </div>
@@ -1115,7 +1115,7 @@ export default function RecruiterPage() {
                 <p className="text-2xl font-bold mt-1 text-gray-900">{stats.activeSubscriptions}</p>
               </div>
               <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <span className="text-green-600">💰</span>
+                <span className="text-gray-900">💰</span>
               </div>
             </div>
           </div>
@@ -1127,7 +1127,7 @@ export default function RecruiterPage() {
                 <p className="text-2xl font-bold mt-1 text-gray-900">{stats.pendingFollowups}</p>
               </div>
               <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center">
-                <span className="text-yellow-600">⏳</span>
+                <span className="text-gray-900">⏳</span>
               </div>
             </div>
           </div>
@@ -1139,7 +1139,7 @@ export default function RecruiterPage() {
                 <p className="text-2xl font-bold mt-1 text-gray-900">{stats.interviewsThisWeek}</p>
               </div>
               <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center">
-                <span className="text-purple-600">📅</span>
+                <span className="text-gray-900">📅</span>
               </div>
             </div>
           </div>
@@ -1153,7 +1153,7 @@ export default function RecruiterPage() {
                 <h2 className="text-xl font-bold text-gray-800">📄 Recent Resume Generations</h2>
                 <p className="text-gray-600">AI-powered resume generation history</p>
               </div>
-              <span className="px-3 py-1 bg-purple-100 text-purple-900 rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-purple-100 text-gray-900 rounded-full text-xs font-medium">
                 {resumeGenerationHistory.length} generated
               </span>
             </div>
@@ -1207,7 +1207,7 @@ export default function RecruiterPage() {
                               document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                             }
                           }}
-                          className="px-3 py-1 text-sm bg-blue-100 text-blue-900 rounded hover:bg-blue-200"
+                          className="px-3 py-1 text-sm bg-blue-100 text-gray-900 rounded hover:bg-blue-200"
                         >
                           Regenerate
                         </button>
@@ -1283,8 +1283,8 @@ export default function RecruiterPage() {
                     <td className="p-3">
                       <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                         !session.clockOut 
-                          ? 'bg-green-100 text-green-900 animate-pulse' 
-                          : 'bg-blue-100 text-blue-900'
+                          ? 'bg-green-100 text-gray-900 animate-pulse' 
+                          : 'bg-blue-100 text-gray-900'
                       }`}>
                         {!session.clockOut ? 'Active Now' : 'Completed'}
                       </span>
@@ -1326,7 +1326,7 @@ export default function RecruiterPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates assigned yet</h3>
               <p className="text-gray-500">The admin will assign candidates to you soon.</p>
               <button
-                onClick={() => router.push('/recruiter/login')}
+                onClick={() => router.push('/login')}  // Changed from '/recruiter/login'
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Refresh
@@ -1353,7 +1353,7 @@ export default function RecruiterPage() {
                         <td className="p-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                              <span className="text-blue-600 font-semibold">
+                              <span className="text-gray-900 font-semibold">
                                 {candidate.firstName?.[0]?.toUpperCase() || 'C'}
                               </span>
                             </div>
@@ -1382,7 +1382,7 @@ export default function RecruiterPage() {
                               {candidate.subscriptionPlan || 'Free'} Plan
                             </span>
                             <div className="text-xs">
-                              <span className={`px-2 py-1 rounded ${candidate.paymentStatus === 'paid' ? 'bg-green-100 text-green-900' : 'bg-yellow-100 text-yellow-900'}`}>
+                              <span className={`px-2 py-1 rounded ${candidate.paymentStatus === 'paid' ? 'bg-green-100 text-gray-900' : 'bg-yellow-100 text-gray-900'}`}>
                                 {candidate.paymentStatus === 'paid' ? '✅ Paid' : '⏳ Pending'}
                               </span>
                               <p className="text-gray-600 mt-1">{daysRemaining} days remaining</p>
@@ -1475,7 +1475,7 @@ export default function RecruiterPage() {
                     <div>
                       <p className="text-sm text-gray-600">Status</p>
                       <span className={`px-2 py-1 rounded text-xs font-medium ${
-                        selectedCandidate.paymentStatus === 'paid' ? 'bg-green-100 text-green-900' : 'bg-yellow-100 text-yellow-900'
+                        selectedCandidate.paymentStatus === 'paid' ? 'bg-green-100 text-gray-900' : 'bg-yellow-100 text-gray-900'
                       }`}>
                         {selectedCandidate.paymentStatus === 'paid' ? 'Active' : 'Pending'}
                       </span>
@@ -1600,7 +1600,7 @@ export default function RecruiterPage() {
                               setJobIdForResume(`job_${selectedCandidate.id}_${Date.now()}`)
                               setJobDescriptionForResume(candidateJobs.length > 0 ? candidateJobs[0].description : '')
                             }}
-                            className="px-6 py-3 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200"
+                            className="px-6 py-3 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200"
                           >
                             Auto-Fill
                           </button>
@@ -1621,13 +1621,13 @@ export default function RecruiterPage() {
                             <div className="flex gap-2">
                               <button
                                 onClick={copyResumeToClipboard}
-                                className="px-4 py-2 bg-green-100 text-green-700 rounded-lg hover:bg-green-200 text-sm"
+                                className="px-4 py-2 bg-green-100 text-gray-900 rounded-lg hover:bg-green-200 text-sm"
                               >
                                 📋 Copy
                               </button>
                               <button
                                 onClick={downloadResume}
-                                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 text-sm"
+                                className="px-4 py-2 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200 text-sm"
                               >
                                 ⬇️ Download
                               </button>
@@ -1641,7 +1641,7 @@ export default function RecruiterPage() {
                           </div>
                           
                           <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
-                            <p className="text-sm text-yellow-800">
+                            <p className="text-sm text-gray-900">
                               💡 <strong>Tip:</strong> This AI-generated resume is tailored to match the job description. Review and customize it before sending to the candidate.
                             </p>
                           </div>
@@ -1751,13 +1751,13 @@ export default function RecruiterPage() {
                                 <div className="flex gap-2">
                                   <button
                                     onClick={() => handleEditJob(job.id)}
-                                    className="px-3 py-1 text-sm bg-blue-100 text-blue-900 rounded hover:bg-blue-200"
+                                    className="px-3 py-1 text-sm bg-blue-100 text-gray-900 rounded hover:bg-blue-200"
                                   >
                                     Edit
                                   </button>
                                   <button
                                     onClick={() => handleDeleteJob(job.id)}
-                                    className="px-3 py-1 text-sm bg-red-100 text-red-900 rounded hover:bg-red-200"
+                                    className="px-3 py-1 text-sm bg-red-100 text-gray-900 rounded hover:bg-red-200"
                                   >
                                     Delete
                                   </button>
@@ -1902,11 +1902,11 @@ export default function RecruiterPage() {
                           onChange={(e) => setJobFormData({...jobFormData, status: e.target.value})}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                         >
-                          <option value="Applied">Applied</option>
-                          <option value="Under Review">Under Review</option>
-                          <option value="Interview">Interview</option>
-                          <option value="Offer">Offer</option>
-                          <option value="Rejected">Rejected</option>
+                          <option value="Applied" className="text-gray-900">Applied</option>
+                          <option value="Under Review" className="text-gray-900">Under Review</option>
+                          <option value="Interview" className="text-gray-900">Interview</option>
+                          <option value="Offer" className="text-gray-900">Offer</option>
+                          <option value="Rejected" className="text-gray-900">Rejected</option>
                         </select>
                       </div>
                       <div>
@@ -1918,9 +1918,9 @@ export default function RecruiterPage() {
                           onChange={(e) => setJobFormData({...jobFormData, resumeStatus: e.target.value})}
                           className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
                         >
-                          <option value="Pending">Pending</option>
-                          <option value="Submitted">Submitted</option>
-                          <option value="Reviewed">Reviewed</option>
+                          <option value="Pending" className="text-gray-900">Pending</option>
+                          <option value="Submitted" className="text-gray-900">Submitted</option>
+                          <option value="Reviewed" className="text-gray-900">Reviewed</option>
                         </select>
                       </div>
                       <div>
@@ -1961,12 +1961,12 @@ export default function RecruiterPage() {
                     </div>
 
                     <div className="bg-blue-50 p-4 rounded-lg">
-                      <h4 className="font-medium text-blue-800 mb-2">Additional Information</h4>
-                      <p className="text-sm text-blue-600">
-                        Job ID: <code className="bg-white px-2 py-1 rounded text-blue-700">{editingJob?.id}</code>
+                      <h4 className="font-medium text-gray-900 mb-2">Additional Information</h4>
+                      <p className="text-sm text-gray-700">
+                        Job ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?.id}</code>
                       </p>
                       {editingJob?.appliedDate && (
-                        <p className="text-sm text-blue-600 mt-1">
+                        <p className="text-sm text-gray-700 mt-1">
                           Applied: {new Date(editingJob.appliedDate).toLocaleDateString()} at {new Date(editingJob.appliedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                         </p>
                       )}

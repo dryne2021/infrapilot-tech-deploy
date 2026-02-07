@@ -31,7 +31,7 @@ export default function AdminPage() {
       const adminAuth = localStorage.getItem('admin_authenticated')
       
       if (!userStr) {
-        router.push('/admin/login')
+        router.push('/login')  // Changed from '/admin/login'
         return
       }
       
@@ -39,7 +39,7 @@ export default function AdminPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'admin' || adminAuth !== 'true') {
-          router.push('/admin/login')
+          router.push('/login')  // Changed from '/admin/login'
           return
         }
         
@@ -49,7 +49,7 @@ export default function AdminPage() {
         
       } catch {
         localStorage.clear()
-        router.push('/admin/login')
+        router.push('/login')  // Changed from '/admin/login'
       } finally {
         setLoading(false)
       }
@@ -173,7 +173,7 @@ export default function AdminPage() {
     localStorage.removeItem('infrapilot_user')
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('admin_authenticated')
-    router.push('/admin/login')
+    router.push('/login')  // Changed from '/admin/login'
   }
 
   const refreshDashboard = () => {
@@ -246,7 +246,7 @@ export default function AdminPage() {
               Refresh
             </button>
             <button
-              onClick={() => router.push('/admin/login')}
+              onClick={() => router.push('/login')}  // Changed from '/admin/login'
               className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-200 shadow-md hover:shadow-lg shadow-blue-200"
             >
               Switch Admin
