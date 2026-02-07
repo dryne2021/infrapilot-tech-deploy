@@ -64,29 +64,79 @@ exports.generateResume = async (req, res) => {
       : [];
 
     const prompt = `
-Create a professional ATS-friendly resume for ${fullName} tailored specifically to the job description below.
+You are a professional resume writer and ATS optimization expert. Generate a resume STRICTLY following this exact format.
+
+❌ DO NOT USE markdown, asterisks for bullets, or any special formatting in the output.
+✅ Output must be PLAIN TEXT with the exact structure below.
+
+================================================================================
+${fullName.toUpperCase()}
+================================================================================
+
+PROFESSIONAL SUMMARY
+• Start with total years of experience. Write 4-5 lines about career focus and key achievements. Use complete sentences.
+
+================================================================================
+
+SKILLS
+• Technical Skills: ${skillsList.join(", ")}
+• [Add other relevant skill groups based on the job description]
+• Soft Skills: Leadership, Problem Solving, Communication, Team Collaboration
+
+================================================================================
+
+WORK EXPERIENCE
+
+[Most Recent Job Title] | [Most Recent Company] | [Location] | [Start Date] – [End Date]
+• Detailed bullet point explaining what you did, how you did it, and the impact/result. Use 2-3 lines per bullet.
+• Use strong action verbs: Designed, Developed, Led, Managed, Implemented, Optimized, etc.
+• Each role should have 6-8 detailed bullets. No first-person pronouns.
+• Focus on quantifiable achievements with metrics where possible.
+• Align bullets to match the job description requirements.
+
+[Previous Job Title] | [Previous Company] | [Location] | [Start Date] – [End Date]
+• Follow same structure with 6-8 detailed bullets
+• Ensure chronological order, most recent first
+
+================================================================================
+
+EDUCATION
+[Degree Name, e.g., Bachelor of Science in Computer Science]
+[University Name] | [Location] | [Graduation Year]
+
+================================================================================
+
+CERTIFICATIONS
+[Relevant Certification 1] | [Relevant Certification 2] | [Other relevant certifications]
+
+================================================================================
+
+FORMATTING RULES (MUST FOLLOW):
+1. Use "•" for ALL bullets (not *, -, or any other symbol)
+2. Put horizontal lines "================================================================================" between each major section
+3. Keep section headers in ALL CAPS exactly as shown above
+4. Each bullet point should be 2-3 lines of text (not one-line highlights)
+5. No tables, columns, icons, emojis, or special characters
+6. No markdown formatting of any kind
+7. Use consistent date format: Month YYYY – Month YYYY (e.g., January 2020 – Present)
+8. Education format: One line per degree, no bullets
+9. Create realistic company names, job titles, and achievements based on the candidate's information
+10. Tailor ALL content to match the job description requirements
+
+NOW GENERATE THE RESUME TAILORED TO THIS JOB DESCRIPTION:
+
+CANDIDATE INFORMATION:
+Name: ${fullName}
+Target Role: ${targetRole || "Professional Role"}
+Location: ${location || ""}
+Email: ${email || ""}
+Phone: ${phone || ""}
+Candidate Summary: ${summary || ""}
 
 JOB DESCRIPTION:
 ${jobDescription}
 
-CANDIDATE INFORMATION:
-Name: ${fullName}
-Target Role: ${targetRole || "Professional"}
-Location: ${location || ""}
-Email: ${email || ""}
-Phone: ${phone || ""}
-Summary: ${summary || ""}
-
-Skills: ${skillsList.join(", ")}
-
-INSTRUCTIONS:
-1. Match keywords and requirements from the job description.
-2. Use a clean ATS format with clear section headers like: SUMMARY, SKILLS, EXPERIENCE, EDUCATION.
-3. Use concise bullet points with measurable impact.
-4. Do NOT use tables or columns.
-5. Output ONLY the resume text.
-
-Generate ONLY the resume text.
+Generate the complete resume following ALL formatting rules above. Output ONLY the resume text.
 `;
 
     console.log("🤖 Sending to Gemini...");
@@ -158,6 +208,10 @@ function normalizeLine(line) {
   // Remove leading markdown bullet marker for text body
   // but we will detect bullets separately before stripping.
   return s;
+}
+
+function isHorizontalLine(line) {
+  return line.trim().startsWith('=') && line.trim().length > 20;
 }
 
 function isBulletLine(line) {
@@ -240,6 +294,13 @@ function parseResumeToParagraphs(resumeText) {
 
   for (const raw of lines) {
     if (!raw || raw.trim() === "") continue;
+
+    // Check for horizontal lines first
+    if (isHorizontalLine(raw)) {
+      // Skip horizontal lines or handle them as page breaks
+      // For now, just skip them for cleaner output
+      continue;
+    }
 
     // normalize (strip markdown bold etc.)
     const line = normalizeLine(raw);
@@ -396,20 +457,66 @@ exports.generateResumeAsWord = async (req, res) => {
       : [];
 
     const prompt = `
-Create a professional ATS-friendly resume for ${fullName} tailored specifically to the job description below.
+You are a professional resume writer and ATS optimization expert. Generate a resume STRICTLY following this exact format.
 
+❌ DO NOT USE markdown, asterisks for bullets, or any special formatting in the output.
+✅ Output must be PLAIN TEXT with the exact structure below.
+
+================================================================================
+${fullName.toUpperCase()}
+================================================================================
+
+PROFESSIONAL SUMMARY
+• Start with total years of experience. Write 4-5 lines about career focus and key achievements. Use complete sentences.
+
+================================================================================
+
+SKILLS
+• Technical Skills: ${skillsList.join(", ")}
+• [Add other relevant skill groups based on the job description]
+• Soft Skills: Leadership, Problem Solving, Communication, Team Collaboration
+
+================================================================================
+
+WORK EXPERIENCE
+
+[Most Recent Job Title] | [Most Recent Company] | [Location] | [Start Date] – [End Date]
+• Detailed bullet point explaining what you did, how you did it, and the impact/result. Use 2-3 lines per bullet.
+• Use strong action verbs: Designed, Developed, Led, Managed, Implemented, Optimized, etc.
+• Each role should have 6-8 detailed bullets. No first-person pronouns.
+• Focus on quantifiable achievements with metrics where possible.
+• Align bullets to match the job description requirements.
+
+================================================================================
+
+EDUCATION
+[Degree Name, e.g., Bachelor of Science in Computer Science]
+[University Name] | [Location] | [Graduation Year]
+
+================================================================================
+
+CERTIFICATIONS
+[Relevant Certification 1] | [Relevant Certification 2] | [Other relevant certifications]
+
+================================================================================
+
+FORMATTING RULES (MUST FOLLOW):
+1. Use "•" for ALL bullets (not *, -, or any other symbol)
+2. Put horizontal lines "================================================================================" between each major section
+3. Keep section headers in ALL CAPS exactly as shown above
+4. Each bullet point should be 2-3 lines of text (not one-line highlights)
+5. No tables, columns, icons, emojis, or special characters
+6. No markdown formatting of any kind
+7. Use consistent date format: Month YYYY – Month YYYY (e.g., January 2020 – Present)
+8. Education format: One line per degree, no bullets
+
+NOW GENERATE THE RESUME TAILORED TO THIS JOB DESCRIPTION:
+
+TARGET ROLE: ${targetRole || "Professional Role"}
 JOB DESCRIPTION:
 ${jobDescription}
 
-INSTRUCTIONS:
-1. Use clear section headers: SUMMARY, SKILLS, EXPERIENCE, EDUCATION.
-2. No tables or columns.
-3. Use bullet points with measurable impact.
-4. Output ONLY the resume text.
-
-Skills provided: ${skillsList.join(", ")}
-
-Generate ONLY the resume text.
+Generate the complete resume following ALL formatting rules above. Output ONLY the resume text.
 `;
 
     const genAI = new GoogleGenerativeAI(apiKey);
