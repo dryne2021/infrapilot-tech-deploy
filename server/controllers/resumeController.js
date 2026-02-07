@@ -2,16 +2,16 @@
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// ✅ Import DOCX ONCE at top
+// ✅ DOCX imports (single import at top)
 const { Document, Packer, Paragraph, TextRun, AlignmentType } = require("docx");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
 const BODY_SIZE = 18; // 9pt (docx uses half-points)
 const HEADING_SIZE = 24; // 12pt
-const NAME_SIZE = 24; // keep name at 12pt to match your spec
+const NAME_SIZE = 24; // 12pt
 
-// ---------- Safe decoding ----------
+// ---------- Safe decoding (for legacy GET query support) ----------
 function safeDecodeURIComponent(encodedURI) {
   try {
     return decodeURIComponent(encodedURI);
@@ -33,13 +33,8 @@ function safeDecodeURIComponent(encodedURI) {
 // ---------- Text helpers ----------
 function normalizeLine(line) {
   let s = String(line || "");
-
-  // remove markdown bold **text**
-  s = s.replace(/\*\*(.*?)\*\*/g, "$1");
-
-  // strip code fences (just in case)
-  s = s.replace(/```/g, "");
-
+  s = s.replace(/\*\*(.*?)\*\*/g, "$1"); // remove markdown bold
+  s = s.replace(/```/g, ""); // remove code fences
   return s.trim();
 }
 
@@ -100,55 +95,33 @@ function makeBulletParagraph(text) {
   });
 }
 
-// ---------- Enforce your exact “HOS format” (text) ----------
-function enforceHosFormat({
-  fullName = "",
-  email = "",
-  phone = "",
-  location = "",
-  resumeText = "",
-}) {
+// ---------- Enforce your exact HOS format ----------
+function enforceHosFormat({ fullName = "", email = "", phone = "", location = "", resumeText = "" }) {
   const cleaned = String(resumeText || "").replace(/```/g, "").trim();
-
-  // Remove leading/trailing empty lines, normalize
   const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
 
-  // Detect if the model already produced the 2-line header
-  // Header is:
-  // FULL_NAME
-  // EMAIL | PHONE | LOCATION
+  // Build header from provided facts (always correct)
+  const headerName = (fullName || "").trim();
+  const contactParts = [];
+  if (email) contactParts.push(email);
+  if (phone) contactParts.push(phone);
+  if (location) contactParts.push(location);
+  const headerContact = contactParts.join(" | ");
+
+  // Skip model header if it already included 2-line header
   let startIdx = 0;
-
-  // If first line looks like a section header, it means header missing
-  const firstIsHeader = rawLines[0] && isSectionHeader(rawLines[0]);
-
-  // Build header (always from provided data to guarantee correctness)
-  const headerName = (fullName || rawLines[0] || "").trim();
-  const headerContactParts = [];
-  if (email) headerContactParts.push(email);
-  if (phone) headerContactParts.push(phone);
-  if (location) headerContactParts.push(location);
-  const headerContact = headerContactParts.join(" | ");
-
-  // If model included header lines, try to skip them to avoid duplication
-  if (!firstIsHeader && rawLines.length >= 2) {
+  if (rawLines.length >= 2) {
     const maybeName = rawLines[0];
     const maybeContact = rawLines[1];
-    const maybeContactHasPipe = maybeContact.includes("|");
-
-    const maybeNameNotAHeader = !isSectionHeader(maybeName);
-    const maybeContactNotAHeader = !isSectionHeader(maybeContact);
-
-    if (maybeNameNotAHeader && maybeContactNotAHeader && maybeContactHasPipe) {
-      startIdx = 2;
-    }
+    const looksLikeHeader =
+      !isSectionHeader(maybeName) &&
+      !isSectionHeader(maybeContact) &&
+      maybeContact.includes("|");
+    if (looksLikeHeader) startIdx = 2;
   }
 
   const bodyLines = rawLines.slice(startIdx);
 
-  // We now ensure sections exist and in THIS order:
-  // PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS
-  // If missing, we’ll insert the section header and leave content empty (better than breaking format).
   const targetOrder = [
     "PROFESSIONAL SUMMARY",
     "SKILLS",
@@ -157,14 +130,14 @@ function enforceHosFormat({
     "CERTIFICATIONS",
   ];
 
-  // Parse existing sections
+  // Parse model sections
   const sections = {};
   let current = null;
 
   for (const line of bodyLines) {
     const upper = line.toUpperCase();
-    if (targetOrder.includes(upper)) {
-      current = upper;
+    if (targetOrder.includes(upper) || upper === "SUMMARY") {
+      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
       if (!sections[current]) sections[current] = [];
       continue;
     }
@@ -172,32 +145,24 @@ function enforceHosFormat({
     sections[current].push(line);
   }
 
-  // If the model used SUMMARY instead of PROFESSIONAL SUMMARY, move it
-  if (!sections["PROFESSIONAL SUMMARY"] && sections["SUMMARY"]) {
-    sections["PROFESSIONAL SUMMARY"] = sections["SUMMARY"];
-    delete sections["SUMMARY"];
-  }
-
-  // Build final text in exact HOS format
+  // Build final exact formatted text
   const out = [];
   out.push(headerName);
   out.push(headerContact);
-  out.push(""); // blank line
+  out.push("");
 
   for (const h of targetOrder) {
     out.push(h);
-    const content = sections[h] || [];
 
+    const content = sections[h] || [];
     if (content.length === 0) {
-      // Keep section present; leave blank line for ATS consistency
       out.push("");
       continue;
     }
 
-    // Keep content exactly, but remove any accidental duplicate headers inside
     for (const c of content) {
-      const cU = c.toUpperCase();
-      if (targetOrder.includes(cU) || cU === "SUMMARY") continue;
+      const cu = c.toUpperCase();
+      if (targetOrder.includes(cu) || cu === "SUMMARY") continue;
       out.push(c);
     }
     out.push("");
@@ -206,16 +171,15 @@ function enforceHosFormat({
   return out.join("\n").trim() + "\n";
 }
 
-// ---------- Convert the enforced format to DOCX paragraphs ----------
+// ---------- Convert enforced HOS text to DOCX paragraphs ----------
 function parseHosTextToParagraphs(hosText) {
   const lines = String(hosText || "").split("\n");
 
   const paragraphs = [];
-  let lineIdx = 0;
+  let idx = 0;
 
-  // Header lines (2 lines): name then contact
-  const nameLine = normalizeLine(lines[lineIdx++] || "");
-  const contactLine = normalizeLine(lines[lineIdx++] || "");
+  const nameLine = normalizeLine(lines[idx++] || "");
+  const contactLine = normalizeLine(lines[idx++] || "");
 
   if (nameLine) {
     paragraphs.push(
@@ -237,9 +201,8 @@ function parseHosTextToParagraphs(hosText) {
     );
   }
 
-  // Remaining body
-  for (; lineIdx < lines.length; lineIdx++) {
-    const raw = lines[lineIdx];
+  for (; idx < lines.length; idx++) {
+    const raw = lines[idx];
     if (!raw || raw.trim() === "") continue;
 
     const line = normalizeLine(raw);
@@ -275,11 +238,6 @@ exports.generateResume = async (req, res) => {
       phone,
       summary,
       skills = [],
-      experience = [],
-      education = [],
-      certifications = [],
-      projects = [],
-      jobId,
       jobDescription,
     } = req.body;
 
@@ -387,14 +345,22 @@ Strict rules:
   }
 };
 
-// ---------- Download resume as Word (Times New Roman, 9/12, HOS format) ----------
+// ---------- Download resume as Word (DOCX ONLY; no .txt fallback) ----------
+// ✅ Supports BOTH:
+// 1) POST /api/v1/resume/download  (recommended for long resumes)
+// 2) GET  /api/v1/resume/download?name=...&text=... (legacy)
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    console.log("📥 /api/v1/resume/download hit");
-    console.log("Query params received:", Object.keys(req.query || {}));
+    console.log("📥 /api/v1/resume/download hit", req.method);
 
-    // ✅ accept optional contact fields so header is always correct
-    const { name, text, email, phone, location } = req.query;
+    // Prefer POST body; fallback to GET query
+    const source = req.method === "POST" ? (req.body || {}) : (req.query || {});
+
+    const name = source.name;
+    const text = source.text;
+    const email = source.email || "";
+    const phone = source.phone || "";
+    const location = source.location || "";
 
     if (!name || !text) {
       return res.status(400).json({
@@ -403,13 +369,15 @@ exports.downloadResumeAsWord = async (req, res) => {
       });
     }
 
-    const decodedText = safeDecodeURIComponent(text);
-    const decodedName = safeDecodeURIComponent(name);
-    const decodedEmail = email ? safeDecodeURIComponent(email) : "";
-    const decodedPhone = phone ? safeDecodeURIComponent(phone) : "";
-    const decodedLocation = location ? safeDecodeURIComponent(location) : "";
+    // Decode only for GET query usage; for POST assume plain JSON already
+    const decodedName = req.method === "POST" ? String(name) : safeDecodeURIComponent(name);
+    const decodedText = req.method === "POST" ? String(text) : safeDecodeURIComponent(text);
+    const decodedEmail = req.method === "POST" ? String(email) : safeDecodeURIComponent(email);
+    const decodedPhone = req.method === "POST" ? String(phone) : safeDecodeURIComponent(phone);
+    const decodedLocation =
+      req.method === "POST" ? String(location) : safeDecodeURIComponent(location);
 
-    // ✅ enforce the HOS format again at download-time (guaranteed output)
+    // Enforce HOS format at download time (guaranteed)
     const hosText = enforceHosFormat({
       fullName: decodedName,
       email: decodedEmail,
@@ -429,7 +397,7 @@ exports.downloadResumeAsWord = async (req, res) => {
       sections: [
         {
           properties: {},
-          children: [...parseHosTextToParagraphs(hosText)],
+          children: parseHosTextToParagraphs(hosText),
         },
       ],
     });
@@ -438,49 +406,33 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const fileName = `Resume_${decodedName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
 
+    // ✅ Force .docx download
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(fileName)}"`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
     res.send(buffer);
 
     console.log(`✅ Word document generated: ${fileName}`);
   } catch (error) {
-    console.error("❌ Error creating Word document:", error);
-
-    // Fallback: text file
-    try {
-      const decodedText = safeDecodeURIComponent(req.query.text || "");
-      const decodedName = safeDecodeURIComponent(req.query.name || "Candidate");
-      const fileName = `Resume_${decodedName.replace(/\s+/g, "_")}.txt`;
-
-      res.setHeader("Content-Type", "text/plain");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${encodeURIComponent(fileName)}"`
-      );
-      res.send(decodedText);
-    } catch (fallbackError) {
-      console.error("❌ Fallback also failed:", fallbackError);
-      res.status(500).json({
-        success: false,
-        message: "Failed to create document",
-        error: process.env.NODE_ENV === "development" ? error.message : undefined,
-      });
-    }
+    // ✅ IMPORTANT: no TXT fallback — return real error
+    console.error("❌ Word generation failed:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to generate Word document",
+      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
+    });
   }
 };
 
-// ---------- Generate resume directly as Word (HOS format) ----------
+// ---------- Optional: generate resume directly as Word ----------
 exports.generateResumeAsWord = async (req, res) => {
   try {
     console.log("📄 /api/v1/resume/generate-word hit");
 
-    const { fullName, location, email, phone, targetRole, jobDescription, skills = [] } = req.body;
+    const { fullName, location, email, phone, targetRole, jobDescription, skills = [], summary } =
+      req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -526,6 +478,7 @@ JOB DESCRIPTION:
 ${jobDescription}
 
 Target Role: ${targetRole || "Professional"}
+Existing Summary (optional): ${summary || ""}
 Skills provided: ${skillsList.join(", ")}
 
 Rules:
@@ -564,31 +517,23 @@ Rules:
           },
         },
       },
-      sections: [
-        {
-          properties: {},
-          children: [...parseHosTextToParagraphs(hosText)],
-        },
-      ],
+      sections: [{ properties: {}, children: parseHosTextToParagraphs(hosText) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
-    const fileName = `Resume_${fullName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
+    const fileName = `Resume_${String(fullName).replace(/\s+/g, "_")}_${Date.now()}.docx`;
 
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(fileName)}"`
-    );
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(fileName)}"`);
     res.send(buffer);
 
     console.log(`✅ Word document generated directly: ${fileName}`);
   } catch (error) {
     console.error("❌ Error generating Word resume:", error);
-    res.status(500).json({
+    return res.status(500).json({
       message: error.message || "Generation failed",
       error: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });

@@ -198,6 +198,130 @@ export default function RecruiterPage() {
     return saveCandidateResume(candidate.id, resumeTemplate)
   }
 
+  // ✅ HELPER: download .docx from backend using POST /resume/download
+  const downloadDocxFromText = async (candidate: any, resumeText: string) => {
+    const fileSafeName =
+      (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
+        .replace(/\s+/g, '_');
+
+    const payload = {
+      name: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim(),
+      email: candidate?.email || '',
+      phone: candidate?.phone || '',
+      location: candidate?.location || '',
+      text: resumeText, // ✅ IMPORTANT: send the text in body, not query string
+    };
+
+    const res = await fetch(`${apiBaseUrl}/api/v1/resume/download`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+
+    // If backend returns JSON error, show it
+    const contentType = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      if (contentType.includes('application/json')) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || `Word download failed (${res.status})`);
+      }
+      throw new Error(`Word download failed (${res.status})`);
+    }
+
+    // Must be docx
+    if (!contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
+      // Try to read text for debugging
+      const maybeText = await res.text().catch(() => '');
+      throw new Error(
+        `Expected DOCX but got Content-Type: ${contentType}. Response: ${maybeText.slice(0, 200)}`
+      );
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Resume_${fileSafeName}_${jobIdForResume || Date.now()}.docx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+
+    window.URL.revokeObjectURL(url);
+  };
+
+  // ✅ FUNCTION: Generate and download Word resume
+  const generateAndDownloadWordResume = async () => {
+    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
+      alert('Please enter both Job ID and Job Description');
+      return;
+    }
+
+    if (!selectedCandidate) {
+      alert('Please select a candidate first');
+      return;
+    }
+
+    setIsGeneratingResume(true);
+    setResumeError('');
+
+    try {
+      const candidate: any = ensureCandidateDataStructure(selectedCandidate);
+
+      const payload = {
+        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
+        location: candidate.location || '',
+        email: candidate.email || '',
+        phone: candidate.phone || '',
+        summary: candidate.summary || candidate.about || '',
+        skills: candidate.skills,
+        experience: candidate.experience,
+        education: candidate.education,
+        certifications: candidate.certifications,
+        projects: candidate.projects,
+        jobId: jobIdForResume,
+        jobDescription: jobDescriptionForResume,
+      };
+
+      // 1) Generate resume text (JSON)
+      const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.message || `Generate failed (${res.status})`);
+      }
+
+      const resumeText = data?.resumeText || '';
+      if (!resumeText.trim()) {
+        throw new Error('No resume text returned from API');
+      }
+
+      // ✅ show in UI
+      setGeneratedResume(resumeText);
+
+      // ✅ save for candidate access
+      generateCandidateResumeFromAI(candidate, resumeText, jobIdForResume, jobDescriptionForResume);
+
+      // 2) Download Word (.docx) from POST /download
+      await downloadDocxFromText(candidate, resumeText);
+
+      alert('✅ Word resume downloaded (.docx) and saved for candidate!');
+    } catch (err: any) {
+      console.error('❌ Word generation/download error:', err);
+      setResumeError(err?.message || 'Failed to generate/download Word resume');
+      alert(`❌ ${err?.message || 'Failed to generate/download Word resume'}`);
+    } finally {
+      setIsGeneratingResume(false);
+    }
+  };
+
   // ✅ UPDATED: Function to generate resume
   const generateResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
@@ -306,120 +430,23 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ FUNCTION - Generate and download Word resume
-  const generateAndDownloadWordResume = async () => {
-    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
-      alert('Please enter both Job ID and Job Description');
-      return;
-    }
-
-    if (!selectedCandidate) {
-      alert('Please select a candidate first');
-      return;
-    }
-
-    setIsGeneratingResume(true);
-    setResumeError('');
-
+  // ✅ UPDATED: Download resume function (now downloads DOCX)
+  const downloadResume = async () => {
     try {
-      // ✅ USE THE STRUCTURED CANDIDATE DATA
+      if (!generatedResume?.trim()) {
+        alert('No resume generated yet.');
+        return;
+      }
+      if (!selectedCandidate) {
+        alert('Please select a candidate first');
+        return;
+      }
+
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
-
-      const payload = {
-        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
-        targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
-        location: candidate.location || '',
-        email: candidate.email || '',
-        phone: candidate.phone || '',
-        summary: candidate.summary || candidate.about || '',
-        
-        // ✅ NOW THESE ARE GUARANTEED TO BE PROPER ARRAYS
-        skills: candidate.skills,
-        experience: candidate.experience,
-        education: candidate.education,
-        certifications: candidate.certifications,
-        projects: candidate.projects,
-        
-        jobId: jobIdForResume,
-        jobDescription: jobDescriptionForResume,
-      };
-
-      const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Request failed (${res.status})`);
-      }
-
-      // Check if response is a Word document
-      const contentType = res.headers.get('content-type');
-      if (contentType?.includes('application/vnd.openxmlformats')) {
-        // It's a Word document - download it
-        const blob = await res.blob();
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `Resume_${candidate.fullName?.replace(/\s+/g, '_') || 'Candidate'}_${jobIdForResume}.docx`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        
-        // ✅ SAVE THE RESUME DATA TO LOCALSTORAGE
-        const resumeText = await blob.text();
-        generateCandidateResumeFromAI(
-          candidate,
-          resumeText || 'Word document generated',
-          jobIdForResume,
-          jobDescriptionForResume
-        );
-        
-        alert('✅ Word resume generated, downloaded, and saved for candidate!');
-      } else {
-        // It's JSON response (text format)
-        const data = await res.json();
-        const resumeText = data?.resumeText || '';
-        setGeneratedResume(resumeText);
-        
-        // ✅ SAVE THE RESUME TO LOCALSTORAGE
-        generateCandidateResumeFromAI(
-          candidate,
-          resumeText,
-          jobIdForResume,
-          jobDescriptionForResume
-        );
-        
-        // Save to history
-        const newResumeEntry = {
-          id: `resume_${Date.now()}`,
-          candidateId: candidate?.id,
-          candidateName: payload.fullName,
-          jobId: jobIdForResume,
-          jobDescription: jobDescriptionForResume.substring(0, 200) + '...',
-          generatedDate: new Date().toISOString(),
-          matchScore: Math.floor(Math.random() * 20) + 80,
-        };
-
-        const updatedHistory = [newResumeEntry, ...resumeGenerationHistory];
-        setResumeGenerationHistory(updatedHistory);
-
-        const recruiterId = localStorage.getItem('recruiter_id');
-        if (recruiterId) {
-          localStorage.setItem(`resume_history_${recruiterId}`, JSON.stringify(updatedHistory));
-        }
-
-        alert('✅ Resume generated and saved! The candidate can view it in their dashboard.');
-      }
+      await downloadDocxFromText(candidate, generatedResume);
     } catch (err: any) {
       console.error(err);
-      setResumeError(err?.message || 'Failed to generate resume');
-      alert(`❌ ${err?.message || 'Failed to generate resume'}`);
-    } finally {
-      setIsGeneratingResume(false);
+      alert(`❌ ${err?.message || 'Failed to download .docx'}`);
     }
   };
 
@@ -482,18 +509,6 @@ export default function RecruiterPage() {
     navigator.clipboard.writeText(generatedResume)
       .then(() => alert('✅ Resume copied to clipboard!'))
       .catch(() => alert('❌ Failed to copy resume'))
-  }
-  
-  const downloadResume = () => {
-    const blob = new Blob([generatedResume], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `resume_${selectedCandidate?.fullName?.replace(/\s+/g, '_') || 'candidate'}_${jobIdForResume}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
   }
   
   const clearResumeGenerator = () => {
@@ -1629,7 +1644,7 @@ export default function RecruiterPage() {
                                 onClick={downloadResume}
                                 className="px-4 py-2 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200 text-sm"
                               >
-                                ⬇️ Download
+                                ⬇️ Download (.docx)
                               </button>
                             </div>
                           </div>
