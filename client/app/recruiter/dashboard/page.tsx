@@ -132,6 +132,73 @@ export default function RecruiterPage() {
     return structuredCandidate;
   };
 
+  // ✅ ADD THIS FUNCTION - Save candidate resume to localStorage
+  const saveCandidateResume = (candidateId, resumeData) => {
+    try {
+      // Load existing resumes
+      const sharedResumes = JSON.parse(localStorage.getItem('candidate_resumes') || '{}')
+      
+      // Create resume object
+      const resume = {
+        id: `res_${Date.now()}`,
+        ...resumeData,
+        candidate_id: candidateId,
+        recruiter_id: user?.id,
+        recruiter_name: user?.name,
+        recruiter_email: user?.email,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        status: 'active'
+      }
+      
+      // Save to shared storage (accessible by candidate)
+      sharedResumes[candidateId] = resume
+      localStorage.setItem('candidate_resumes', JSON.stringify(sharedResumes))
+      
+      // Also save to recruiter-specific storage
+      const recruiterResumes = JSON.parse(localStorage.getItem(`recruiter_resumes_${user?.id}`) || '{}')
+      recruiterResumes[candidateId] = resume
+      localStorage.setItem(`recruiter_resumes_${user?.id}`, JSON.stringify(recruiterResumes))
+      
+      return resume
+    } catch (error) {
+      console.error('Error saving candidate resume:', error)
+      return null
+    }
+  }
+
+  // ✅ ADD THIS FUNCTION - Generate resume template from AI content
+  const generateCandidateResumeFromAI = (candidate, generatedText, jobId, jobDescription) => {
+    const resumeTemplate = {
+      name: `${candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}_Resume_${new Date().getFullYear()}.docx`,
+      title: `Professional Resume - ${candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}`,
+      text: generatedText,
+      sections: [
+        {
+          title: 'Professional Summary',
+          content: candidate.summary || candidate.about || `${candidate.firstName} is a skilled professional seeking new opportunities.`
+        },
+        {
+          title: 'Skills',
+          content: Array.isArray(candidate.skills) ? candidate.skills.join(', ') : candidate.skills || 'Skills to be added'
+        },
+        {
+          title: 'Experience',
+          content: 'Professional experience details to be added by recruiter.'
+        },
+        {
+          title: 'Education',
+          content: 'Educational background to be added by recruiter.'
+        }
+      ],
+      job_id: jobId,
+      job_description: jobDescription.substring(0, 500) + '...',
+      notes: `Resume created by recruiter ${user?.name} for job application`
+    }
+    
+    return saveCandidateResume(candidate.id, resumeTemplate)
+  }
+
   // ✅ UPDATED: Function to generate resume
   const generateResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
@@ -369,5 +436,98 @@ export default function RecruiterPage() {
     setShowCandidateDetails(true);
   };
 
-  // ... [REST OF THE ORIGINAL COMPONENT FUNCTIONS AND JSX REMAIN HERE] ...
+  // ✅ ADD THESE MISSING FUNCTIONS TOO (from your original code)
+  const extractSkillsFromDescription = (description: string) => {
+    const skills = []
+    const commonSkills = [
+      'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'express',
+      'mongodb', 'sql', 'postgresql', 'aws', 'azure', 'docker', 'kubernetes',
+      'typescript', 'html', 'css', 'sass', 'tailwind', 'git', 'rest', 'api',
+      'agile', 'scrum', 'devops', 'ci/cd', 'testing', 'firebase'
+    ]
+    
+    commonSkills.forEach(skill => {
+      if (description.includes(skill)) {
+        skills.push(skill)
+      }
+    })
+    
+    return skills.length > 0 ? skills : ['javascript', 'react', 'node', 'mongodb', 'aws']
+  }
+  
+  const extractKeywords = (description: string) => {
+    const words = description.toLowerCase().split(/\W+/)
+    const keywords = new Set<string>()
+    
+    const importantWords = [
+      'development', 'engineering', 'software', 'web', 'mobile', 'application',
+      'design', 'architecture', 'system', 'cloud', 'database', 'security',
+      'performance', 'scalability', 'maintenance', 'deployment', 'integration',
+      'automation', 'optimization', 'collaboration', 'leadership', 'management'
+    ]
+    
+    words.forEach(word => {
+      if (importantWords.includes(word) && word.length > 3) {
+        keywords.add(word)
+      }
+    })
+    
+    return Array.from(keywords)
+  }
+  
+  const extractIndustry = (description: string) => {
+    const industries = [
+      'technology', 'finance', 'healthcare', 'e-commerce', 'education',
+      'entertainment', 'saaS', 'startup', 'enterprise', 'consulting'
+    ]
+    
+    const desc = description.toLowerCase()
+    for (const industry of industries) {
+      if (desc.includes(industry)) {
+        return industry.charAt(0).toUpperCase() + industry.slice(1)
+      }
+    }
+    
+    return 'Technology'
+  }
+  
+  const copyResumeToClipboard = () => {
+    navigator.clipboard.writeText(generatedResume)
+      .then(() => alert('✅ Resume copied to clipboard!'))
+      .catch(() => alert('❌ Failed to copy resume'))
+  }
+  
+  const downloadResume = () => {
+    const blob = new Blob([generatedResume], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `resume_${selectedCandidate?.fullName?.replace(/\s+/g, '_') || 'candidate'}_${jobIdForResume}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+  
+  const clearResumeGenerator = () => {
+    setJobIdForResume('')
+    setJobDescriptionForResume('')
+    setGeneratedResume('')
+  }
+  
+  const loadJobDetails = (jobId: string) => {
+    const job = candidateJobs.find(j => j.id === jobId)
+    if (job) {
+      setJobIdForResume(job.id)
+      setJobDescriptionForResume(job.description)
+      setShowResumeGenerator(true)
+    }
+  }
+
+  // ... [ADD THE REST OF YOUR ORIGINAL FUNCTIONS HERE] ...
+  
+  // This is just a placeholder - you need to copy the rest of your original JSX code here
+  return (
+    <div>Recruiter Dashboard - Make sure to copy your original JSX here</div>
+  )
 }
