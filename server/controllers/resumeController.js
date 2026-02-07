@@ -1,295 +1,230 @@
 // server/controllers/resumeController.js
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
+const fs = require("fs").promises;
+const path = require("path");
 
-exports.generateResume = async (req, res) => {
+// Helper function to generate DOCX from template
+async function generateResumeDocxFromTemplate(resumeJson) {
   try {
+    const PizZip = require("pizzip");
+    const Docxtemplater = require("docxtemplater");
     
-    const generateResumeDocxFromTemplate = require("../utils/generateResumeDocxFromTemplate");
-
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-
-const basePrompt = buildResumePrompt(candidateData, jobDescription);
-
-const prompt = `
-IMPORTANT RULES:
-- Return ONLY valid JSON
-- No explanations, no markdown
-- Response must start with { and end with }
-
-${basePrompt}
-`;
-
-
-
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2 },
+    // Use the specific template path
+    const templatePath = path.join(__dirname, "..", "templates", "resume_template.docx");
+    
+    console.log("📄 Loading template from:", templatePath);
+    
+    // Read the template file
+    const templateContent = await fs.readFile(templatePath, "binary");
+    
+    // Create a zip instance
+    const zip = new PizZip(templateContent);
+    
+    // Initialize docxtemplater
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
     });
-
-    const rawText = result.response.text();
-
-    const resumeJson = extractJson(rawText);
-
-    if (!resumeJson) {
-      console.error("❌ Gemini raw output:", rawText);
-      return res.status(500).json({ message: "Invalid JSON from AI" });
-    }
-
-    // OPTIONAL: minimal validation
-    if (!Array.isArray(resumeJson.experience)) {
-      return res.status(500).json({ message: "Invalid resume structure" });
-    }
-
-    const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
-
-    res.setHeader(
-      "Content-Type",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    );
-    res.setHeader("Content-Disposition", "attachment; filename=resume.docx");
-
-    return res.send(docBuffer);
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ message: "Resume generation failed" });
-  }
-};
-
-
-
-
-// ---------- Helper functions for formatting ----------
-const formatExperience = (expArray, fullName, targetRole, skillsList) => {
-  if (!Array.isArray(expArray) || expArray.length === 0) {
-    // Create realistic experience based on skills and target role
-    const yearsOfExp = Math.max(3, Math.floor(skillsList.length / 3));
-    const currentYear = new Date().getFullYear();
-    const startYear = currentYear - yearsOfExp;
     
-    const industries = ['Technology', 'Finance', 'Healthcare', 'E-commerce', 'Consulting'];
-    const techCompanies = ['Tech Innovations Inc.', 'Digital Solutions Ltd.', 'Cloud Systems Corp.', 'Data Analytics Group', 'Software Enterprises LLC'];
-    const nonTechCompanies = ['Global Business Solutions', 'Enterprise Partners Inc.', 'Strategic Consulting Group', 'National Services Corp.', 'Professional Services Ltd.'];
+    // Format skills for template
+    const skillsText = Array.isArray(resumeJson.skills) ? 
+      resumeJson.skills.map(skill => `• ${skill}`).join("\n") : 
+      (resumeJson.skills || "");
     
-    const isTechRole = targetRole?.toLowerCase().includes('software') || 
-                      targetRole?.toLowerCase().includes('developer') || 
-                      targetRole?.toLowerCase().includes('engineer') ||
-                      skillsList.some(skill => 
-                        typeof skill === 'string' && (
-                          skill.toLowerCase().includes('javascript') ||
-                          skill.toLowerCase().includes('python') ||
-                          skill.toLowerCase().includes('java') ||
-                          skill.toLowerCase().includes('react') ||
-                          skill.toLowerCase().includes('node')
-                        )
-                      );
+    // Format experience for template
+    const experienceText = formatExperienceForTemplate(resumeJson.experience || []);
     
-    const companies = isTechRole ? techCompanies : nonTechCompanies;
-    const selectedCompany = companies[Math.floor(Math.random() * companies.length)];
-    const selectedIndustry = industries[Math.floor(Math.random() * industries.length)];
+    // Format education for template
+    const educationText = formatEducationForTemplate(resumeJson.education || []);
     
-    return `${targetRole || 'Senior Professional'} | ${selectedCompany} | ${fullName.split(' ')[0]}'s City, ST | January ${startYear} – Present
-• Designed and implemented innovative solutions that increased operational efficiency by 25% through the application of ${skillsList.slice(0, 2).join(' and ')} technologies
-• Led cross-functional teams in the development and deployment of scalable systems, improving team productivity by 30% and reducing project delivery timelines by 15%
-• Developed comprehensive strategies and frameworks that aligned with business objectives, resulting in a 20% improvement in key performance indicators
-• Collaborated with stakeholders to identify requirements and translate business needs into technical specifications, ensuring successful project outcomes
-• Implemented best practices and industry standards that enhanced system reliability and reduced maintenance costs by 18%
-• Mentored junior team members and conducted knowledge-sharing sessions, improving team competency and reducing onboarding time by 40%
-• Optimized existing processes and workflows, resulting in annual cost savings of approximately $150,000
-• Conducted thorough analysis and provided data-driven recommendations that supported strategic decision-making and business growth
-
-Previous Role | Another Relevant Company | Different City, ST | June ${startYear - 3} – December ${startYear - 1}
-• Contributed to the successful delivery of multiple projects within the ${selectedIndustry} sector, utilizing ${skillsList.slice(0, 3).join(', ')} to achieve business objectives
-• Developed and maintained critical systems and applications that supported daily operations and served over 10,000 monthly active users
-• Collaborated with product managers and designers to create user-centric solutions that improved customer satisfaction scores by 35%
-• Implemented automated testing procedures that increased code quality and reduced production defects by 60%
-• Participated in agile development cycles and contributed to sprint planning, estimation, and retrospective meetings
-• Provided technical support and troubleshooting assistance, resolving critical issues with an average resolution time of under 4 hours
-• Documented system architectures, processes, and procedures to ensure knowledge transfer and maintain institutional knowledge
-• Stayed current with emerging technologies and industry trends, applying relevant innovations to improve existing systems and processes`;
-  }
-  
-  // If array contains strings (simple format)
-  if (typeof expArray[0] === 'string') {
-    return expArray.map((exp, index) => {
-      const yearsAgo = (expArray.length - index) * 2;
-      const endYear = new Date().getFullYear() - yearsAgo;
-      const startYear = endYear - 3;
-      
-      return `${exp} | Relevant Company | City, ST | January ${startYear} – December ${endYear}
-• Applied expertise in ${exp.toLowerCase()} to design and implement solutions that addressed complex business challenges and requirements
-• Collaborated with multidisciplinary teams to deliver high-quality results within established timelines and budget constraints
-• Developed and optimized processes that improved efficiency and reduced operational costs by an average of 22%
-• Provided technical leadership and guidance to team members, fostering a culture of continuous learning and improvement
-• Analyzed system performance and implemented enhancements that increased throughput by 40% and reduced latency by 30%
-• Established and maintained relationships with key stakeholders, ensuring alignment between technical solutions and business needs
-• Created comprehensive documentation and training materials that facilitated knowledge transfer and system adoption
-• Implemented quality assurance measures that improved product reliability and reduced customer-reported issues by 45%`;
-    }).join('\n\n');
-  }
-  
-  // If array contains objects with proper structure
-  return expArray.map((exp, index) => {
-    const title = exp.jobTitle || exp.title || exp.position || exp.role || `${targetRole || 'Professional'} ${index + 1}`;
-    const company = exp.company || exp.employer || exp.organization || 'Relevant Company';
-    const loc = exp.location || exp.city || exp.state || exp.country || 'City, ST';
-    const start = exp.startDate || exp.start || exp.from || 'Month YYYY';
-    const end = exp.endDate || exp.end || exp.to || (exp.current ? 'Present' : 'Month YYYY');
-    const desc = exp.description || exp.responsibilities || exp.summary || '';
+    // Format certifications for template
+    const certificationsText = Array.isArray(resumeJson.certifications) ? 
+      resumeJson.certifications.map(cert => `• ${cert}`).join("\n") : 
+      (resumeJson.certifications || "");
     
-    const bulletPoints = desc ? 
-      desc.split('\n').filter(line => line.trim()).map(line => `• ${line.trim()}`).join('\n') :
-      `• Performed duties and responsibilities relevant to ${title} position, demonstrating expertise in ${skillsList.slice(0, 3).join(', ')}
-• Developed innovative solutions and strategies that addressed business challenges and improved operational efficiency
-• Collaborated with team members and stakeholders to ensure successful project delivery and achievement of objectives
-• Implemented best practices and methodologies that enhanced system performance and reliability
-• Provided technical guidance and mentorship to junior colleagues, contributing to team development and growth
-• Analyzed data and metrics to identify opportunities for improvement and optimization
-• Maintained comprehensive documentation and participated in knowledge-sharing activities
-• Stayed current with industry trends and technologies, applying relevant innovations to enhance existing systems`;
+    // Set the template variables matching your template
+    const templateData = {
+      // Template variables (ALL CAPS as in your template)
+      FULL_NAME: resumeJson.fullName || "",
+      EMAIL: resumeJson.email || "",
+      PHONE: resumeJson.phone || "",
+      LOCATION: resumeJson.location || "",
+      SUMMARY: resumeJson.summary || "",
+      SKILLS: skillsText,
+      EXPERIENCE: experienceText,
+      EDUCATION: educationText,
+      CERTIFICATIONS: certificationsText
+    };
     
-    return `${title} | ${company} | ${loc} | ${start} – ${end}
-${bulletPoints}`;
-  }).join('\n\n');
-};
-
-const formatEducation = (eduArray, skillsList) => {
-  if (!Array.isArray(eduArray) || eduArray.length === 0) {
-    const currentYear = new Date().getFullYear();
-    const gradYear = currentYear - Math.floor(Math.random() * 5) - 2;
+    console.log("📝 Template data prepared:", Object.keys(templateData));
     
-    const isTech = skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('computer') ||
-        skill.toLowerCase().includes('software') ||
-        skill.toLowerCase().includes('engineer') ||
-        skill.toLowerCase().includes('developer') ||
-        skill.toLowerCase().includes('data')
-      )
-    );
+    // Render the document
+    doc.render(templateData);
     
-    const degree = isTech ? 'Bachelor of Science in Computer Science' : 'Bachelor of Business Administration';
-    const university = isTech ? 'University of Technology' : 'State University';
-    const location = isTech ? 'Tech City, ST' : 'Metro City, ST';
-    
-    return `${degree}
-${university} | ${location} | ${gradYear}`;
-  }
-  
-  if (typeof eduArray[0] === 'string') {
-    return eduArray.map(edu => `${edu}
-University | City, ST | ${new Date().getFullYear() - Math.floor(Math.random() * 10)}`).join('\n');
-  }
-  
-  return eduArray.map(edu => {
-    const degree = edu.degree || edu.program || edu.course || 'Bachelor\'s Degree';
-    const school = edu.school || edu.university || edu.college || edu.institution || 'University';
-    const loc = edu.location || edu.city || edu.state || edu.country || 'City, ST';
-    const year = edu.graduationYear || edu.year || edu.graduationDate || edu.completionYear || (new Date().getFullYear() - Math.floor(Math.random() * 10));
-    const gpa = edu.gpa || edu.grade || '';
-    
-    return `${degree}${gpa ? ` (GPA: ${gpa})` : ''}
-${school} | ${loc} | ${year}`;
-  }).join('\n');
-};
-
-const formatCertifications = (certArray, skillsList) => {
-  if (!Array.isArray(certArray) || certArray.length === 0) {
-    const certs = [];
-    
-    // Add relevant certifications based on skills
-    if (skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('aws') ||
-        skill.toLowerCase().includes('amazon')
-      )
-    )) {
-      certs.push('AWS Certified Solutions Architect');
-    }
-    
-    if (skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('azure') ||
-        skill.toLowerCase().includes('microsoft')
-      )
-    )) {
-      certs.push('Microsoft Certified: Azure Fundamentals');
-    }
-    
-    if (skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('security') ||
-        skill.toLowerCase().includes('cyber')
-      )
-    )) {
-      certs.push('CompTIA Security+');
-    }
-    
-    if (skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('project') ||
-        skill.toLowerCase().includes('pmp')
-      )
-    )) {
-      certs.push('Project Management Professional (PMP)');
-    }
-    
-    if (skillsList.some(skill => 
-      typeof skill === 'string' && (
-        skill.toLowerCase().includes('agile') ||
-        skill.toLowerCase().includes('scrum')
-      )
-    )) {
-      certs.push('Certified Scrum Master (CSM)');
-    }
-    
-    // Add at least one generic certification
-    if (certs.length === 0) {
-      certs.push('Professional Certification in Relevant Field');
-    }
-    
-    return certs.join(' | ');
-  }
-  
-  if (typeof certArray[0] === 'string') {
-    return certArray.join(' | ');
-  }
-  
-  return certArray.map(cert => 
-    cert.name || cert.title || cert.certification || 'Professional Certification'
-  ).join(' | ');
-};
-
-const formatProjects = (projArray, skillsList) => {
-  if (!Array.isArray(projArray) || projArray.length === 0) {
-    return '';
-  }
-  
-  let projectsText = 'PROJECTS\n';
-  
-  if (typeof projArray[0] === 'string') {
-    projArray.forEach((proj, index) => {
-      projectsText += `${proj} | ${new Date().getFullYear() - index}
-• Developed and implemented the ${proj} using ${skillsList.slice(0, 2).join(' and ')} technologies
-• Collaborated with team members to ensure successful project delivery and achievement of objectives
-• Implemented best practices and methodologies that enhanced project outcomes and deliverables\n\n`;
+    // Get the buffer
+    const buf = doc.getZip().generate({
+      type: "nodebuffer",
+      compression: "DEFLATE",
     });
-  } else {
-    projArray.forEach((proj, index) => {
-      const name = proj.name || proj.title || `Project ${index + 1}`;
-      const year = proj.year || proj.date || (new Date().getFullYear() - index);
-      const desc = proj.description || proj.details || '';
-      
-      projectsText += `${name} | ${year}
-${desc ? `• ${desc}` : `• Applied ${skillsList.slice(0, 2).join(' and ')} skills to develop and implement innovative solutions
-• Collaborated with stakeholders to ensure alignment with business requirements and objectives
-• Implemented quality assurance measures that improved project outcomes and deliverables`}\n\n`;
-    });
+    
+    return buf;
+    
+  } catch (error) {
+    console.error("❌ Error generating DOCX from template:", error);
+    if (error.properties && error.properties.errors) {
+      console.error("Template errors:", error.properties.errors);
+    }
+    throw error;
+  }
+}
+
+// Helper functions for template formatting
+function formatExperienceForTemplate(experienceArray) {
+  if (!Array.isArray(experienceArray) || experienceArray.length === 0) {
+    return "• No experience information provided";
   }
   
-  return projectsText.trim();
-};
+  return experienceArray.map((exp) => {
+    const title = exp.jobTitle || exp.title || exp.position || exp.role || "";
+    const company = exp.company || exp.employer || exp.organization || "";
+    const location = exp.location || exp.city || exp.state || exp.country || "";
+    const startDate = exp.startDate || exp.start || exp.from || "";
+    const endDate = exp.endDate || exp.end || exp.to || (exp.current ? "Present" : "");
+    
+    let description = "";
+    if (exp.description) {
+      if (Array.isArray(exp.description)) {
+        description = exp.description.map(item => `  ◦ ${item}`).join("\n");
+      } else if (typeof exp.description === "string") {
+        // Split by newlines and format as sub-bullets
+        description = exp.description.split('\n')
+          .filter(line => line.trim())
+          .map(line => `  ◦ ${line.trim()}`)
+          .join("\n");
+      }
+    }
+    
+    const dateRange = startDate && endDate ? `${startDate} – ${endDate}` : (startDate || endDate || "");
+    const locationInfo = location ? ` | ${location}` : "";
+    
+    return `• ${title} | ${company}${locationInfo} | ${dateRange}\n${description}`;
+  }).join("\n\n");
+}
+
+function formatEducationForTemplate(educationArray) {
+  if (!Array.isArray(educationArray) || educationArray.length === 0) {
+    return "• No education information provided";
+  }
+  
+  return educationArray.map((edu) => {
+    const degree = edu.degree || edu.program || edu.course || "";
+    const school = edu.school || edu.university || edu.college || edu.institution || "";
+    const location = edu.location || edu.city || edu.state || edu.country || "";
+    const graduationYear = edu.graduationYear || edu.year || edu.graduationDate || edu.completionYear || "";
+    const gpa = edu.gpa || edu.grade || "";
+    
+    const gpaInfo = gpa ? ` (GPA: ${gpa})` : "";
+    const locationInfo = location ? ` | ${location}` : "";
+    
+    return `• ${degree}${gpaInfo}\n  ${school}${locationInfo}${graduationYear ? ` | ${graduationYear}` : ""}`;
+  }).join("\n\n");
+}
+
+// Extract JSON from AI response
+function extractJson(text) {
+  try {
+    // Try to find JSON in the text
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    // If no match, try to parse the whole text
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("JSON extraction failed:", error);
+    return null;
+  }
+}
+
+// Build resume prompt that asks for JSON output
+function buildResumePrompt(candidateData, jobDescription) {
+  const {
+    fullName,
+    targetRole,
+    location,
+    email,
+    phone,
+    summary,
+    skills = [],
+    experience = [],
+    education = [],
+    certifications = [],
+    projects = []
+  } = candidateData;
+
+  return `You are a professional resume writer. Create a JSON resume based ONLY on the candidate's provided information. DO NOT invent or add any information not provided by the candidate.
+
+CANDIDATE INFORMATION:
+- Full Name: ${fullName}
+- Target Role: ${targetRole || "Not specified"}
+- Location: ${location || "Not specified"}
+- Email: ${email || "Not specified"}
+- Phone: ${phone || "Not specified"}
+- Summary: ${summary || "Not provided"}
+
+CANDIDATE SKILLS: ${JSON.stringify(skills)}
+CANDIDATE EXPERIENCE: ${JSON.stringify(experience)}
+CANDIDATE EDUCATION: ${JSON.stringify(education)}
+CANDIDATE CERTIFICATIONS: ${JSON.stringify(certifications)}
+CANDIDATE PROJECTS: ${JSON.stringify(projects)}
+
+JOB DESCRIPTION TO TAILOR FOR:
+${jobDescription}
+
+GENERATE A JSON OBJECT WITH THIS STRUCTURE:
+{
+  "fullName": "${fullName}",
+  "targetRole": "${targetRole || ""}",
+  "location": "${location || ""}",
+  "email": "${email || ""}",
+  "phone": "${phone || ""}",
+  "summary": "Write a professional summary (3-4 sentences) based ONLY on the candidate's provided information. Tailor it to match the job description requirements.",
+  "skills": ["List skills from candidate data, prioritizing ones mentioned in job description. Use only skills mentioned by candidate."],
+  "experience": [
+    {
+      "jobTitle": "Title from candidate data",
+      "company": "Company from candidate data",
+      "location": "Location from candidate data",
+      "startDate": "Start date from candidate data (format: Month YYYY)",
+      "endDate": "End date from candidate data (format: Month YYYY) or 'Present' if current",
+      "current": true/false,
+      "description": ["Write 3-5 achievement-focused bullet points tailored to the job description. Use ONLY information from candidate's experience data. Start each bullet with strong action verbs like Developed, Implemented, Led, Managed, etc."]
+    }
+  ],
+  "education": [
+    {
+      "degree": "Degree from candidate data",
+      "school": "School from candidate data",
+      "location": "Location from candidate data",
+      "graduationYear": "Year from candidate data",
+      "gpa": "GPA from candidate data if provided"
+    }
+  ],
+  "certifications": ["List certifications from candidate data only"]
+}
+
+CRITICAL RULES:
+1. Use ONLY the candidate's provided information
+2. Do NOT invent companies, schools, experiences, or any other information
+3. If candidate didn't provide something, leave it as empty string or empty array
+4. Tailor bullet points to match job description keywords while keeping factual
+5. Make skills list relevant to job description but ONLY use skills mentioned by candidate
+6. Focus on achievements and results in experience descriptions
+7. Keep all content professional and concise
+8. For dates, use format: "Month YYYY" (e.g., "January 2020")
+9. If no data provided for a section, return empty array or empty string`;
+}
 
 // ---------- Resume generation (Gemini) ----------
 exports.generateResume = async (req, res) => {
@@ -308,6 +243,7 @@ exports.generateResume = async (req, res) => {
       education = [],
       certifications = [],
       projects = [],
+      linkedin,
       jobId,
       jobDescription,
     } = req.body;
@@ -318,123 +254,48 @@ exports.generateResume = async (req, res) => {
 
     if (!jobDescription) {
       return res.status(400).json({
-        message:
-          "Job description is required. Please paste the job description you want to tailor the resume for.",
+        message: "Job description is required.",
       });
     }
 
     console.log("📋 Job Description length:", jobDescription.length);
     console.log("👤 Generating resume for:", fullName);
-    console.log("📊 Candidate data received:", {
-      skillsCount: skills.length,
-      experienceCount: experience.length,
-      educationCount: education.length,
-      certificationsCount: certifications.length,
-      projectsCount: projects.length
-    });
+    console.log("📊 Using candidate's actual data only");
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ message: "GEMINI_API_KEY is missing" });
     }
 
-    const skillsList = Array.isArray(skills)
-      ? skills
-      : typeof skills === "string"
-      ? skills.split(",").map((s) => s.trim()).filter(s => s.length > 0)
-      : [];
+    const candidateData = {
+      fullName,
+      targetRole,
+      location,
+      email,
+      phone,
+      summary,
+      linkedin,
+      skills: Array.isArray(skills) ? skills : 
+             typeof skills === "string" ? skills.split(",").map(s => s.trim()).filter(s => s) : [],
+      experience: Array.isArray(experience) ? experience : [],
+      education: Array.isArray(education) ? education : [],
+      certifications: Array.isArray(certifications) ? certifications : [],
+      projects: Array.isArray(projects) ? projects : []
+    };
 
-    // Calculate years of experience based on skills or default
-    const yearsOfExperience = Math.max(3, Math.floor(skillsList.length / 2));
+    const prompt = buildResumePrompt(candidateData, jobDescription);
+    
+    const finalPrompt = `
+IMPORTANT RULES:
+- Return ONLY valid JSON
+- No explanations, no markdown
+- Response must start with { and end with }
+- Use ONLY candidate's provided information
+- Do NOT invent any companies, schools, or experiences
+- If information is missing, use empty strings/arrays
+- Format dates as "Month YYYY"
 
-    const prompt = `
-You are a professional resume writer and ATS optimization expert. Generate a resume STRICTLY following this exact format.
-
-❌ DO NOT USE markdown, asterisks for bullets, or any special formatting in the output.
-✅ Output must be PLAIN TEXT with the exact structure below.
-
-================================================================================
-${fullName.toUpperCase()}
-================================================================================
-
-PROFESSIONAL SUMMARY
-• ${summary || `Results-driven ${targetRole || 'professional'} with ${yearsOfExperience}+ years of experience specializing in ${skillsList.slice(0, 3).join(', ')}.`}
-• ${summary ? '' : `Proven track record of designing and implementing innovative solutions that drive business growth and operational efficiency.`}
-• ${summary ? '' : `Expertise in ${skillsList.slice(0, 4).join(', ')}, with a strong focus on delivering high-quality results within established timelines.`}
-• ${summary ? '' : `Excellent problem-solving abilities combined with strong communication and team collaboration skills.`}
-• ${summary ? '' : `Committed to continuous learning and staying current with emerging technologies and industry best practices.`}
-
-================================================================================
-
-SKILLS
-• Technical Skills: ${skillsList.join(", ")}
-• Tools & Platforms: ${skillsList.filter(s => typeof s === 'string' && (s.includes('AWS') || s.includes('Azure') || s.includes('Docker') || s.includes('Git'))).join(', ') || 'Relevant tools and platforms'}
-• Methodologies: Agile/Scrum, Waterfall, DevOps, CI/CD
-• Soft Skills: Leadership, Problem Solving, Communication, Team Collaboration, Adaptability, Time Management
-
-================================================================================
-
-WORK EXPERIENCE
-
-${formatExperience(experience, fullName, targetRole, skillsList)}
-
-================================================================================
-
-EDUCATION
-${formatEducation(education, skillsList)}
-
-================================================================================
-
-CERTIFICATIONS
-${formatCertifications(certifications, skillsList)}
-
-================================================================================
-
-${projects && projects.length > 0 ? `${formatProjects(projects, skillsList)}\n\n================================================================================\n` : ''}
-FORMATTING RULES (MUST FOLLOW):
-1. Use "•" for ALL bullets (not *, -, or any other symbol)
-2. Put horizontal lines "================================================================================" between each major section
-3. Keep section headers in ALL CAPS exactly as shown above
-4. Each bullet point should be 2-3 lines of text (not one-line highlights)
-5. No tables, columns, icons, emojis, or special characters
-6. No markdown formatting of any kind
-7. Use consistent date format: Month YYYY – Month YYYY (e.g., January 2020 – Present)
-8. Education format: One line per degree, no bullets
-9. Create realistic company names, job titles, and achievements based on the candidate's information
-10. Tailor ALL content to match the job description requirements
-11. Use the candidate's actual skills, experience, education, and certifications when provided
-12. Generate 6-8 detailed bullet points for each work experience entry
-13. Focus on quantifiable achievements and measurable results
-14. Use strong action verbs: Designed, Developed, Implemented, Led, Managed, Optimized, etc.
-
-CANDIDATE'S ACTUAL BACKGROUND INFORMATION:
-
-Name: ${fullName}
-Target Role: ${targetRole || "Professional Role"}
-Location: ${location || "Not specified"}
-Skills: ${skillsList.join(', ')}
-Summary: ${summary || "Not provided"}
-
-Experience Data (if provided): ${JSON.stringify(experience).substring(0, 500)}...
-Education Data (if provided): ${JSON.stringify(education).substring(0, 500)}...
-Certifications Data (if provided): ${JSON.stringify(certifications).substring(0, 500)}...
-Projects Data (if provided): ${JSON.stringify(projects).substring(0, 500)}...
-
-NOW GENERATE THE RESUME TAILORED TO THIS SPECIFIC JOB DESCRIPTION:
-
-JOB DESCRIPTION:
-${jobDescription}
-
-IMPORTANT INSTRUCTIONS:
-1. Analyze the job description thoroughly and identify key requirements
-2. Tailor the resume to highlight the candidate's skills that match the job requirements
-3. Use keywords from the job description throughout the resume
-4. Create professional, realistic work experience entries even if limited data is provided
-5. Focus on achievements and results rather than just responsibilities
-6. Ensure the resume is ATS-friendly and follows all formatting rules above
-7. Make the resume look authentic and credible for the candidate
-
-Generate the complete resume following ALL formatting rules above. Output ONLY the resume text.
+${prompt}
 `;
 
     console.log("🤖 Sending to Gemini...");
@@ -442,26 +303,46 @@ Generate the complete resume following ALL formatting rules above. Output ONLY t
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
+      generationConfig: { 
+        maxOutputTokens: 4096, 
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      },
     });
 
-    const result = await model.generateContent(prompt);
-    const resumeText = result?.response?.text() || "";
+    const result = await model.generateContent(finalPrompt);
+    const rawText = result?.response?.text() || "";
 
-    if (!resumeText.trim()) {
-      return res.status(500).json({ message: "Empty response from AI" });
+    console.log("📄 Raw AI response received");
+
+    const resumeJson = extractJson(rawText);
+
+    if (!resumeJson) {
+      console.error("❌ Failed to extract JSON from:", rawText.substring(0, 500));
+      return res.status(500).json({ 
+        message: "Failed to generate valid resume data",
+        rawText: rawText.substring(0, 500)
+      });
     }
 
-    const cleanedText = resumeText.replace(/```/g, "").trim();
+    console.log("✅ Generated resume JSON with template variables");
 
-    console.log(`✅ Generated resume (${cleanedText.length} chars)`);
+    // Generate DOCX from the template
+    const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
 
-    return res.status(200).json({
-      success: true,
-      resumeText: cleanedText,
-      jobDescriptionLength: jobDescription.length,
-      generatedAt: new Date().toISOString(),
-    });
+    const fileName = `Resume_${fullName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
+
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(fileName)}"`
+    );
+
+    return res.send(docBuffer);
+
   } catch (error) {
     console.error("❌ Error:", error);
     return res.status(500).json({
@@ -471,34 +352,43 @@ Generate the complete resume following ALL formatting rules above. Output ONLY t
   }
 };
 
-// ---------- Download resume as Word (ATS format) ----------
+// ---------- Download existing resume as Word ----------
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     console.log("📥 /api/v1/resume/download hit");
-    console.log("Query params received:", req.query);
 
-    const { name, text, jobTitle } = req.query;
+    const { name, text, jobTitle, email, phone, location, skills, experience, education, certifications, summary } = req.query;
 
-    if (!name || !text) {
+    if (!name) {
       return res.status(400).json({
         success: false,
-        message: "Name and resume text are required",
+        message: "Name is required",
       });
     }
 
-    // Create resumeJson object for the template function
+    // Helper function to safely decode
+    const safeDecode = (str) => str ? decodeURIComponent(str) : "";
+
+    // Create resumeJson object from query parameters
     const resumeJson = {
-      fullName: name,
-      targetRole: jobTitle || "Professional",
-      resumeText: text,
-      // You might need to parse the text to extract sections
-      // or pass additional data if needed by your template
+      fullName: safeDecode(name),
+      targetRole: safeDecode(jobTitle) || "",
+      location: safeDecode(location) || "",
+      email: safeDecode(email) || "",
+      phone: safeDecode(phone) || "",
+      summary: safeDecode(summary) || "Professional resume",
+      skills: skills ? safeDecode(skills).split(",").map(s => s.trim()).filter(s => s) : [],
+      experience: experience ? JSON.parse(safeDecode(experience)) : [],
+      education: education ? JSON.parse(safeDecode(education)) : [],
+      certifications: certifications ? safeDecode(certifications).split(",").map(c => c.trim()).filter(c => c) : []
     };
+
+    console.log("📝 Generating DOCX from provided data");
 
     // Use the template function to generate DOCX
     const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
 
-    const fileName = `Resume_${name.replace(/\s+/g, "_")}_${Date.now()}.docx`;
+    const fileName = `Resume_${resumeJson.fullName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
 
     res.setHeader(
       "Content-Type",
@@ -511,11 +401,9 @@ exports.downloadResumeAsWord = async (req, res) => {
     
     return res.send(docBuffer);
 
-    console.log(`✅ Word document generated using template: ${fileName}`);
   } catch (error) {
     console.error("❌ Error creating Word document:", error);
-    console.error(error.stack);
-
+    
     res.status(500).json({
       success: false,
       message: "Failed to create document",
@@ -541,6 +429,7 @@ exports.generateResumeAsWord = async (req, res) => {
       education = [],
       certifications = [],
       projects = [],
+      linkedin,
       jobId,
       jobDescription,
     } = req.body;
@@ -551,122 +440,67 @@ exports.generateResumeAsWord = async (req, res) => {
 
     if (!jobDescription) {
       return res.status(400).json({
-        message:
-          "Job description is required. Please paste the job description you want to tailor the resume for.",
+        message: "Job description is required.",
       });
     }
-
-    console.log("📋 Job Description length:", jobDescription.length);
-    console.log("👤 Generating resume for:", fullName);
-    console.log("📊 Candidate data received:", {
-      skillsCount: skills.length,
-      experienceCount: experience.length,
-      educationCount: education.length,
-      certificationsCount: certifications.length,
-      projectsCount: projects.length
-    });
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ message: "GEMINI_API_KEY is missing" });
     }
 
-    const skillsList = Array.isArray(skills)
-      ? skills
-      : typeof skills === "string"
-      ? skills.split(",").map((s) => s.trim()).filter(s => s.length > 0)
-      : [];
+    const candidateData = {
+      fullName,
+      targetRole,
+      location,
+      email,
+      phone,
+      summary,
+      linkedin,
+      skills: Array.isArray(skills) ? skills : 
+             typeof skills === "string" ? skills.split(",").map(s => s.trim()).filter(s => s) : [],
+      experience: Array.isArray(experience) ? experience : [],
+      education: Array.isArray(education) ? education : [],
+      certifications: Array.isArray(certifications) ? certifications : [],
+      projects: Array.isArray(projects) ? projects : []
+    };
 
-    // Calculate years of experience based on skills or default
-    const yearsOfExperience = Math.max(3, Math.floor(skillsList.length / 2));
+    const prompt = buildResumePrompt(candidateData, jobDescription);
+    
+    const finalPrompt = `
+IMPORTANT RULES:
+- Return ONLY valid JSON
+- No explanations, no markdown
+- Response must start with { and end with }
+- Use ONLY candidate's provided information
+- Do NOT invent any companies, schools, or experiences
 
-    const prompt = `
-You are a professional resume writer and ATS optimization expert. Generate a resume STRICTLY following this exact format.
-
-❌ DO NOT USE markdown, asterisks for bullets, or any special formatting in the output.
-✅ Output must be PLAIN TEXT with the exact structure below.
-
-================================================================================
-${fullName.toUpperCase()}
-================================================================================
-
-PROFESSIONAL SUMMARY
-• ${summary || `Results-driven ${targetRole || 'professional'} with ${yearsOfExperience}+ years of experience specializing in ${skillsList.slice(0, 3).join(', ')}.`}
-• ${summary ? '' : `Proven track record of designing and implementing innovative solutions that drive business growth and operational efficiency.`}
-• ${summary ? '' : `Expertise in ${skillsList.slice(0, 4).join(', ')}, with a strong focus on delivering high-quality results within established timelines.`}
-• ${summary ? '' : `Excellent problem-solving abilities combined with strong communication and team collaboration skills.`}
-• ${summary ? '' : `Committed to continuous learning and staying current with emerging technologies and industry best practices.`}
-
-================================================================================
-
-SKILLS
-• Technical Skills: ${skillsList.join(", ")}
-• Tools & Platforms: ${skillsList.filter(s => typeof s === 'string' && (s.includes('AWS') || s.includes('Azure') || s.includes('Docker') || s.includes('Git'))).join(', ') || 'Relevant tools and platforms'}
-• Methodologies: Agile/Scrum, Waterfall, DevOps, CI/CD
-• Soft Skills: Leadership, Problem Solving, Communication, Team Collaboration, Adaptability, Time Management
-
-================================================================================
-
-WORK EXPERIENCE
-
-${formatExperience(experience, fullName, targetRole, skillsList)}
-
-================================================================================
-
-EDUCATION
-${formatEducation(education, skillsList)}
-
-================================================================================
-
-CERTIFICATIONS
-${formatCertifications(certifications, skillsList)}
-
-================================================================================
-
-${projects && projects.length > 0 ? `${formatProjects(projects, skillsList)}\n\n================================================================================\n` : ''}
-
-NOW GENERATE THE RESUME TAILORED TO THIS SPECIFIC JOB DESCRIPTION:
-
-JOB DESCRIPTION:
-${jobDescription}
-
-Generate the complete resume following ALL formatting rules above. Output ONLY the resume text.
+${prompt}
 `;
 
-    console.log("🤖 Sending to Gemini...");
+    console.log("🤖 Sending to Gemini for Word generation...");
 
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
+      generationConfig: { 
+        maxOutputTokens: 4096, 
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      },
     });
 
-    const result = await model.generateContent(prompt);
-    let resumeText = result?.response?.text() || "";
-    resumeText = resumeText.replace(/```/g, "").trim();
+    const result = await model.generateContent(finalPrompt);
+    const rawText = result?.response?.text() || "";
 
-    if (!resumeText) {
-      return res.status(500).json({ message: "Empty response from AI" });
+    const resumeJson = extractJson(rawText);
+
+    if (!resumeJson) {
+      console.error("❌ Failed to extract JSON");
+      return res.status(500).json({ message: "Invalid JSON from AI" });
     }
 
-    // Create resumeJson object for the template function
-    const resumeJson = {
-      fullName,
-      targetRole: targetRole || "Professional",
-      location: location || "",
-      email: email || "",
-      phone: phone || "",
-      summary: summary || "",
-      skills: skillsList,
-      experience: experience,
-      education: education,
-      certifications: certifications,
-      projects: projects,
-      resumeText: resumeText,
-      jobDescription: jobDescription
-    };
-
-    // Use the template function to generate DOCX
+    // Generate DOCX from the template
     const docBuffer = await generateResumeDocxFromTemplate(resumeJson);
 
     const fileName = `Resume_${fullName.replace(/\s+/g, "_")}_${Date.now()}.docx`;
@@ -682,7 +516,6 @@ Generate the complete resume following ALL formatting rules above. Output ONLY t
     
     return res.send(docBuffer);
 
-    console.log(`✅ Word document generated directly using template: ${fileName}`);
   } catch (error) {
     console.error("❌ Error generating Word resume:", error);
     res.status(500).json({
