@@ -9,15 +9,16 @@ const jobApplicationSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+
+    // ✅ FIX: recruiterId should point to Recruiter doc (not User)
     recruiterId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
+      ref: 'Recruiter',
       required: true,
       index: true,
     },
 
-    // ✅ Frontend uses job.id; backend can store a stable job reference
-    // (kept optional so it won't break existing docs)
+    // Optional stable job ref (frontend uses job.id sometimes)
     jobId: {
       type: String,
       trim: true,
@@ -32,7 +33,7 @@ const jobApplicationSchema = new mongoose.Schema(
       maxlength: [100, 'Job title cannot be more than 100 characters'],
     },
 
-    // ✅ Keep old field (companyName) BUT ALSO support frontend field (company)
+    // ✅ Keep both fields for compatibility
     companyName: {
       type: String,
       required: [true, 'Please provide company name'],
@@ -40,21 +41,29 @@ const jobApplicationSchema = new mongoose.Schema(
       maxlength: [100, 'Company name cannot be more than 100 characters'],
     },
     company: {
-      // Frontend uses "company"
       type: String,
       trim: true,
       maxlength: [100, 'Company cannot be more than 100 characters'],
     },
 
-    // ✅ Job details
-    description: {
-      // Frontend uses job.description
+    // ✅ Canonical job description field (use this everywhere going forward)
+    jobDescription: {
       type: String,
       trim: true,
       default: '',
     },
 
-    // ✅ If you still want job link
+    // ✅ Backward compatible fields (older frontend/code may still send these)
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    jobDescriptionFull: {
+      type: String,
+      default: '',
+    },
+
     jobLink: {
       type: String,
       trim: true,
@@ -63,38 +72,48 @@ const jobApplicationSchema = new mongoose.Schema(
 
     // ✅ Resume tracking
     resumeStatus: {
-      // Frontend: Pending/Submitted/Reviewed
       type: String,
       enum: ['Pending', 'Submitted', 'Reviewed'],
       default: 'Pending',
       index: true,
     },
 
+    // ✅ Store EXACT resume used
     resumeUsed: {
-      // legacy (file upload)
-      fileName: String,
-      fileUrl: String,
+      resumeId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: null,
+      },
+      fileName: { type: String, default: '' },
+      fileUrl: { type: String, default: '' },
     },
 
-    // ✅ NEW: store the resume text generated (so recruiter & candidate can view)
+    // ✅ Resume content tracking (optional)
     resumeText: {
       type: String,
       default: '',
     },
 
-    // ✅ NEW: store generated doc url (optional - if you upload to S3/Cloudinary later)
     resumeDocxUrl: {
       type: String,
       default: '',
     },
 
-    // ✅ NEW: Store job description used for generating the resume (full)
-    jobDescriptionFull: {
+    // ✅ Canonical status for backend logic
+    // (we’ll map frontend labels to this value in pre-save)
+    status: {
+      type: String,
+      enum: ['pending', 'applied', 'interview', 'offer', 'rejected'],
+      default: 'pending',
+      index: true,
+    },
+
+    // ✅ Optional: keep UI label if you want (not required)
+    uiStatusLabel: {
       type: String,
       default: '',
     },
 
-    // ✅ Scoring + salary fields used by your UI
     matchScore: {
       type: Number,
       min: 0,
@@ -105,14 +124,6 @@ const jobApplicationSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
-    },
-
-    // ✅ Application status (match frontend labels)
-    status: {
-      type: String,
-      enum: ['Applied', 'Under Review', 'Interview', 'Offer', 'Rejected'],
-      default: 'Applied',
-      index: true,
     },
 
     notes: [
@@ -129,7 +140,6 @@ const jobApplicationSchema = new mongoose.Schema(
       },
     ],
 
-    // ✅ Dates (frontend uses appliedDate)
     appliedDate: {
       type: Date,
       default: Date.now,
@@ -148,22 +158,46 @@ const jobApplicationSchema = new mongoose.Schema(
   { minimize: false }
 );
 
-// ✅ Keep company & companyName consistent for backwards compatibility
+// ✅ Normalize fields for compatibility + consistency
 jobApplicationSchema.pre('save', function (next) {
-  // timestamps
   this.updatedAt = Date.now();
 
-  // sync company fields
+  // company sync
   if (!this.company && this.companyName) this.company = this.companyName;
   if (!this.companyName && this.company) this.companyName = this.company;
+
+  // job description sync (canonical)
+  if (!this.jobDescription) {
+    this.jobDescription = this.jobDescriptionFull || this.description || '';
+  }
+  // Keep older fields in sync so older UI still displays something
+  if (!this.description && this.jobDescription) this.description = this.jobDescription;
+  if (!this.jobDescriptionFull && this.jobDescription) this.jobDescriptionFull = this.jobDescription;
 
   // appliedDate default
   if (!this.appliedDate) this.appliedDate = new Date();
 
+  // ✅ Map common frontend label statuses → backend canonical
+  // If your UI sends "Applied", "Interview", etc, we convert it
+  const label = (this.status || '').toString();
+  const map = {
+    'Applied': 'applied',
+    'Under Review': 'pending',
+    'Interview': 'interview',
+    'Offer': 'offer',
+    'Rejected': 'rejected',
+  };
+
+  // If someone accidentally set status to a UI label, convert it
+  if (map[label]) {
+    this.uiStatusLabel = label;
+    this.status = map[label];
+  }
+
   next();
 });
 
-// ✅ Indexes for efficient recruiter / candidate queries
+// ✅ Indexes
 jobApplicationSchema.index({ candidateId: 1, appliedDate: -1 });
 jobApplicationSchema.index({ recruiterId: 1, appliedDate: -1 });
 jobApplicationSchema.index({ recruiterId: 1, candidateId: 1, appliedDate: -1 });
