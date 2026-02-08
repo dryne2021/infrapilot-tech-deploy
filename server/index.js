@@ -15,6 +15,7 @@ const candidateRoutes = require("./routes/candidate");
 const recruiterRoutes = require("./routes/recruiter");
 const resumeRoutes = require("./routes/resumeRoutes");
 const candidatesRoutes = require("./routes/candidatesRoutes"); // ✅ ADD THIS
+const jobApplicationRoutes = require("./routes/jobApplicationRoutes"); // ✅ ADD THIS
 
 // ✅ Load env vars explicitly from server/.env
 dotenv.config({ path: path.join(__dirname, ".env") });
@@ -49,6 +50,9 @@ app.use("/api/v1/recruiter", recruiterRoutes);
 
 // ✅ Option A route (ADMIN / RECRUITER FETCH BY ID)
 app.use("/api/v1/candidates", candidatesRoutes);
+
+// ✅ Job Application routes (candidate jobId + job description + resume used)
+app.use("/api/v1/jobs", jobApplicationRoutes);
 
 // ✅ Resume routes
 console.log("✅ Resume routes mounted at /api/v1/resume");

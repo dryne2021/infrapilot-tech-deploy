@@ -45,6 +45,64 @@ export default function RecruiterPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'
   const router = useRouter()
 
+  // ✅ API HELPER FUNCTION
+  const api = async (path, options = {}) => {
+    const res = await fetch(`${apiBaseUrl}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      credentials: 'include',
+      ...options,
+    });
+
+    const contentType = res.headers.get('content-type') || '';
+    const data = contentType.includes('application/json')
+      ? await res.json().catch(() => ({}))
+      : await res.text().catch(() => '');
+
+    if (!res.ok) {
+      const msg = typeof data === 'string' ? data : (data?.message || `Request failed (${res.status})`);
+      throw new Error(msg);
+    }
+
+    return data;
+  };
+
+  // ✅ recruiter loads assigned candidates from DB
+  const fetchAssignedCandidates = (recruiterId) =>
+    api(`/api/v1/recruiter/${recruiterId}/candidates`, { method: 'GET' });
+
+  // ✅ jobs for a candidate (real DB, not mock)
+  const fetchCandidateJobs = (candidateId) =>
+    api(`/api/v1/candidates/${candidateId}/jobs`, { method: 'GET' });
+
+  // ✅ create job
+  const createCandidateJob = (candidateId, payload) =>
+    api(`/api/v1/candidates/${candidateId}/jobs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+  // ✅ update job
+  const updateCandidateJob = (candidateId, jobId, payload) =>
+    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+
+  // ✅ delete job
+  const deleteCandidateJob = (candidateId, jobId) =>
+    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, { method: 'DELETE' });
+
+  // ✅ save resume used for a job (IMPORTANT)
+  const saveJobResume = (candidateId, jobId, resumeText) =>
+    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, {
+      method: 'POST',
+      body: JSON.stringify({ resumeText }),
+    });
+
+  // ✅ get resume used for a job
+  const fetchJobResume = (candidateId, jobId) =>
+    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, { method: 'GET' });
+
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
     if (!candidate) return candidate;
@@ -131,73 +189,6 @@ export default function RecruiterPage() {
     return structuredCandidate;
   };
 
-  // ✅ FUNCTION - Save candidate resume to localStorage
-  const saveCandidateResume = (candidateId, resumeData) => {
-    try {
-      // Load existing resumes
-      const sharedResumes = JSON.parse(localStorage.getItem('candidate_resumes') || '{}')
-      
-      // Create resume object
-      const resume = {
-        id: `res_${Date.now()}`,
-        ...resumeData,
-        candidate_id: candidateId,
-        recruiter_id: user?.id,
-        recruiter_name: user?.name,
-        recruiter_email: user?.email,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        status: 'active'
-      }
-      
-      // Save to shared storage (accessible by candidate)
-      sharedResumes[candidateId] = resume
-      localStorage.setItem('candidate_resumes', JSON.stringify(sharedResumes))
-      
-      // Also save to recruiter-specific storage
-      const recruiterResumes = JSON.parse(localStorage.getItem(`recruiter_resumes_${user?.id}`) || '{}')
-      recruiterResumes[candidateId] = resume
-      localStorage.setItem(`recruiter_resumes_${user?.id}`, JSON.stringify(recruiterResumes))
-      
-      return resume
-    } catch (error) {
-      console.error('Error saving candidate resume:', error)
-      return null
-    }
-  }
-
-  // ✅ FUNCTION - Generate resume template from AI content
-  const generateCandidateResumeFromAI = (candidate, generatedText, jobId, jobDescription) => {
-    const resumeTemplate = {
-      name: `${candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}_Resume_${new Date().getFullYear()}.docx`,
-      title: `Professional Resume - ${candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}`,
-      text: generatedText,
-      sections: [
-        {
-          title: 'Professional Summary',
-          content: candidate.summary || candidate.about || `${candidate.firstName} is a skilled professional seeking new opportunities.`
-        },
-        {
-          title: 'Skills',
-          content: Array.isArray(candidate.skills) ? candidate.skills.join(', ') : candidate.skills || 'Skills to be added'
-        },
-        {
-          title: 'Experience',
-          content: 'Professional experience details to be added by recruiter.'
-        },
-        {
-          title: 'Education',
-          content: 'Educational background to be added by recruiter.'
-        }
-      ],
-      job_id: jobId,
-      job_description: jobDescription.substring(0, 500) + '...',
-      notes: `Resume created by recruiter ${user?.name} for job application`
-    }
-    
-    return saveCandidateResume(candidate.id, resumeTemplate)
-  }
-
   // ✅ HELPER: download .docx from backend using POST /resume/download
   const downloadDocxFromText = async (candidate: any, resumeText: string) => {
     const fileSafeName =
@@ -209,7 +200,7 @@ export default function RecruiterPage() {
       email: candidate?.email || '',
       phone: candidate?.phone || '',
       location: candidate?.location || '',
-      text: resumeText, // ✅ IMPORTANT: send the text in body, not query string
+      text: resumeText,
     };
 
     const res = await fetch(`${apiBaseUrl}/api/v1/resume/download`, {
@@ -219,7 +210,6 @@ export default function RecruiterPage() {
       body: JSON.stringify(payload),
     });
 
-    // If backend returns JSON error, show it
     const contentType = res.headers.get('content-type') || '';
     if (!res.ok) {
       if (contentType.includes('application/json')) {
@@ -229,9 +219,7 @@ export default function RecruiterPage() {
       throw new Error(`Word download failed (${res.status})`);
     }
 
-    // Must be docx
     if (!contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document')) {
-      // Try to read text for debugging
       const maybeText = await res.text().catch(() => '');
       throw new Error(
         `Expected DOCX but got Content-Type: ${contentType}. Response: ${maybeText.slice(0, 200)}`
@@ -306,13 +294,15 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ save for candidate access
-      generateCandidateResumeFromAI(candidate, resumeText, jobIdForResume, jobDescriptionForResume);
+      // ✅ attach resume to THIS job in DB
+      if (selectedCandidate?.id && jobIdForResume) {
+        await saveJobResume(selectedCandidate.id, jobIdForResume, resumeText);
+      }
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
 
-      alert('✅ Word resume downloaded (.docx) and saved for candidate!');
+      alert('✅ Word resume downloaded (.docx) and saved to job!');
     } catch (err: any) {
       console.error('❌ Word generation/download error:', err);
       setResumeError(err?.message || 'Failed to generate/download Word resume');
@@ -339,7 +329,6 @@ export default function RecruiterPage() {
     setGeneratedResume('');
 
     try {
-      // ✅ USE THE STRUCTURED CANDIDATE DATA
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
 
       const payload = {
@@ -349,25 +338,14 @@ export default function RecruiterPage() {
         email: candidate.email || '',
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
-        
-        // ✅ NOW THESE ARE GUARANTEED TO BE PROPER ARRAYS
         skills: candidate.skills,
         experience: candidate.experience,
         education: candidate.education,
         certifications: candidate.certifications,
         projects: candidate.projects,
-        
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume,
       };
-
-      console.log('📤 Sending payload to backend:', {
-        fullName: payload.fullName,
-        skillsCount: payload.skills.length,
-        experienceCount: payload.experience.length,
-        educationCount: payload.education.length,
-        certificationsCount: payload.certifications.length
-      });
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
@@ -389,16 +367,9 @@ export default function RecruiterPage() {
 
       setGeneratedResume(resumeText);
 
-      // ✅ SAVE THE RESUME TO LOCALSTORAGE FOR CANDIDATE ACCESS
-      const savedResume = generateCandidateResumeFromAI(
-        candidate,
-        resumeText,
-        jobIdForResume,
-        jobDescriptionForResume
-      );
-      
-      if (savedResume) {
-        console.log('✅ Resume saved for candidate:', savedResume);
+      // ✅ attach resume to THIS job in DB
+      if (selectedCandidate?.id && jobIdForResume) {
+        await saveJobResume(selectedCandidate.id, jobIdForResume, resumeText);
       }
 
       // Save to history
@@ -449,61 +420,6 @@ export default function RecruiterPage() {
       alert(`❌ ${err?.message || 'Failed to download .docx'}`);
     }
   };
-
-  // ✅ HELPER FUNCTIONS
-  const extractSkillsFromDescription = (description: string) => {
-    const skills = []
-    const commonSkills = [
-      'javascript', 'python', 'java', 'react', 'angular', 'vue', 'node', 'express',
-      'mongodb', 'sql', 'postgresql', 'aws', 'azure', 'docker', 'kubernetes',
-      'typescript', 'html', 'css', 'sass', 'tailwind', 'git', 'rest', 'api',
-      'agile', 'scrum', 'devops', 'ci/cd', 'testing', 'firebase'
-    ]
-    
-    commonSkills.forEach(skill => {
-      if (description.includes(skill)) {
-        skills.push(skill)
-      }
-    })
-    
-    return skills.length > 0 ? skills : ['javascript', 'react', 'node', 'mongodb', 'aws']
-  }
-  
-  const extractKeywords = (description: string) => {
-    const words = description.toLowerCase().split(/\W+/)
-    const keywords = new Set<string>()
-    
-    const importantWords = [
-      'development', 'engineering', 'software', 'web', 'mobile', 'application',
-      'design', 'architecture', 'system', 'cloud', 'database', 'security',
-      'performance', 'scalability', 'maintenance', 'deployment', 'integration',
-      'automation', 'optimization', 'collaboration', 'leadership', 'management'
-    ]
-    
-    words.forEach(word => {
-      if (importantWords.includes(word) && word.length > 3) {
-        keywords.add(word)
-      }
-    })
-    
-    return Array.from(keywords)
-  }
-  
-  const extractIndustry = (description: string) => {
-    const industries = [
-      'technology', 'finance', 'healthcare', 'e-commerce', 'education',
-      'entertainment', 'saaS', 'startup', 'enterprise', 'consulting'
-    ]
-    
-    const desc = description.toLowerCase()
-    for (const industry of industries) {
-      if (desc.includes(industry)) {
-        return industry.charAt(0).toUpperCase() + industry.slice(1)
-      }
-    }
-    
-    return 'Technology'
-  }
   
   const copyResumeToClipboard = () => {
     navigator.clipboard.writeText(generatedResume)
@@ -526,72 +442,30 @@ export default function RecruiterPage() {
     }
   }
 
-  // ✅ FUNCTION - Generate mock jobs for candidates
-  const generateMockJobs = (candidate) => {
-    const jobTitles = [
-      'Senior Software Engineer',
-      'Full Stack Developer',
-      'Frontend Developer',
-      'Backend Developer',
-      'DevOps Engineer',
-      'Data Scientist',
-      'Product Manager',
-      'UX Designer'
-    ]
-    
-    const companies = [
-      'Google', 'Microsoft', 'Amazon', 'Apple', 'Meta',
-      'Netflix', 'Uber', 'Airbnb', 'Stripe', 'Salesforce'
-    ]
-    
-    const statuses = ['Applied', 'Under Review', 'Interview', 'Offer', 'Rejected']
-    
-    const jobs = []
-    const numJobs = Math.floor(Math.random() * 5) + 1 // 1-5 jobs
-    
-    for (let i = 0; i < numJobs; i++) {
-      const jobTitle = jobTitles[Math.floor(Math.random() * jobTitles.length)]
-      const company = companies[Math.floor(Math.random() * companies.length)]
-      const status = statuses[Math.floor(Math.random() * statuses.length)]
-      const daysAgo = Math.floor(Math.random() * 30)
-      const appliedDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000)
-      
-      jobs.push({
-        id: `job_${candidate.id}_${i}`,
-        jobTitle,
-        company,
-        description: `${jobTitle} position at ${company}. Looking for candidates with ${candidate.experienceYears || 3}+ years experience in ${candidate.skills || 'relevant technologies'}.`,
-        status,
-        appliedDate: appliedDate.toISOString(),
-        resumeStatus: ['Submitted', 'Reviewed', 'Pending'][Math.floor(Math.random() * 3)],
-        matchScore: Math.floor(Math.random() * 30) + 70, // 70-100%
-        salaryRange: `$${Math.floor(Math.random() * 50) + 100}k - $${Math.floor(Math.random() * 50) + 150}k`
-      })
-    }
-    
-    return jobs
-  }
-
-  // ✅ FUNCTION - View candidate details with structured data
-  const viewCandidateDetails = (candidate) => {
-    // ✅ Ensure candidate data is structured before using it
+  // ✅ UPDATED: Function to view candidate details
+  const viewCandidateDetails = async (candidate) => {
     const structuredCandidate = ensureCandidateDataStructure(candidate);
     setSelectedCandidate(structuredCandidate);
-    
-    // Generate mock job applications for this candidate
-    const mockJobs = generateMockJobs(structuredCandidate);
-    setCandidateJobs(mockJobs);
+
+    try {
+      const jobs = await fetchCandidateJobs(structuredCandidate.id);
+      setCandidateJobs(Array.isArray(jobs) ? jobs : []);
+    } catch (e) {
+      console.error('Failed to load candidate jobs:', e);
+      setCandidateJobs([]);
+    }
+
     setShowCandidateDetails(true);
   };
 
   useEffect(() => {
-    const checkRecruiterAuth = () => {
+    const checkRecruiterAuth = async () => {
       const userStr = localStorage.getItem('infrapilot_user')
       const recruiterAuth = localStorage.getItem('recruiter_authenticated')
       const recruiterId = localStorage.getItem('recruiter_id')
       
       if (!userStr || !recruiterAuth || recruiterAuth !== 'true') {
-        router.push('/login')  // Changed from '/recruiter/login'
+        router.push('/login')
         return
       }
       
@@ -599,7 +473,7 @@ export default function RecruiterPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'recruiter') {
-          router.push('/login')  // Changed from '/recruiter/login'
+          router.push('/login')
           return
         }
         
@@ -639,29 +513,31 @@ export default function RecruiterPage() {
           setResumeGenerationHistory(JSON.parse(savedResumeHistory))
         }
         
-        // Load assigned candidates
-        const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-        const myCandidates = candidates.filter(c => c.assignedRecruiter === recruiterId)
-        
-        setAssignedCandidates(myCandidates)
-        
-        // Calculate stats
-        const activeSubs = myCandidates.filter(c => c.subscriptionStatus === 'active').length
-        const pending = myCandidates.filter(c => c.paymentStatus === 'pending').length
-        
-        setStats({
-          totalAssigned: myCandidates.length,
-          activeSubscriptions: activeSubs,
-          pendingFollowups: pending,
-          interviewsThisWeek: Math.floor(Math.random() * 5) // Mock data
-        })
+        // ✅ Load assigned candidates from backend (not localStorage)
+        try {
+          const myCandidates = await fetchAssignedCandidates(recruiterId);
+          setAssignedCandidates(myCandidates);
+
+          const activeSubs = myCandidates.filter(c => c.subscriptionStatus === 'active').length;
+          const pending = myCandidates.filter(c => c.paymentStatus === 'pending').length;
+
+          setStats({
+            totalAssigned: myCandidates.length,
+            activeSubscriptions: activeSubs,
+            pendingFollowups: pending,
+            interviewsThisWeek: Math.floor(Math.random() * 5),
+          });
+        } catch (e) {
+          console.error('Failed to load assigned candidates:', e);
+          setAssignedCandidates([]);
+        }
         
       } catch {
         localStorage.removeItem('infrapilot_user')
         localStorage.removeItem('infrapilot_token')
         localStorage.removeItem('recruiter_authenticated')
         localStorage.removeItem('recruiter_id')
-        router.push('/login')  // Changed from '/recruiter/login'
+        router.push('/login')
       } finally {
         setLoading(false)
       }
@@ -675,10 +551,8 @@ export default function RecruiterPage() {
     let interval: NodeJS.Timeout
     
     if (isClockedIn && clockInTime) {
-      // Calculate initial duration
       setCurrentSessionDuration(Date.now() - clockInTime.getTime())
       
-      // Update every second
       interval = setInterval(() => {
         setCurrentSessionDuration(Date.now() - clockInTime.getTime())
       }, 1000)
@@ -791,7 +665,7 @@ export default function RecruiterPage() {
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('recruiter_authenticated')
     localStorage.removeItem('recruiter_id')
-    router.push('/login')  // Changed from '/recruiter/login'
+    router.push('/login')
   }
 
   const updateCandidateStatus = (candidateId, newStatus) => {
@@ -833,24 +707,22 @@ export default function RecruiterPage() {
     }
   }
 
-  const handleSaveJob = () => {
-    if (!editingJob) return
-    
-    const updatedJobs = candidateJobs.map(job => 
-      job.id === editingJob.id 
-        ? { 
-            ...job, 
-            ...jobFormData,
-            appliedDate: job.appliedDate || new Date().toISOString()
-          }
-        : job
-    )
-    
-    setCandidateJobs(updatedJobs)
-    setShowEditForm(false)
-    setEditingJob(null)
-    alert('Job updated successfully!')
-  }
+  // ✅ UPDATED: handleSaveJob (update in DB)
+  const handleSaveJob = async () => {
+    if (!editingJob || !selectedCandidate) return;
+
+    try {
+      await updateCandidateJob(selectedCandidate.id, editingJob.id, jobFormData);
+      const jobs = await fetchCandidateJobs(selectedCandidate.id);
+      setCandidateJobs(jobs);
+
+      setShowEditForm(false);
+      setEditingJob(null);
+      alert('✅ Job updated successfully!');
+    } catch (e) {
+      alert(`❌ ${e?.message || 'Failed to update job'}`);
+    }
+  };
 
   const handleCancelEdit = () => {
     setShowEditForm(false)
@@ -866,40 +738,58 @@ export default function RecruiterPage() {
     })
   }
 
-  const handleDeleteJob = (jobId) => {
-    if (window.confirm('Are you sure you want to delete this job application?')) {
-      setCandidateJobs(prev => prev.filter(job => job.id !== jobId))
-      alert('Job application deleted!')
-    }
-  }
+  // ✅ UPDATED: handleDeleteJob (delete in DB)
+  const handleDeleteJob = async (jobId) => {
+    if (!selectedCandidate) return;
 
-  const addNewJob = () => {
-    const newJob = {
-      id: `job_${selectedCandidate.id}_${Date.now()}`,
+    if (!window.confirm('Are you sure you want to delete this job application?')) return;
+
+    try {
+      await deleteCandidateJob(selectedCandidate.id, jobId);
+      const jobs = await fetchCandidateJobs(selectedCandidate.id);
+      setCandidateJobs(jobs);
+      alert('✅ Job deleted!');
+    } catch (e) {
+      alert(`❌ ${e?.message || 'Failed to delete job'}`);
+    }
+  };
+
+  // ✅ UPDATED: addNewJob (create in DB)
+  const addNewJob = async () => {
+    if (!selectedCandidate) return;
+
+    const payload = {
       jobTitle: 'New Position',
       company: 'New Company',
       description: 'Add job description here...',
       status: 'Applied',
-      appliedDate: new Date().toISOString(),
       resumeStatus: 'Pending',
       matchScore: 0,
-      salaryRange: 'To be determined'
+      salaryRange: 'To be determined',
+    };
+
+    try {
+      const created = await createCandidateJob(selectedCandidate.id, payload);
+
+      // refresh jobs
+      const jobs = await fetchCandidateJobs(selectedCandidate.id);
+      setCandidateJobs(jobs);
+
+      setEditingJob(created);
+      setJobFormData({
+        jobTitle: created.jobTitle,
+        company: created.company,
+        description: created.description,
+        status: created.status,
+        resumeStatus: created.resumeStatus,
+        matchScore: created.matchScore,
+        salaryRange: created.salaryRange,
+      });
+      setShowEditForm(true);
+    } catch (e) {
+      alert(`❌ ${e?.message || 'Failed to create job'}`);
     }
-    setCandidateJobs([...candidateJobs, newJob])
-    
-    // Auto-open edit form for the new job
-    setEditingJob(newJob)
-    setJobFormData({
-      jobTitle: newJob.jobTitle,
-      company: newJob.company,
-      description: newJob.description,
-      status: newJob.status,
-      resumeStatus: newJob.resumeStatus,
-      matchScore: newJob.matchScore,
-      salaryRange: newJob.salaryRange
-    })
-    setShowEditForm(true)
-  }
+  };
 
   const getPlanColor = (plan) => {
     const colors = {
@@ -993,7 +883,7 @@ export default function RecruiterPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => router.push('/login')}  // Changed from '/recruiter/login'
+                onClick={() => router.push('/login')}
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 border border-gray-300"
               >
                 Switch Account
@@ -1244,7 +1134,6 @@ export default function RecruiterPage() {
             </div>
             <button
               onClick={() => {
-                // Show all sessions in a modal
                 alert(`Total work sessions: ${workSessions.length}\nToday's total: ${formatDuration(todayStats.totalDuration)}`)
               }}
               className="px-4 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
@@ -1341,7 +1230,7 @@ export default function RecruiterPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates assigned yet</h3>
               <p className="text-gray-500">The admin will assign candidates to you soon.</p>
               <button
-                onClick={() => router.push('/login')}  // Changed from '/recruiter/login'
+                onClick={() => router.push('/login')}
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Refresh
