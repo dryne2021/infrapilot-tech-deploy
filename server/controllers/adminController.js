@@ -225,14 +225,53 @@ exports.getCandidates = async (req, res, next) => {
   }
 };
 
+// ✅ FIXED: sets userId + ensures required education fields exist
 exports.createCandidate = async (req, res, next) => {
   try {
-    // ✅ LOG 1: payload received
     console.log("📥 [ADMIN] createCandidate payload:", req.body);
 
-    const created = await Candidate.create(req.body);
+    // ✅ attach required userId automatically (admin who is creating)
+    const payload = {
+      ...req.body,
+      userId: req.user?._id,
+    };
 
-    // ✅ LOG 2: saved confirmation
+    // ✅ sanitize / default education so Mongoose validation passes
+    const edu = Array.isArray(payload.education) ? payload.education : [];
+
+    const hasValidEdu =
+      edu.length > 0 &&
+      edu.some(
+        (e) =>
+          e &&
+          String(e.school || "").trim() &&
+          String(e.degree || "").trim() &&
+          String(e.field || "").trim()
+      );
+
+    if (!hasValidEdu) {
+      // schema requires these fields -> provide safe placeholders
+      payload.education = [
+        {
+          school: "Not Provided",
+          degree: "Not Provided",
+          field: "Not Provided",
+          startYear: "",
+          endYear: "",
+        },
+      ];
+    } else {
+      // trim to avoid " " failing required checks
+      payload.education = edu.map((e) => ({
+        ...e,
+        school: String(e.school || "").trim(),
+        degree: String(e.degree || "").trim(),
+        field: String(e.field || "").trim(),
+      }));
+    }
+
+    const created = await Candidate.create(payload);
+
     console.log(
       `✅ [ADMIN] candidate saved: ${created._id} email=${created.email || ""} name=${created.fullName || ""}`
     );
@@ -295,7 +334,6 @@ exports.getRecruiters = async (req, res, next) => {
       assignedCandidatesCount: countMap.get(String(r._id)) || 0,
     }));
 
-    // IMPORTANT: return raw array for your AdminPage usage: recruiters.filter(...)
     return res.status(200).json(mapped);
   } catch (error) {
     next(error);
