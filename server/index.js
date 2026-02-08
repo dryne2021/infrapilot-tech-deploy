@@ -19,16 +19,13 @@ const candidatesRoutes = require("./routes/candidatesRoutes");
 // ✅ NEW: Job applications routes
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 
-// ✅ Load env vars explicitly from server/.env
+// ✅ Load env vars explicitly from server/.env (local). On Render, env vars come from dashboard.
 dotenv.config({ path: path.join(__dirname, ".env") });
 
-// OPTIONAL logs
+// OPTIONAL logs (safe)
 console.log("Gemini model:", process.env.GEMINI_MODEL);
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("CLIENT_URL:", process.env.CLIENT_URL);
-
-// Connect to database
-connectDB();
 
 const app = express();
 
@@ -80,9 +77,33 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
-});
+// ✅ Start server only after DB connects, then seed admin (prod only)
+async function startServer() {
+  try {
+    await connectDB();
+    console.log("✅ MongoDB connected");
+
+    // ✅ Auto-seed admin in production (no shell needed)
+    if (process.env.NODE_ENV === "production") {
+      try {
+        // This file will create the admin only if missing
+        require("./scripts/seedAdmin"); // runs immediately
+        console.log("✅ Admin seed check triggered");
+      } catch (e) {
+        console.error("❌ Admin seed failed to run:", e.message);
+      }
+    }
+
+    app.listen(PORT, () => {
+      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+    });
+  } catch (err) {
+    console.error("❌ Server failed to start:", err.message);
+    process.exit(1);
+  }
+}
+
+startServer();
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
