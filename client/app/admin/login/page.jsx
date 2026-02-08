@@ -2,13 +2,16 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext' // ✅ uses real backend login
 
 export default function AdminLogin() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
   const router = useRouter()
+  const { login } = useAuth()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -16,36 +19,20 @@ export default function AdminLogin() {
     setLoading(true)
 
     try {
-      // Hardcoded admin credentials
-      const ADMIN_CREDENTIALS = {
-        email: 'admin@infrapilot.com',
-        password: 'Admin@123'
+      // ✅ Real backend auth (no demo credentials, no hardcoded token)
+      const result = await login(email.trim(), password)
+
+      if (!result.success) {
+        setError(result.message || 'Invalid credentials')
+        return
       }
 
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500))
-
-      if (email === ADMIN_CREDENTIALS.email && password === ADMIN_CREDENTIALS.password) {
-        const adminUser = {
-          id: 'admin_001',
-          name: 'Administrator',
-          email: ADMIN_CREDENTIALS.email,
-          role: 'admin',
-          isAdmin: true,
-          adminAuthenticated: true
-        }
-        
-        localStorage.setItem('infrapilot_user', JSON.stringify(adminUser))
-        localStorage.setItem('infrapilot_token', 'admin_auth_token')
-        localStorage.setItem('admin_authenticated', 'true')
-        
-        router.push('/admin')
-        router.refresh()
-      } else {
-        setError('Invalid admin credentials')
-      }
+      // ✅ After login(), AuthContext stores token/user and redirects by role,
+      // but we enforce admin route here to be safe.
+      router.push('/admin')
+      router.refresh()
     } catch (err) {
-      setError('Authentication failed')
+      setError('Authentication failed. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -59,16 +46,15 @@ export default function AdminLogin() {
             <span className="text-2xl">🔐</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Admin Portal</h1>
-          <p className="text-gray-400">Enter admin credentials to continue</p>
+          <p className="text-gray-400">Enter your admin account credentials to continue</p>
         </div>
-        
+
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <p className="text-red-300 text-sm">{error}</p>
-            <p className="text-gray-400 text-xs mt-2">For demo: admin@infrapilot.com / Admin@123</p>
           </div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-gray-300 mb-2 text-sm font-medium">Admin Email</label>
@@ -77,11 +63,12 @@ export default function AdminLogin() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="admin@infrapilot.com"
+              placeholder="you@company.com"
               required
+              autoComplete="email"
             />
           </div>
-          
+
           <div>
             <label className="block text-gray-300 mb-2 text-sm font-medium">Password</label>
             <input
@@ -91,9 +78,10 @@ export default function AdminLogin() {
               className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               placeholder="••••••••"
               required
+              autoComplete="current-password"
             />
           </div>
-          
+
           <button
             type="submit"
             disabled={loading}
@@ -109,11 +97,9 @@ export default function AdminLogin() {
             )}
           </button>
         </form>
-        
+
         <div className="mt-8 pt-6 border-t border-gray-700">
-          <p className="text-gray-500 text-sm text-center">
-            ⚠️ This portal is for authorized personnel only
-          </p>
+          <p className="text-gray-500 text-sm text-center">⚠️ This portal is for authorized personnel only</p>
         </div>
       </div>
     </div>
