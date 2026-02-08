@@ -29,7 +29,6 @@ export default function AdminPage() {
   // ✅ Always call backend with absolute URL in production
   const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('infrapilot_token')
-
     const fullUrl = url.startsWith('/') ? `${API_BASE_URL}${url}` : url
 
     const res = await fetch(fullUrl, {
@@ -44,10 +43,23 @@ export default function AdminPage() {
     return res
   }
 
+  const handleLogout = () => {
+    localStorage.removeItem('infrapilot_user')
+    localStorage.removeItem('infrapilot_token')
+    localStorage.removeItem('admin_authenticated') // kept for cleanup if it exists
+    router.replace('/login')
+  }
+
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
         const statsRes = await fetchWithAuth('/api/v1/admin/dashboard')
+        if (statsRes.status === 401) {
+          console.error('Admin dashboard stats failed: 401 (unauthorized)')
+          handleLogout()
+          return
+        }
+
         if (statsRes.ok) {
           const statsJson = await statsRes.json()
           const data = statsJson?.data ?? statsJson
@@ -57,6 +69,12 @@ export default function AdminPage() {
         }
 
         const activityRes = await fetchWithAuth('/api/v1/admin/activity')
+        if (activityRes.status === 401) {
+          console.error('Admin activity failed: 401 (unauthorized)')
+          handleLogout()
+          return
+        }
+
         if (activityRes.ok) {
           const activityJson = await activityRes.json()
           setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
@@ -71,28 +89,28 @@ export default function AdminPage() {
     const checkAdminAuth = async () => {
       try {
         const userStr = localStorage.getItem('infrapilot_user')
-        const adminAuth = localStorage.getItem('admin_authenticated')
+        const token = localStorage.getItem('infrapilot_token')
 
-        if (!userStr || adminAuth !== 'true') {
-          router.push('/login')
+        // ✅ FIX: do NOT rely on admin_authenticated flag (it was never set on login)
+        if (!userStr || !token) {
+          router.replace('/login')
           return
         }
 
         const userData = JSON.parse(userStr)
 
         if (userData.role !== 'admin' && !userData.isAdmin) {
-          router.push('/login')
+          router.replace('/login')
           return
         }
 
-        // ✅ Demo admin login: do not call /auth/me (it returns 401 with fake token)
         setUser(userData)
         setIsAuthenticated(true)
 
         await loadDashboardData()
       } catch (error) {
         console.error('Admin auth check failed:', error)
-        router.push('/login')
+        router.replace('/login')
       } finally {
         setLoading(false)
       }
@@ -101,13 +119,6 @@ export default function AdminPage() {
     checkAdminAuth()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const handleLogout = () => {
-    localStorage.removeItem('infrapilot_user')
-    localStorage.removeItem('infrapilot_token')
-    localStorage.removeItem('admin_authenticated')
-    router.push('/login')
-  }
 
   if (loading) {
     return (
