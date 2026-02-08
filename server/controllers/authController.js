@@ -47,23 +47,36 @@ exports.register = async (req, res, next) => {
   }
 };
 
-// @desc    Login user
+// @desc    Login user (✅ UPDATED)
 // @route   POST /api/v1/auth/login
 // @access  Public
 exports.login = async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    // ✅ Accept both old + new frontend payloads:
+    // Old: { email, password }
+    // New: { emailOrUsername, password, role }
+    const emailOrUsernameRaw = req.body.emailOrUsername || req.body.email;
+    const password = req.body.password;
+    const role = req.body.role;
+
+    const emailOrUsername = (emailOrUsernameRaw || "").trim().toLowerCase();
 
     // Validate email & password
-    if (!email || !password) {
+    if (!emailOrUsername || !password) {
       return next(new ErrorResponse("Please provide an email and password", 400));
     }
 
     // Check for user
-    const user = await User.findOne({ email }).select("+password");
+    const user = await User.findOne({ email: emailOrUsername }).select("+password");
 
     if (!user) {
       return next(new ErrorResponse("Invalid credentials", 401));
+    }
+
+    // ✅ Optional: enforce role portal (admin/recruiter/candidate)
+    // If you don't want this check, you can remove this block.
+    if (role && user.role && user.role !== role) {
+      return next(new ErrorResponse("Invalid role for this account", 401));
     }
 
     // Check if user is active
@@ -101,7 +114,10 @@ exports.getMe = async (req, res, next) => {
     // Get profile based on role
     if (user.role === "candidate") {
       profile = await Candidate.findOne({ userId: user._id })
-        .populate("assignedRecruiterId", "name email department specialization status phone bio experience")
+        .populate(
+          "assignedRecruiterId",
+          "name email department specialization status phone bio experience"
+        )
         .lean();
     } else if (user.role === "recruiter") {
       profile = await Recruiter.findOne({ userId: user._id }).lean();
