@@ -7,7 +7,7 @@ export default function RecruiterPage() {
   const [user, setUser] = useState<any>(null)
   const [assignedCandidates, setAssignedCandidates] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedCandidate, setSelectedCandidate] = useState(null)
+  const [selectedCandidate, setSelectedCandidate] = useState<any>(null)
   const [showCandidateDetails, setShowCandidateDetails] = useState(false)
   const [candidateJobs, setCandidateJobs] = useState([])
   const [stats, setStats] = useState({
@@ -16,7 +16,7 @@ export default function RecruiterPage() {
     pendingFollowups: 0,
     interviewsThisWeek: 0
   })
-  const [editingJob, setEditingJob] = useState(null)
+  const [editingJob, setEditingJob] = useState<any>(null)
   const [showEditForm, setShowEditForm] = useState(false)
   const [jobFormData, setJobFormData] = useState({
     jobTitle: '',
@@ -45,8 +45,8 @@ export default function RecruiterPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'
   const router = useRouter()
 
-  // ✅ API HELPER FUNCTION
-  const api = async (path, options = {}) => {
+  // ✅ API HELPER FUNCTION with TypeScript types
+  const api = async (path: string, options: any = {}) => {
     const res = await fetch(`${apiBaseUrl}${path}`, {
       headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
       credentials: 'include',
@@ -67,40 +67,40 @@ export default function RecruiterPage() {
   };
 
   // ✅ recruiter loads assigned candidates from DB
-  const fetchAssignedCandidates = (recruiterId) =>
+  const fetchAssignedCandidates = (recruiterId: string) =>
     api(`/api/v1/recruiter/${recruiterId}/candidates`, { method: 'GET' });
 
   // ✅ jobs for a candidate (real DB, not mock)
-  const fetchCandidateJobs = (candidateId) =>
+  const fetchCandidateJobs = (candidateId: string) =>
     api(`/api/v1/candidates/${candidateId}/jobs`, { method: 'GET' });
 
   // ✅ create job
-  const createCandidateJob = (candidateId, payload) =>
+  const createCandidateJob = (candidateId: string, payload: any) =>
     api(`/api/v1/candidates/${candidateId}/jobs`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
   // ✅ update job
-  const updateCandidateJob = (candidateId, jobId, payload) =>
+  const updateCandidateJob = (candidateId: string, jobId: string, payload: any) =>
     api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
 
   // ✅ delete job
-  const deleteCandidateJob = (candidateId, jobId) =>
+  const deleteCandidateJob = (candidateId: string, jobId: string) =>
     api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, { method: 'DELETE' });
 
   // ✅ save resume used for a job (IMPORTANT)
-  const saveJobResume = (candidateId, jobId, resumeText) =>
+  const saveJobResume = (candidateId: string, jobId: string, resumeText: string) =>
     api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, {
       method: 'POST',
       body: JSON.stringify({ resumeText }),
     });
 
   // ✅ get resume used for a job
-  const fetchJobResume = (candidateId, jobId) =>
+  const fetchJobResume = (candidateId: string, jobId: string) =>
     api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, { method: 'GET' });
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
@@ -434,7 +434,7 @@ export default function RecruiterPage() {
   }
   
   const loadJobDetails = (jobId: string) => {
-    const job = candidateJobs.find(j => j.id === jobId)
+    const job = candidateJobs.find((j: any) => j.id === jobId)
     if (job) {
       setJobIdForResume(job.id)
       setJobDescriptionForResume(job.description)
@@ -443,7 +443,7 @@ export default function RecruiterPage() {
   }
 
   // ✅ UPDATED: Function to view candidate details
-  const viewCandidateDetails = async (candidate) => {
+  const viewCandidateDetails = async (candidate: any) => {
     const structuredCandidate = ensureCandidateDataStructure(candidate);
     setSelectedCandidate(structuredCandidate);
 
@@ -515,11 +515,11 @@ export default function RecruiterPage() {
         
         // ✅ Load assigned candidates from backend (not localStorage)
         try {
-          const myCandidates = await fetchAssignedCandidates(recruiterId);
+          const myCandidates = await fetchAssignedCandidates(recruiterId || '');
           setAssignedCandidates(myCandidates);
 
-          const activeSubs = myCandidates.filter(c => c.subscriptionStatus === 'active').length;
-          const pending = myCandidates.filter(c => c.paymentStatus === 'pending').length;
+          const activeSubs = myCandidates.filter((c: any) => c.subscriptionStatus === 'active').length;
+          const pending = myCandidates.filter((c: any) => c.paymentStatus === 'pending').length;
 
           setStats({
             totalAssigned: myCandidates.length,
@@ -594,7 +594,7 @@ export default function RecruiterPage() {
     
     // Update the current session
     const updatedSessions = [...workSessions]
-    const currentSessionIndex = updatedSessions.findIndex(session => !session.clockOut)
+    const currentSessionIndex = updatedSessions.findIndex((session: any) => !session.clockOut)
     
     if (currentSessionIndex !== -1) {
       updatedSessions[currentSessionIndex] = {
@@ -643,13 +643,13 @@ export default function RecruiterPage() {
 
   const getTodayWorkStats = () => {
     const today = new Date().toDateString()
-    const todaySessions = workSessions.filter(session => 
+    const todaySessions = workSessions.filter((session: any) => 
       new Date(session.clockIn).toDateString() === today && session.clockOut
     )
     
     return {
       sessions: todaySessions.length,
-      totalDuration: todaySessions.reduce((total, session) => total + session.duration, 0) + totalWorkedToday
+      totalDuration: todaySessions.reduce((total: number, session: any) => total + session.duration, 0) + totalWorkedToday
     }
   }
 
@@ -668,9 +668,9 @@ export default function RecruiterPage() {
     router.push('/login')
   }
 
-  const updateCandidateStatus = (candidateId, newStatus) => {
+  const updateCandidateStatus = (candidateId: string, newStatus: string) => {
     const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-    const updatedCandidates = candidates.map(candidate => {
+    const updatedCandidates = candidates.map((candidate: any) => {
       if (candidate.id === candidateId) {
         return { ...candidate, recruiterStatus: newStatus }
       }
@@ -680,7 +680,7 @@ export default function RecruiterPage() {
     
     // Update local state
     setAssignedCandidates(prev => 
-      prev.map(candidate => 
+      prev.map((candidate: any) => 
         candidate.id === candidateId 
           ? { ...candidate, recruiterStatus: newStatus }
           : candidate
@@ -690,8 +690,8 @@ export default function RecruiterPage() {
     alert('Status updated successfully!')
   }
 
-  const handleEditJob = (jobId) => {
-    const jobToEdit = candidateJobs.find(job => job.id === jobId)
+  const handleEditJob = (jobId: string) => {
+    const jobToEdit = candidateJobs.find((job: any) => job.id === jobId)
     if (jobToEdit) {
       setEditingJob(jobToEdit)
       setJobFormData({
@@ -719,7 +719,7 @@ export default function RecruiterPage() {
       setShowEditForm(false);
       setEditingJob(null);
       alert('✅ Job updated successfully!');
-    } catch (e) {
+    } catch (e: any) {
       alert(`❌ ${e?.message || 'Failed to update job'}`);
     }
   };
@@ -739,7 +739,7 @@ export default function RecruiterPage() {
   }
 
   // ✅ UPDATED: handleDeleteJob (delete in DB)
-  const handleDeleteJob = async (jobId) => {
+  const handleDeleteJob = async (jobId: string) => {
     if (!selectedCandidate) return;
 
     if (!window.confirm('Are you sure you want to delete this job application?')) return;
@@ -749,7 +749,7 @@ export default function RecruiterPage() {
       const jobs = await fetchCandidateJobs(selectedCandidate.id);
       setCandidateJobs(jobs);
       alert('✅ Job deleted!');
-    } catch (e) {
+    } catch (e: any) {
       alert(`❌ ${e?.message || 'Failed to delete job'}`);
     }
   };
@@ -786,13 +786,13 @@ export default function RecruiterPage() {
         salaryRange: created.salaryRange,
       });
       setShowEditForm(true);
-    } catch (e) {
+    } catch (e: any) {
       alert(`❌ ${e?.message || 'Failed to create job'}`);
     }
   };
 
-  const getPlanColor = (plan) => {
-    const colors = {
+  const getPlanColor = (plan: string) => {
+    const colors: any = {
       free: 'bg-gray-100 text-gray-900',
       silver: 'bg-gray-300 text-gray-900',
       gold: 'bg-yellow-100 text-gray-900',
@@ -802,8 +802,8 @@ export default function RecruiterPage() {
     return colors[plan] || 'bg-blue-100 text-gray-900'
   }
 
-  const getStatusColor = (status) => {
-    const colors = {
+  const getStatusColor = (status: string) => {
+    const colors: any = {
       'Applied': 'bg-blue-100 text-gray-900',
       'Under Review': 'bg-yellow-100 text-gray-900',
       'Interview': 'bg-purple-100 text-gray-900',
@@ -813,8 +813,8 @@ export default function RecruiterPage() {
     return colors[status] || 'bg-gray-100 text-gray-900'
   }
 
-  const getResumeColor = (status) => {
-    const colors = {
+  const getResumeColor = (status: string) => {
+    const colors: any = {
       'Submitted': 'bg-green-100 text-gray-900',
       'Reviewed': 'bg-blue-100 text-gray-900',
       'Pending': 'bg-yellow-100 text-gray-900'
@@ -1249,7 +1249,7 @@ export default function RecruiterPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {assignedCandidates.map((candidate) => {
+                  {assignedCandidates.map((candidate: any) => {
                     const daysRemaining = candidate.daysRemaining || 0
                     
                     return (
@@ -1425,7 +1425,7 @@ export default function RecruiterPage() {
                                 className="p-3 border border-gray-300 rounded-lg bg-white text-gray-900"
                               >
                                 <option value="">Load from jobs</option>
-                                {candidateJobs.map(job => (
+                                {candidateJobs.map((job: any) => (
                                   <option key={job.id} value={job.id}>
                                     {job.jobTitle} - {job.company}
                                   </option>
@@ -1502,7 +1502,7 @@ export default function RecruiterPage() {
                           <button
                             onClick={() => {
                               setJobIdForResume(`job_${selectedCandidate.id}_${Date.now()}`)
-                              setJobDescriptionForResume(candidateJobs.length > 0 ? candidateJobs[0].description : '')
+                              setJobDescriptionForResume(candidateJobs.length > 0 ? (candidateJobs[0] as any).description : '')
                             }}
                             className="px-6 py-3 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200"
                           >
@@ -1569,7 +1569,7 @@ export default function RecruiterPage() {
                       <button
                         onClick={() => {
                           if (candidateJobs.length > 0) {
-                            loadJobDetails(candidateJobs[0].id)
+                            loadJobDetails((candidateJobs[0] as any).id)
                             document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                           }
                         }}
@@ -1607,7 +1607,7 @@ export default function RecruiterPage() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-200">
-                          {candidateJobs.map((job) => (
+                          {candidateJobs.map((job: any) => (
                             <tr key={job.id} className="hover:bg-gray-50">
                               <td className="p-3">
                                 <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.id}</code>
@@ -1685,20 +1685,20 @@ export default function RecruiterPage() {
                     </div>
                     <div className="text-center p-4 bg-white rounded-lg">
                       <p className="text-2xl font-bold text-green-700">
-                        {candidateJobs.filter(j => j.status === 'Offer').length}
+                        {candidateJobs.filter((j: any) => j.status === 'Offer').length}
                       </p>
                       <p className="text-sm text-gray-600">Offers</p>
                     </div>
                     <div className="text-center p-4 bg-white rounded-lg">
                       <p className="text-2xl font-bold text-yellow-700">
-                        {candidateJobs.filter(j => j.status === 'Interview').length}
+                        {candidateJobs.filter((j: any) => j.status === 'Interview').length}
                       </p>
                       <p className="text-sm text-gray-600">Interviews</p>
                     </div>
                     <div className="text-center p-4 bg-white rounded-lg">
                       <p className="text-2xl font-bold text-gray-900">
                         {candidateJobs.length > 0 
-                          ? Math.round(candidateJobs.reduce((sum, job) => sum + job.matchScore, 0) / candidateJobs.length)
+                          ? Math.round(candidateJobs.reduce((sum: number, job: any) => sum + job.matchScore, 0) / candidateJobs.length)
                           : 0
                         }%
                       </p>
@@ -1923,9 +1923,9 @@ export default function RecruiterPage() {
             <h3 className="font-bold text-gray-800 mb-4">🎯 Priority Tasks</h3>
             <div className="space-y-3">
               {assignedCandidates
-                .filter(c => c.paymentStatus === 'pending')
+                .filter((c: any) => c.paymentStatus === 'pending')
                 .slice(0, 3)
-                .map((candidate, index) => (
+                .map((candidate: any, index: number) => (
                   <div key={candidate.id} className="p-3 bg-yellow-50 rounded-lg">
                     <p className="font-medium text-gray-900">{candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}</p>
                     <p className="text-sm text-gray-600">Payment pending - follow up required</p>
