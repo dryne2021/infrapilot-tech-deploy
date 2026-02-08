@@ -1,27 +1,24 @@
+// server/routes/jobApplicationRoutes.js
 const express = require("express");
 const router = express.Router();
 
 const {
   createJobApplication,
   getJobsByCandidate,
-  getJobsByRecruiter,
   updateJobApplication,
   deleteJobApplication,
 } = require("../controllers/jobApplicationController");
 
-// POST create job
+// POST   /api/v1/job-applications
 router.post("/", createJobApplication);
 
-// GET jobs for a candidate
+// GET    /api/v1/job-applications/candidate/:candidateId?recruiterId=...
 router.get("/candidate/:candidateId", getJobsByCandidate);
 
-// GET jobs for a recruiter
-router.get("/recruiter/:recruiterId", getJobsByRecruiter);
-
-// PUT update job
+// PUT    /api/v1/job-applications/:id
 router.put("/:id", updateJobApplication);
 
-// DELETE job
+// DELETE /api/v1/job-applications/:id
 router.delete("/:id", deleteJobApplication);
 
 module.exports = router;

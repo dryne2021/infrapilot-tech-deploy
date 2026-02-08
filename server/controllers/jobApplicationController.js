@@ -1,6 +1,7 @@
+// server/controllers/jobApplicationController.js
 const JobApplication = require("../models/JobApplication");
 
-// ✅ Create a job application (recruiter adds a job for a candidate)
+// ✅ Create a job application
 exports.createJobApplication = async (req, res) => {
   try {
     const {
@@ -16,22 +17,21 @@ exports.createJobApplication = async (req, res) => {
       resumeStatus,
       matchScore,
       salaryRange,
-      appliedDate,
       jobDescriptionFull,
       resumeText,
       resumeDocxUrl,
     } = req.body;
 
-    if (!candidateId || !recruiterId || !jobTitle) {
+    if (!candidateId || !recruiterId || !jobTitle || !(company || companyName)) {
       return res.status(400).json({
-        message: "candidateId, recruiterId, and jobTitle are required",
+        message: "candidateId, recruiterId, jobTitle and company/companyName are required",
       });
     }
 
-    const created = await JobApplication.create({
+    const doc = await JobApplication.create({
       candidateId,
       recruiterId,
-      jobId,
+      jobId: jobId || "",
       jobTitle,
       company: company || companyName,
       companyName: companyName || company,
@@ -41,87 +41,74 @@ exports.createJobApplication = async (req, res) => {
       resumeStatus: resumeStatus || "Pending",
       matchScore: typeof matchScore === "number" ? matchScore : 0,
       salaryRange: salaryRange || "",
-      appliedDate: appliedDate ? new Date(appliedDate) : new Date(),
       jobDescriptionFull: jobDescriptionFull || "",
       resumeText: resumeText || "",
       resumeDocxUrl: resumeDocxUrl || "",
+      appliedDate: new Date(),
     });
 
-    return res.status(201).json({ success: true, job: created });
-  } catch (error) {
-    console.error("createJobApplication error:", error);
-    return res.status(500).json({ message: "Server error creating job" });
+    return res.status(201).json({ success: true, job: doc });
+  } catch (err) {
+    console.error("❌ createJobApplication error:", err);
+    return res.status(500).json({ message: "Server error creating job application" });
   }
 };
 
-// ✅ Get jobs for a candidate (used by recruiter/candidate dashboard)
+// ✅ Get jobs by candidate (and optionally recruiter)
 exports.getJobsByCandidate = async (req, res) => {
   try {
     const { candidateId } = req.params;
+    const { recruiterId } = req.query;
 
-    const jobs = await JobApplication.find({ candidateId })
-      .sort({ appliedDate: -1, createdAt: -1 })
-      .lean();
+    const filter = { candidateId };
+    if (recruiterId) filter.recruiterId = recruiterId;
+
+    const jobs = await JobApplication.find(filter).sort({ appliedDate: -1, createdAt: -1 });
 
     return res.status(200).json({ success: true, jobs });
-  } catch (error) {
-    console.error("getJobsByCandidate error:", error);
-    return res.status(500).json({ message: "Server error loading jobs" });
+  } catch (err) {
+    console.error("❌ getJobsByCandidate error:", err);
+    return res.status(500).json({ message: "Server error fetching job applications" });
   }
 };
 
-// ✅ Get jobs for a recruiter (all jobs they created)
-exports.getJobsByRecruiter = async (req, res) => {
-  try {
-    const { recruiterId } = req.params;
-
-    const jobs = await JobApplication.find({ recruiterId })
-      .sort({ appliedDate: -1, createdAt: -1 })
-      .lean();
-
-    return res.status(200).json({ success: true, jobs });
-  } catch (error) {
-    console.error("getJobsByRecruiter error:", error);
-    return res.status(500).json({ message: "Server error loading recruiter jobs" });
-  }
-};
-
-// ✅ Update a job (edit status/description/resume info)
+// ✅ Update job by id
 exports.updateJobApplication = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const updated = await JobApplication.findByIdAndUpdate(
-      id,
-      { ...req.body, updatedAt: Date.now() },
-      { new: true }
-    );
+    // allow partial updates
+    const updates = { ...req.body, updatedAt: Date.now() };
 
-    if (!updated) {
-      return res.status(404).json({ message: "Job not found" });
-    }
+    // keep compatibility for company/companyName
+    if (updates.company && !updates.companyName) updates.companyName = updates.company;
+    if (updates.companyName && !updates.company) updates.company = updates.companyName;
 
-    return res.status(200).json({ success: true, job: updated });
-  } catch (error) {
-    console.error("updateJobApplication error:", error);
-    return res.status(500).json({ message: "Server error updating job" });
+    const job = await JobApplication.findByIdAndUpdate(id, updates, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!job) return res.status(404).json({ message: "Job application not found" });
+
+    return res.status(200).json({ success: true, job });
+  } catch (err) {
+    console.error("❌ updateJobApplication error:", err);
+    return res.status(500).json({ message: "Server error updating job application" });
   }
 };
 
-// ✅ Delete a job
+// ✅ Delete job by id
 exports.deleteJobApplication = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deleted = await JobApplication.findByIdAndDelete(id);
+    const job = await JobApplication.findByIdAndDelete(id);
+    if (!job) return res.status(404).json({ message: "Job application not found" });
 
-    if (!deleted) {
-      return res.status(404).json({ message: "Job not found" });
-    }
-
-    return res.status(200).json({ success: true, message: "Job deleted" });
-  } catch (error) {
-    console.error("deleteJobApplication error:", error);
-    return res.status(500).json({ message: "Server error deleting job" });
+    return res.status(200).json({ success: true, message: "Job application deleted" });
+  } catch (err) {
+    console.error("❌ deleteJobApplication error:", err);
+    return res.status(500).json({ message: "Server error deleting job application" });
   }
 };

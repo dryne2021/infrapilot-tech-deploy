@@ -45,12 +45,18 @@ export default function RecruiterPage() {
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'
   const router = useRouter()
 
-  // ✅ API HELPER FUNCTION with TypeScript types
-  const api = async (path: string, options: any = {}) => {
+  // ✅ FIXED: API HELPER FUNCTION with proper TypeScript types
+  const api = async (
+    path: string,
+    options: (RequestInit & { headers?: HeadersInit }) = {}
+  ) => {
     const res = await fetch(`${apiBaseUrl}${path}`, {
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
       credentials: 'include',
       ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
     });
 
     const contentType = res.headers.get('content-type') || '';
@@ -59,7 +65,7 @@ export default function RecruiterPage() {
       : await res.text().catch(() => '');
 
     if (!res.ok) {
-      const msg = typeof data === 'string' ? data : (data?.message || `Request failed (${res.status})`);
+      const msg = typeof data === 'string' ? data : ((data as any)?.message || `Request failed (${res.status})`);
       throw new Error(msg);
     }
 
@@ -70,45 +76,47 @@ export default function RecruiterPage() {
   const fetchAssignedCandidates = (recruiterId: string) =>
     api(`/api/v1/recruiter/${recruiterId}/candidates`, { method: 'GET' });
 
-  // ✅ jobs for a candidate (real DB, not mock)
-  const fetchCandidateJobs = (candidateId: string) =>
-    api(`/api/v1/candidates/${candidateId}/jobs`, { method: 'GET' });
+  // ✅ MONGO-BACKED JOB APIS (UPDATED ROUTES)
+  const fetchCandidateJobs = (candidateId: string, recruiterId: string) =>
+    api(`/api/v1/job-applications/candidate/${candidateId}?recruiterId=${recruiterId}`, {
+      method: 'GET',
+    });
 
-  // ✅ create job
-  const createCandidateJob = (candidateId: string, payload: any) =>
-    api(`/api/v1/candidates/${candidateId}/jobs`, {
+  const createCandidateJob = (payload: any) =>
+    api(`/api/v1/job-applications`, {
       method: 'POST',
       body: JSON.stringify(payload),
     });
 
-  // ✅ update job
-  const updateCandidateJob = (candidateId: string, jobId: string, payload: any) =>
-    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, {
+  const updateCandidateJob = (jobDbId: string, payload: any) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
 
-  // ✅ delete job
-  const deleteCandidateJob = (candidateId: string, jobId: string) =>
-    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}`, { method: 'DELETE' });
-
-  // ✅ save resume used for a job (IMPORTANT)
-  const saveJobResume = (candidateId: string, jobId: string, resumeText: string) =>
-    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, {
-      method: 'POST',
-      body: JSON.stringify({ resumeText }),
+  const deleteCandidateJob = (jobDbId: string) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
+      method: 'DELETE',
     });
 
-  // ✅ get resume used for a job
-  const fetchJobResume = (candidateId: string, jobId: string) =>
-    api(`/api/v1/candidates/${candidateId}/jobs/${jobId}/resume`, { method: 'GET' });
+  // ✅ Save resume directly into JobApplication
+  const saveJobResume = (jobDbId: string, resumeText: string, jobDescriptionFull: string) =>
+    updateCandidateJob(jobDbId, {
+      resumeText,
+      jobDescriptionFull,
+      resumeStatus: 'Submitted',
+    });
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
     if (!candidate) return candidate;
-    
-    // Create a copy to avoid mutating original
+
     const structuredCandidate = { ...candidate };
+
+    // ✅ Ensure candidate has a consistent id field
+    if (!structuredCandidate.id && structuredCandidate._id) {
+      structuredCandidate.id = structuredCandidate._id;
+    }
     
     // Ensure skills is an array
     if (!Array.isArray(structuredCandidate.skills)) {
@@ -294,9 +302,9 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ attach resume to THIS job in DB
-      if (selectedCandidate?.id && jobIdForResume) {
-        await saveJobResume(selectedCandidate.id, jobIdForResume, resumeText);
+      // ✅ FIXED: attach resume to THIS job in MongoDB
+      if (editingJob?._id) {
+        await saveJobResume(editingJob._id, resumeText, jobDescriptionForResume);
       }
 
       // 2) Download Word (.docx) from POST /download
@@ -367,9 +375,9 @@ export default function RecruiterPage() {
 
       setGeneratedResume(resumeText);
 
-      // ✅ attach resume to THIS job in DB
-      if (selectedCandidate?.id && jobIdForResume) {
-        await saveJobResume(selectedCandidate.id, jobIdForResume, resumeText);
+      // ✅ FIXED: attach resume to THIS job in MongoDB
+      if (editingJob?._id) {
+        await saveJobResume(editingJob._id, resumeText, jobDescriptionForResume);
       }
 
       // Save to history
@@ -433,14 +441,18 @@ export default function RecruiterPage() {
     setGeneratedResume('')
   }
   
-  const loadJobDetails = (jobId: string) => {
-    const job = candidateJobs.find((j: any) => j.id === jobId)
+  // ✅ FIXED: loadJobDetails function
+  const loadJobDetails = (jobDbId: string) => {
+    const job = candidateJobs.find((j: any) => j._id === jobDbId);
     if (job) {
-      setJobIdForResume(job.id)
-      setJobDescriptionForResume(job.description)
-      setShowResumeGenerator(true)
+      // ✅ this ensures saveJobResume uses the correct job
+      setEditingJob(job);
+
+      setJobIdForResume(job.jobId || job._id);
+      setJobDescriptionForResume(job.jobDescriptionFull || job.description || '');
+      setShowResumeGenerator(true);
     }
-  }
+  };
 
   // ✅ UPDATED: Function to view candidate details
   const viewCandidateDetails = async (candidate: any) => {
@@ -448,8 +460,9 @@ export default function RecruiterPage() {
     setSelectedCandidate(structuredCandidate);
 
     try {
-      const jobs = await fetchCandidateJobs(structuredCandidate.id);
-      setCandidateJobs(Array.isArray(jobs) ? jobs : []);
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(structuredCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
     } catch (e) {
       console.error('Failed to load candidate jobs:', e);
       setCandidateJobs([]);
@@ -668,30 +681,36 @@ export default function RecruiterPage() {
     router.push('/login')
   }
 
-  const updateCandidateStatus = (candidateId: string, newStatus: string) => {
-    const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-    const updatedCandidates = candidates.map((candidate: any) => {
-      if (candidate.id === candidateId) {
-        return { ...candidate, recruiterStatus: newStatus }
-      }
-      return candidate
-    })
-    localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-    
-    // Update local state
-    setAssignedCandidates(prev => 
-      prev.map((candidate: any) => 
-        candidate.id === candidateId 
-          ? { ...candidate, recruiterStatus: newStatus }
-          : candidate
-      )
-    )
-    
-    alert('Status updated successfully!')
-  }
+  // ✅ FIXED: Update candidate status (no localStorage, backend only)
+  const updateCandidateStatus = async (candidateId: string, newStatus: string) => {
+    try {
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      
+      // Call backend API to update candidate status
+      await api(`/api/v1/recruiter/${recruiterId}/candidates/${candidateId}/status`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      // Update local state
+      setAssignedCandidates(prev => 
+        prev.map((candidate: any) => {
+          const candidateWithId = ensureCandidateDataStructure(candidate);
+          return candidateWithId.id === candidateId 
+            ? { ...candidateWithId, recruiterStatus: newStatus }
+            : candidateWithId;
+        })
+      );
+      
+      alert('Status updated successfully!');
+    } catch (error: any) {
+      console.error('Failed to update candidate status:', error);
+      alert(`Failed to update status: ${error?.message || 'Unknown error'}`);
+    }
+  };
 
-  const handleEditJob = (jobId: string) => {
-    const jobToEdit = candidateJobs.find((job: any) => job.id === jobId)
+  const handleEditJob = (jobDbId: string) => {
+    const jobToEdit = candidateJobs.find((job: any) => job._id === jobDbId)
     if (jobToEdit) {
       setEditingJob(jobToEdit)
       setJobFormData({
@@ -707,14 +726,16 @@ export default function RecruiterPage() {
     }
   }
 
-  // ✅ UPDATED: handleSaveJob (update in DB)
+  // ✅ UPDATED: handleSaveJob (update in MongoDB)
   const handleSaveJob = async () => {
     if (!editingJob || !selectedCandidate) return;
 
     try {
-      await updateCandidateJob(selectedCandidate.id, editingJob.id, jobFormData);
-      const jobs = await fetchCandidateJobs(selectedCandidate.id);
-      setCandidateJobs(jobs);
+      await updateCandidateJob(editingJob._id, jobFormData);
+      
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
 
       setShowEditForm(false);
       setEditingJob(null);
@@ -738,27 +759,34 @@ export default function RecruiterPage() {
     })
   }
 
-  // ✅ UPDATED: handleDeleteJob (delete in DB)
-  const handleDeleteJob = async (jobId: string) => {
+  // ✅ UPDATED: handleDeleteJob (delete in MongoDB)
+  const handleDeleteJob = async (jobDbId: string) => {
     if (!selectedCandidate) return;
 
     if (!window.confirm('Are you sure you want to delete this job application?')) return;
 
     try {
-      await deleteCandidateJob(selectedCandidate.id, jobId);
-      const jobs = await fetchCandidateJobs(selectedCandidate.id);
-      setCandidateJobs(jobs);
+      await deleteCandidateJob(jobDbId);
+      
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
       alert('✅ Job deleted!');
     } catch (e: any) {
       alert(`❌ ${e?.message || 'Failed to delete job'}`);
     }
   };
 
-  // ✅ UPDATED: addNewJob (create in DB)
+  // ✅ FIXED: addNewJob (Mongo requires recruiterId)
   const addNewJob = async () => {
     if (!selectedCandidate) return;
 
+    const recruiterId = localStorage.getItem('recruiter_id') || '';
+
     const payload = {
+      candidateId: selectedCandidate.id,
+      recruiterId,
+      jobId: `job_${Date.now()}`,
       jobTitle: 'New Position',
       company: 'New Company',
       description: 'Add job description here...',
@@ -769,23 +797,12 @@ export default function RecruiterPage() {
     };
 
     try {
-      const created = await createCandidateJob(selectedCandidate.id, payload);
+      await createCandidateJob(payload);
 
-      // refresh jobs
-      const jobs = await fetchCandidateJobs(selectedCandidate.id);
-      setCandidateJobs(jobs);
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
 
-      setEditingJob(created);
-      setJobFormData({
-        jobTitle: created.jobTitle,
-        company: created.company,
-        description: created.description,
-        status: created.status,
-        resumeStatus: created.resumeStatus,
-        matchScore: created.matchScore,
-        salaryRange: created.salaryRange,
-      });
-      setShowEditForm(true);
+      setShowEditForm(false);
     } catch (e: any) {
       alert(`❌ ${e?.message || 'Failed to create job'}`);
     }
@@ -1250,44 +1267,45 @@ export default function RecruiterPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {assignedCandidates.map((candidate: any) => {
-                    const daysRemaining = candidate.daysRemaining || 0
+                    const candidateWithId = ensureCandidateDataStructure(candidate);
+                    const daysRemaining = candidateWithId.daysRemaining || 0
                     
                     return (
-                      <tr key={candidate.id} className="hover:bg-gray-50">
+                      <tr key={candidateWithId.id} className="hover:bg-gray-50">
                         <td className="p-4">
                           <div className="flex items-center gap-3">
                             <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
                               <span className="text-gray-900 font-semibold">
-                                {candidate.firstName?.[0]?.toUpperCase() || 'C'}
+                                {candidateWithId.firstName?.[0]?.toUpperCase() || 'C'}
                               </span>
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">{candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}</p>
-                              <p className="text-sm text-gray-500">ID: {candidate.id.substring(0, 8)}...</p>
+                              <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
+                              <p className="text-sm text-gray-500">ID: {candidateWithId.id.substring(0, 8)}...</p>
                             </div>
                           </div>
                         </td>
                         <td className="p-4">
                           <div className="space-y-1">
                             <p className="text-sm">
-                              <span className="font-medium">📧</span> {candidate.email}
+                              <span className="font-medium">📧</span> {candidateWithId.email}
                             </p>
                             <p className="text-sm">
-                              <span className="font-medium">📞</span> {candidate.phone || 'Not provided'}
+                              <span className="font-medium">📞</span> {candidateWithId.phone || 'Not provided'}
                             </p>
                             <p className="text-sm">
-                              <span className="font-medium">💼</span> {candidate.currentPosition || 'No position'}
+                              <span className="font-medium">💼</span> {candidateWithId.currentPosition || 'No position'}
                             </p>
                           </div>
                         </td>
                         <td className="p-4">
                           <div className="space-y-2">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPlanColor(candidate.subscriptionPlan)}`}>
-                              {candidate.subscriptionPlan || 'Free'} Plan
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getPlanColor(candidateWithId.subscriptionPlan)}`}>
+                              {candidateWithId.subscriptionPlan || 'Free'} Plan
                             </span>
                             <div className="text-xs">
-                              <span className={`px-2 py-1 rounded ${candidate.paymentStatus === 'paid' ? 'bg-green-100 text-gray-900' : 'bg-yellow-100 text-gray-900'}`}>
-                                {candidate.paymentStatus === 'paid' ? '✅ Paid' : '⏳ Pending'}
+                              <span className={`px-2 py-1 rounded ${candidateWithId.paymentStatus === 'paid' ? 'bg-green-100 text-gray-900' : 'bg-yellow-100 text-gray-900'}`}>
+                                {candidateWithId.paymentStatus === 'paid' ? '✅ Paid' : '⏳ Pending'}
                               </span>
                               <p className="text-gray-600 mt-1">{daysRemaining} days remaining</p>
                             </div>
@@ -1295,8 +1313,8 @@ export default function RecruiterPage() {
                         </td>
                         <td className="p-4">
                           <select
-                            value={candidate.recruiterStatus || 'new'}
-                            onChange={(e) => updateCandidateStatus(candidate.id, e.target.value)}
+                            value={candidateWithId.recruiterStatus || 'new'}
+                            onChange={(e) => updateCandidateStatus(candidateWithId.id, e.target.value)}
                             className="p-2 border border-gray-300 rounded-lg text-sm w-full bg-white text-gray-900"
                           >
                             <option value="new" className="text-gray-900">New 🆕</option>
@@ -1308,19 +1326,19 @@ export default function RecruiterPage() {
                             <option value="hired" className="text-gray-900">Hired 🎉</option>
                           </select>
                           <p className="text-xs text-gray-600 mt-1">
-                            Last updated: {new Date(candidate.createdAt || Date.now()).toLocaleDateString()}
+                            Last updated: {new Date(candidateWithId.createdAt || Date.now()).toLocaleDateString()}
                           </p>
                         </td>
                         <td className="p-4">
                           <div className="flex flex-col gap-2">
                             <button
-                              onClick={() => viewCandidateDetails(candidate)}
+                              onClick={() => viewCandidateDetails(candidateWithId)}
                               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
                             >
                               <span>👁️</span> View Jobs
                             </button>
                             <a 
-                              href={`mailto:${candidate.email}`}
+                              href={`mailto:${candidateWithId.email}`}
                               className="px-3 py-1 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200 text-center"
                             >
                               Email Candidate
@@ -1426,7 +1444,7 @@ export default function RecruiterPage() {
                               >
                                 <option value="">Load from jobs</option>
                                 {candidateJobs.map((job: any) => (
-                                  <option key={job.id} value={job.id}>
+                                  <option key={job._id} value={job._id}>
                                     {job.jobTitle} - {job.company}
                                   </option>
                                 ))}
@@ -1569,7 +1587,7 @@ export default function RecruiterPage() {
                       <button
                         onClick={() => {
                           if (candidateJobs.length > 0) {
-                            loadJobDetails((candidateJobs[0] as any).id)
+                            loadJobDetails((candidateJobs[0] as any)._id)
                             document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                           }
                         }}
@@ -1608,12 +1626,12 @@ export default function RecruiterPage() {
                         </thead>
                         <tbody className="divide-y divide-gray-200">
                           {candidateJobs.map((job: any) => (
-                            <tr key={job.id} className="hover:bg-gray-50">
+                            <tr key={job._id} className="hover:bg-gray-50">
                               <td className="p-3">
-                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.id}</code>
+                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.jobId || job._id}</code>
                                 <button
                                   onClick={() => {
-                                    loadJobDetails(job.id)
+                                    loadJobDetails(job._id)
                                     document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                                   }}
                                   className="mt-1 text-xs text-purple-600 hover:text-purple-800"
@@ -1637,13 +1655,13 @@ export default function RecruiterPage() {
                               </td>
                               <td className="p-3">
                                 <p className="text-sm text-gray-900">
-                                  {new Date(job.appliedDate).toLocaleDateString()}
+                                  {new Date(job.appliedDate || job.createdAt).toLocaleDateString()}
                                 </p>
                                 <p className="text-xs text-gray-600">
-                                  {new Date(job.appliedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                  {new Date(job.appliedDate || job.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                 </p>
                                 <p className="text-xs text-gray-500 mt-1">
-                                  {Math.floor((Date.now() - new Date(job.appliedDate).getTime()) / (1000 * 60 * 60 * 24))} days ago
+                                  {Math.floor((Date.now() - new Date(job.appliedDate || job.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days ago
                                 </p>
                               </td>
                               <td className="p-3">
@@ -1654,13 +1672,13 @@ export default function RecruiterPage() {
                               <td className="p-3">
                                 <div className="flex gap-2">
                                   <button
-                                    onClick={() => handleEditJob(job.id)}
+                                    onClick={() => handleEditJob(job._id)}
                                     className="px-3 py-1 text-sm bg-blue-100 text-gray-900 rounded hover:bg-blue-200"
                                   >
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteJob(job.id)}
+                                    onClick={() => handleDeleteJob(job._id)}
                                     className="px-3 py-1 text-sm bg-red-100 text-gray-900 rounded hover:bg-red-200"
                                   >
                                     Delete
@@ -1867,7 +1885,7 @@ export default function RecruiterPage() {
                     <div className="bg-blue-50 p-4 rounded-lg">
                       <h4 className="font-medium text-gray-900 mb-2">Additional Information</h4>
                       <p className="text-sm text-gray-700">
-                        Job ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?.id}</code>
+                        Job DB ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?._id}</code>
                       </p>
                       {editingJob?.appliedDate && (
                         <p className="text-sm text-gray-700 mt-1">
@@ -1925,15 +1943,18 @@ export default function RecruiterPage() {
               {assignedCandidates
                 .filter((c: any) => c.paymentStatus === 'pending')
                 .slice(0, 3)
-                .map((candidate: any, index: number) => (
-                  <div key={candidate.id} className="p-3 bg-yellow-50 rounded-lg">
-                    <p className="font-medium text-gray-900">{candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}</p>
-                    <p className="text-sm text-gray-600">Payment pending - follow up required</p>
-                    <button className="mt-2 text-sm text-blue-700 hover:text-blue-900">
-                      Contact now →
-                    </button>
-                  </div>
-                ))}
+                .map((candidate: any, index: number) => {
+                  const candidateWithId = ensureCandidateDataStructure(candidate);
+                  return (
+                    <div key={candidateWithId.id} className="p-3 bg-yellow-50 rounded-lg">
+                      <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
+                      <p className="text-sm text-gray-600">Payment pending - follow up required</p>
+                      <button className="mt-2 text-sm text-blue-700 hover:text-blue-900">
+                        Contact now →
+                      </button>
+                    </div>
+                  );
+                })}
             </div>
           </div>
 
