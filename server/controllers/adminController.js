@@ -158,7 +158,9 @@ exports.getRecentActivity = async (req, res, next) => {
         buildActivityItem({
           type: "assignment",
           action: "Candidate assigned",
-          user: `${c.fullName || c.email || "Candidate"} → ${c.assignedRecruiterId?.name || "Recruiter"}`,
+          user: `${c.fullName || c.email || "Candidate"} → ${
+            c.assignedRecruiterId?.name || "Recruiter"
+          }`,
           time: c.assignedDate || c.updatedAt || c.createdAt,
         })
       );
@@ -225,9 +227,19 @@ exports.getCandidates = async (req, res, next) => {
 
 exports.createCandidate = async (req, res, next) => {
   try {
+    // ✅ LOG 1: payload received
+    console.log("📥 [ADMIN] createCandidate payload:", req.body);
+
     const created = await Candidate.create(req.body);
+
+    // ✅ LOG 2: saved confirmation
+    console.log(
+      `✅ [ADMIN] candidate saved: ${created._id} email=${created.email || ""} name=${created.fullName || ""}`
+    );
+
     return res.status(201).json({ success: true, data: created });
   } catch (error) {
+    console.error("❌ [ADMIN] createCandidate error:", error);
     next(error);
   }
 };
