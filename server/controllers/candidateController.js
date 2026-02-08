@@ -284,3 +284,24 @@ exports.getApplication = async (req, res, next) => {
     next(error);
   }
 };
+
+// @desc    Get candidate by id (for Option A resume generation)
+// @route   GET /api/v1/candidates/:id
+// @access  Private (Admin/Recruiter) or Private (Server internal)
+exports.getCandidateById = async (req, res, next) => {
+  try {
+    const candidate = await Candidate.findById(req.params.id)
+      .populate('assignedRecruiterId', 'name email');
+
+    if (!candidate) {
+      return next(new ErrorResponse('Candidate not found', 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: candidate
+    });
+  } catch (error) {
+    next(error);
+  }
+};

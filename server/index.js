@@ -14,6 +14,7 @@ const adminRoutes = require("./routes/admin");
 const candidateRoutes = require("./routes/candidate");
 const recruiterRoutes = require("./routes/recruiter");
 const resumeRoutes = require("./routes/resumeRoutes");
+const candidatesRoutes = require("./routes/candidatesRoutes"); // ✅ ADD THIS
 
 // ✅ Load env vars explicitly from server/.env
 dotenv.config({ path: path.join(__dirname, ".env") });
@@ -46,7 +47,10 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/recruiter", recruiterRoutes);
 
-// ✅ Option A: confirm resume route mount
+// ✅ Option A route (ADMIN / RECRUITER FETCH BY ID)
+app.use("/api/v1/candidates", candidatesRoutes);
+
+// ✅ Resume routes
 console.log("✅ Resume routes mounted at /api/v1/resume");
 app.use("/api/v1/resume", resumeRoutes);
 
@@ -65,6 +69,5 @@ app.listen(PORT, () => {
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
   console.log(`Error: ${err.message}`);
-  // If you want to stop server on crash:
   // server.close(() => process.exit(1));
 });
