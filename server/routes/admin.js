@@ -11,13 +11,22 @@ const {
   updateCandidate,
   deleteCandidate,
 
+  // ✅ NEW: Unassigned candidates (for RecruiterManagement.jsx)
+  getUnassignedCandidates,
+
   // Recruiters
   getRecruiters,
   createRecruiter,
   updateRecruiter,
   deleteRecruiter,
 
-  // Assignments
+  // ✅ NEW: Recruiter candidate endpoints (for RecruiterManagement.jsx)
+  getRecruiterCandidates,
+  assignCandidateToRecruiter,
+  unassignCandidateFromRecruiter,
+  resetRecruiterPassword,
+
+  // Assignments (old admin assignments flow)
   assignCandidate,
   bulkAssignCandidates,
   autoAssignCandidates,
@@ -46,6 +55,9 @@ router.get("/dashboard", getDashboardStats);
 ======================= */
 router.route("/candidates").get(getCandidates).post(createCandidate);
 
+// ✅ REQUIRED by frontend: /api/v1/admin/candidates/unassigned
+router.get("/candidates/unassigned", getUnassignedCandidates);
+
 router.route("/candidates/:id").put(updateCandidate).delete(deleteCandidate);
 
 /* =======================
@@ -54,6 +66,16 @@ router.route("/candidates/:id").put(updateCandidate).delete(deleteCandidate);
 router.route("/recruiters").get(getRecruiters).post(createRecruiter);
 
 router.route("/recruiters/:id").put(updateRecruiter).delete(deleteRecruiter);
+
+// ✅ REQUIRED by RecruiterManagement.jsx:
+// GET  /api/v1/admin/recruiters/:id/candidates
+// POST /api/v1/admin/recruiters/:id/assign      body: { candidateId }
+// POST /api/v1/admin/recruiters/:id/unassign    body: { candidateId }
+// POST /api/v1/admin/recruiters/:id/reset-password
+router.get("/recruiters/:id/candidates", getRecruiterCandidates);
+router.post("/recruiters/:id/assign", assignCandidateToRecruiter);
+router.post("/recruiters/:id/unassign", unassignCandidateFromRecruiter);
+router.post("/recruiters/:id/reset-password", resetRecruiterPassword);
 
 /* =======================
    ASSIGNMENTS (MATCH FRONTEND)

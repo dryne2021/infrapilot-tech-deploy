@@ -679,3 +679,166 @@ exports.adminResetUserPassword = async (req, res, next) => {
     next(error);
   }
 };
+
+/* =========================================================
+   ✅ NEW: UNASSIGNED CANDIDATES
+   GET /api/v1/admin/candidates/unassigned
+========================================================= */
+exports.getUnassignedCandidates = async (req, res, next) => {
+  try {
+    const candidates = await Candidate.find({ assignedRecruiterId: null })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    return res.status(200).json(candidates);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ✅ NEW: GET CANDIDATES FOR A RECRUITER
+   GET /api/v1/admin/recruiters/:id/candidates
+========================================================= */
+exports.getRecruiterCandidates = async (req, res, next) => {
+  try {
+    const recruiterId = req.params.id;
+
+    const recruiter = await Recruiter.findById(recruiterId).lean();
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    const candidates = await Candidate.find({ assignedRecruiterId: recruiterId })
+      .sort({ assignedDate: -1, createdAt: -1 })
+      .lean();
+
+    return res.status(200).json(candidates);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ✅ NEW: ASSIGN CANDIDATE TO RECRUITER
+   POST /api/v1/admin/recruiters/:id/assign
+   body: { candidateId }
+========================================================= */
+exports.assignCandidateToRecruiter = async (req, res, next) => {
+  try {
+    const recruiterId = req.params.id;
+    const { candidateId } = req.body;
+
+    if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
+
+    const recruiter = await Recruiter.findById(recruiterId);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    const recruiterActive = recruiter.status === "active" || recruiter.isActive === true;
+    if (!recruiterActive) return next(new ErrorResponse("Recruiter is not active", 400));
+
+    const candidate = await Candidate.findById(candidateId);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    const assignedCount = await Candidate.countDocuments({
+      assignedRecruiterId: recruiter._id,
+    });
+
+    const capacity = recruiter.maxCandidates || 10;
+    if (assignedCount >= capacity) {
+      return next(new ErrorResponse("Recruiter is at full capacity", 400));
+    }
+
+    candidate.assignedRecruiterId = recruiter._id;
+    candidate.recruiterStatus = "new";
+    candidate.assignedDate = new Date();
+    await candidate.save();
+
+    recruiter.lastAssignment = new Date();
+    await recruiter.save();
+
+    return res.status(200).json({
+      success: true,
+      data: { candidateId: candidate._id, recruiterId: recruiter._id },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ✅ NEW: UNASSIGN CANDIDATE FROM RECRUITER
+   POST /api/v1/admin/recruiters/:id/unassign
+   body: { candidateId }
+========================================================= */
+exports.unassignCandidateFromRecruiter = async (req, res, next) => {
+  try {
+    const recruiterId = req.params.id;
+    const { candidateId } = req.body;
+
+    if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
+
+    const recruiter = await Recruiter.findById(recruiterId);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    const candidate = await Candidate.findById(candidateId);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    if (String(candidate.assignedRecruiterId || "") !== String(recruiterId)) {
+      return next(new ErrorResponse("Candidate is not assigned to this recruiter", 400));
+    }
+
+    candidate.assignedRecruiterId = null;
+    candidate.recruiterStatus = "";
+    candidate.assignedDate = null;
+    await candidate.save();
+
+    return res.status(200).json({
+      success: true,
+      data: { candidateId: candidate._id, recruiterId },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ✅ NEW: RESET RECRUITER PASSWORD (ADMIN ONLY)
+   POST /api/v1/admin/recruiters/:id/reset-password
+   returns: { newPassword }
+========================================================= */
+exports.resetRecruiterPassword = async (req, res, next) => {
+  try {
+    const recruiterId = req.params.id;
+
+    const recruiter = await Recruiter.findById(recruiterId);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    if (!recruiter.userId) {
+      return next(new ErrorResponse("Recruiter user account missing", 400));
+    }
+
+    const user = await User.findById(recruiter.userId).select("+password");
+    if (!user) return next(new ErrorResponse("Recruiter user not found", 404));
+
+    // Generate a new password
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*";
+    let newPassword = "";
+    for (let i = 0; i < 10; i++) {
+      newPassword += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    // Set plain password -> model hashes once in pre('save')
+    user.password = newPassword;
+    await user.save();
+
+    recruiter.status = "active";
+    recruiter.isActive = true;
+    await recruiter.save();
+
+    return res.status(200).json({
+      success: true,
+      newPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
