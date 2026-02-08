@@ -3,49 +3,36 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { useAuth } from '@/contexts/AuthContext' // ✅ real backend auth
 
 type Panel = 'candidate' | 'recruiter' | 'admin'
 
+/**
+ * ✅ Option B (Real backend auth for ALL roles)
+ * Assumes your backend supports:
+ *   POST {API_URL}/api/v1/auth/login
+ * Body:
+ *   { emailOrUsername: string, password: string, role: 'admin'|'recruiter'|'candidate' }
+ * Response (example):
+ *   { success: true, token: string, user: { id, name, email, role, ... } }
+ */
 export default function LoginPage() {
   const router = useRouter()
-  const { login } = useAuth()
+
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '' // e.g. https://your-backend.onrender.com
 
   const [panel, setPanel] = useState<Panel>('candidate')
 
   // ---------------------------
-  // ADMIN (UPDATED -> real backend)
+  // ADMIN
   // ---------------------------
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
   const [adminError, setAdminError] = useState('')
   const [adminLoading, setAdminLoading] = useState(false)
 
-  const handleAdminSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setAdminError('')
-    setAdminLoading(true)
-
-    try {
-      const result = await login(adminEmail.trim(), adminPassword)
-
-      if (!result.success) {
-        setAdminError(result.message || 'Invalid credentials')
-        return
-      }
-
-      // AuthContext will redirect by role, but we force admin page here too
-      router.push('/admin')
-      router.refresh()
-    } catch (err) {
-      setAdminError('Authentication failed. Please try again.')
-    } finally {
-      setAdminLoading(false)
-    }
-  }
-
   // ---------------------------
-  // RECRUITER (UNCHANGED logic)
+  // RECRUITER
   // ---------------------------
   const [recruiterUsername, setRecruiterUsername] = useState('')
   const [recruiterPassword, setRecruiterPassword] = useState('')
@@ -53,67 +40,8 @@ export default function LoginPage() {
   const [recruiterLoading, setRecruiterLoading] = useState(false)
   const [showRecruiterPassword, setShowRecruiterPassword] = useState(false)
 
-  const handleRecruiterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setRecruiterError('')
-    setRecruiterLoading(true)
-
-    try {
-      const savedRecruiters = localStorage.getItem('infrapilot_recruiters')
-      if (!savedRecruiters) {
-        setRecruiterError('No recruiters found in system. Contact admin.')
-        setRecruiterLoading(false)
-        return
-      }
-
-      const recruiters = JSON.parse(savedRecruiters)
-
-      const recruiter = recruiters.find(
-        (r: any) =>
-          r.username === recruiterUsername && r.password === recruiterPassword && r.isActive
-      )
-
-      if (recruiter) {
-        const recruiterUser = {
-          id: recruiter.id,
-          name: recruiter.fullName,
-          email: recruiter.email,
-          role: 'recruiter',
-          department: recruiter.department,
-          specialization: recruiter.specialization,
-          isActive: recruiter.isActive,
-          recruiterAuthenticated: true,
-        }
-
-        localStorage.setItem('infrapilot_user', JSON.stringify(recruiterUser))
-        localStorage.setItem('infrapilot_token', `recruiter_${recruiter.id}`)
-        localStorage.setItem('recruiter_authenticated', 'true')
-        localStorage.setItem('recruiter_id', recruiter.id)
-
-        router.push('/recruiter')
-        router.refresh()
-      } else {
-        setRecruiterError('Invalid credentials or account inactive. Contact admin.')
-      }
-    } catch {
-      setRecruiterError('Login failed. Please try again.')
-    } finally {
-      setRecruiterLoading(false)
-    }
-  }
-
-  const handleRecruiterDemoLogin = (who: 'john' | 'sarah') => {
-    if (who === 'john') {
-      setRecruiterUsername('john.smith')
-      setRecruiterPassword('password123')
-    } else {
-      setRecruiterUsername('sarah.j')
-      setRecruiterPassword('password123')
-    }
-  }
-
   // ---------------------------
-  // CANDIDATE (UNCHANGED logic)
+  // CANDIDATE
   // ---------------------------
   const [candidateUsername, setCandidateUsername] = useState('')
   const [candidatePassword, setCandidatePassword] = useState('')
@@ -121,56 +49,143 @@ export default function LoginPage() {
   const [candidateError, setCandidateError] = useState('')
   const [showCandidatePassword, setShowCandidatePassword] = useState(false)
 
-  const handleCandidateLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setCandidateLoading(true)
-    setCandidateError('')
-
+  // ---------------------------
+  // Shared backend login helper
+  // ---------------------------
+  async function backendLogin(args: {
+    emailOrUsername: string
+    password: string
+    role: 'admin' | 'recruiter' | 'candidate'
+  }): Promise<{ success: boolean; message?: string; token?: string; user?: any }> {
     try {
-      const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
+      const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailOrUsername: args.emailOrUsername.trim(),
+          password: args.password,
+          role: args.role,
+        }),
+      })
 
-      const candidate = candidates.find(
-        (c: any) => c.username === candidateUsername && c.password === candidatePassword
-      )
+      const data = await res.json().catch(() => ({}))
 
-      if (!candidate) {
-        setCandidateError('Invalid username or password')
-        setCandidateLoading(false)
-        return
+      if (!res.ok) {
+        return {
+          success: false,
+          message: data?.message || `Login failed (${res.status})`,
+        }
       }
 
-      if (candidate.subscriptionStatus !== 'active' && candidate.subscriptionPlan !== 'free') {
-        setCandidateError('Your account is not active. Please contact admin.')
-        setCandidateLoading(false)
-        return
+      if (!data?.token || !data?.user) {
+        return {
+          success: false,
+          message: 'Login response missing token/user. Check backend login response.',
+        }
       }
 
-      const userData = {
-        id: candidate.id,
-        name: candidate.fullName || `${candidate.firstName} ${candidate.lastName}`,
-        email: candidate.email,
-        role: 'candidate',
-        subscriptionPlan: candidate.subscriptionPlan,
-        subscriptionStatus: candidate.subscriptionStatus,
-        assignedRecruiter: candidate.assignedRecruiter,
+      // ✅ Store real JWT + user
+      localStorage.setItem('infrapilot_token', data.token)
+      localStorage.setItem('infrapilot_user', JSON.stringify(data.user))
+
+      // Optional flags if your app expects them
+      if (args.role === 'candidate') {
+        localStorage.setItem('candidate_authenticated', 'true')
+        if (data.user?.id) localStorage.setItem('candidate_id', data.user.id)
+      }
+      if (args.role === 'recruiter') {
+        localStorage.setItem('recruiter_authenticated', 'true')
+        if (data.user?.id) localStorage.setItem('recruiter_id', data.user.id)
       }
 
-      localStorage.setItem('infrapilot_user', JSON.stringify(userData))
-      localStorage.setItem('infrapilot_token', `candidate_${Date.now()}`)
-      localStorage.setItem('candidate_authenticated', 'true')
-      localStorage.setItem('candidate_id', candidate.id)
-
-      router.push('/candidate/dashboard')
-    } catch (err) {
-      console.error('Login error:', err)
-      setCandidateError('Login failed. Please try again.')
-    } finally {
-      setCandidateLoading(false)
+      return { success: true, token: data.token, user: data.user }
+    } catch (e: any) {
+      return { success: false, message: e?.message || 'Network error' }
     }
   }
 
+  // ---------------------------
+  // Handlers
+  // ---------------------------
+  const handleAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setAdminError('')
+    setAdminLoading(true)
+
+    const result = await backendLogin({
+      emailOrUsername: adminEmail,
+      password: adminPassword,
+      role: 'admin',
+    })
+
+    if (!result.success) {
+      setAdminError(result.message || 'Invalid credentials')
+      setAdminLoading(false)
+      return
+    }
+
+    router.push('/admin')
+    router.refresh()
+    setAdminLoading(false)
+  }
+
+  const handleRecruiterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setRecruiterError('')
+    setRecruiterLoading(true)
+
+    const result = await backendLogin({
+      emailOrUsername: recruiterUsername,
+      password: recruiterPassword,
+      role: 'recruiter',
+    })
+
+    if (!result.success) {
+      setRecruiterError(result.message || 'Invalid credentials')
+      setRecruiterLoading(false)
+      return
+    }
+
+    router.push('/recruiter')
+    router.refresh()
+    setRecruiterLoading(false)
+  }
+
+  const handleCandidateLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setCandidateError('')
+    setCandidateLoading(true)
+
+    const result = await backendLogin({
+      emailOrUsername: candidateUsername,
+      password: candidatePassword,
+      role: 'candidate',
+    })
+
+    if (!result.success) {
+      setCandidateError(result.message || 'Invalid credentials')
+      setCandidateLoading(false)
+      return
+    }
+
+    router.push('/candidate/dashboard')
+    router.refresh()
+    setCandidateLoading(false)
+  }
+
   const handleCandidateForgotPassword = () => {
-    alert('Please contact your recruiter or admin to reset your password.')
+    alert('Please contact support/admin to reset your password.')
+  }
+
+  const handleRecruiterDemoLogin = (who: 'john' | 'sarah') => {
+    // Demo prefill only (still authenticates via backend)
+    if (who === 'john') {
+      setRecruiterUsername('john.smith')
+      setRecruiterPassword('password123')
+    } else {
+      setRecruiterUsername('sarah.j')
+      setRecruiterPassword('password123')
+    }
   }
 
   return (
@@ -191,6 +206,14 @@ export default function LoginPage() {
 
           <h1 className="text-3xl font-bold text-white mb-2">Infrapilot Login</h1>
           <p className="text-gray-400">Select a portal to sign in</p>
+
+          {!API_URL && (
+            <div className="mt-3 p-3 bg-yellow-900/30 border border-yellow-700 rounded-lg">
+              <p className="text-yellow-200 text-xs">
+                Missing <b>NEXT_PUBLIC_API_URL</b>. Set it to your backend URL in the frontend env.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* 3 Buttons */}
@@ -246,13 +269,15 @@ export default function LoginPage() {
 
             <form onSubmit={handleCandidateLogin} className="space-y-6">
               <div>
-                <label className="block text-gray-300 mb-2 text-sm font-medium">Username</label>
+                <label className="block text-gray-300 mb-2 text-sm font-medium">
+                  Email or Username
+                </label>
                 <input
                   type="text"
                   value={candidateUsername}
                   onChange={(e) => setCandidateUsername(e.target.value)}
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your username"
+                  placeholder="Enter your email or username"
                   required
                   disabled={candidateLoading}
                 />
@@ -296,7 +321,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={candidateLoading}
+                disabled={candidateLoading || !API_URL}
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-4 focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {candidateLoading ? (
@@ -312,9 +337,7 @@ export default function LoginPage() {
               <div className="grid grid-cols-2 gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    alert('Please contact your recruiter or the admin team to get login credentials.')
-                  }
+                  onClick={() => alert('Please contact support/admin to get login credentials.')}
                   className="px-4 py-2 bg-gray-700 text-gray-200 rounded-lg hover:bg-gray-600 text-sm"
                 >
                   👔 Ask Recruiter
@@ -345,14 +368,17 @@ export default function LoginPage() {
 
             <form onSubmit={handleRecruiterSubmit} className="space-y-6">
               <div>
-                <label className="block text-gray-300 mb-2 text-sm font-medium">Username</label>
+                <label className="block text-gray-300 mb-2 text-sm font-medium">
+                  Email or Username
+                </label>
                 <input
                   type="text"
                   value={recruiterUsername}
                   onChange={(e) => setRecruiterUsername(e.target.value)}
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your username"
+                  placeholder="Enter your email or username"
                   required
+                  disabled={recruiterLoading}
                 />
               </div>
 
@@ -366,6 +392,7 @@ export default function LoginPage() {
                     className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
                     placeholder="Enter your password"
                     required
+                    disabled={recruiterLoading}
                   />
                   <button
                     type="button"
@@ -393,7 +420,7 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                disabled={recruiterLoading}
+                disabled={recruiterLoading || !API_URL}
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-4 focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {recruiterLoading ? (
@@ -448,6 +475,7 @@ export default function LoginPage() {
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="you@company.com"
                   required
+                  disabled={adminLoading}
                 />
               </div>
 
@@ -460,12 +488,13 @@ export default function LoginPage() {
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="••••••••"
                   required
+                  disabled={adminLoading}
                 />
               </div>
 
               <button
                 type="submit"
-                disabled={adminLoading}
+                disabled={adminLoading || !API_URL}
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-4 focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
               >
                 {adminLoading ? (
