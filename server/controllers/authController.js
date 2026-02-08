@@ -1,41 +1,58 @@
+// server/controllers/authController.js
+
 const User = require("../models/User");
 const Candidate = require("../models/Candidate");
 const Recruiter = require("../models/Recruiter");
 const ErrorResponse = require("../utils/ErrorResponse");
 const { sendTokenResponse } = require("../utils/generateToken");
 
+// helpers
+const normalizeEmail = (v) => (v || "").toString().trim().toLowerCase();
+const normalizeName = (v) => (v || "").toString().trim();
+
 // @desc    Register user
 // @route   POST /api/v1/auth/register
 // @access  Public
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password, role, skills, experienceLevel } = req.body;
+    let { name, email, password, role, skills, experienceLevel } = req.body;
+
+    const nameNorm = normalizeName(name);
+    const emailNorm = normalizeEmail(email);
+
+    if (!nameNorm || !emailNorm || !password) {
+      return next(new ErrorResponse("Name, email and password are required", 400));
+    }
+
+    // Prevent duplicate accounts
+    const existing = await User.findOne({ email: emailNorm });
+    if (existing) {
+      return next(new ErrorResponse("Email already registered", 400));
+    }
 
     // Create user
     const user = await User.create({
-      name,
-      email,
+      name: nameNorm,
+      email: emailNorm,
       password,
       role: role || "candidate",
+      status: "active", // harmless even if schema ignores it
     });
 
     // Create profile based on role
     if (user.role === "candidate") {
       await Candidate.create({
         userId: user._id,
-        // Candidate model uses experienceLevel (not experience)
         experienceLevel: experienceLevel || "entry",
         skills: Array.isArray(skills) ? skills : [],
-        // Keep these empty by default; can be filled from candidate onboarding form later
-        fullName: name,
-        email,
+        fullName: nameNorm,
+        email: emailNorm,
       });
     } else if (user.role === "recruiter") {
-      // Recruiter model no longer stores assignedCandidates[]
       await Recruiter.create({
         userId: user._id,
-        name,
-        email,
+        name: nameNorm,
+        email: emailNorm,
         status: "active",
       });
     }
@@ -47,48 +64,62 @@ exports.register = async (req, res, next) => {
   }
 };
 
-// @desc    Login user (✅ UPDATED)
+// @desc    Login user
 // @route   POST /api/v1/auth/login
 // @access  Public
 exports.login = async (req, res, next) => {
   try {
-    // ✅ Accept both old + new frontend payloads:
+    // Accept both payloads:
     // Old: { email, password }
     // New: { emailOrUsername, password, role }
     const emailOrUsernameRaw = req.body.emailOrUsername || req.body.email;
     const password = req.body.password;
     const role = req.body.role;
 
-    const emailOrUsername = (emailOrUsernameRaw || "").trim().toLowerCase();
+    const emailNorm = normalizeEmail(emailOrUsernameRaw);
 
-    // Validate email & password
-    if (!emailOrUsername || !password) {
+    if (!emailNorm || !password) {
       return next(new ErrorResponse("Please provide an email and password", 400));
     }
 
-    // Check for user
-    const user = await User.findOne({ email: emailOrUsername }).select("+password");
+    // Safe logs for Render debugging (NO password)
+    console.log("✅ LOGIN ATTEMPT:", { email: emailNorm, role, keys: Object.keys(req.body) });
+
+    // IMPORTANT: select password if schema uses select:false
+    const user = await User.findOne({ email: emailNorm }).select("+password");
 
     if (!user) {
+      console.log("❌ LOGIN FAIL: user not found in Users collection:", emailNorm);
       return next(new ErrorResponse("Invalid credentials", 401));
     }
 
-    // ✅ Optional: enforce role portal (admin/recruiter/candidate)
-    // If you don't want this check, you can remove this block.
-    if (role && user.role && user.role !== role) {
-      return next(new ErrorResponse("Invalid role for this account", 401));
-    }
+    // TEMP: Disable role enforcement while testing
+    // (re-enable after login works)
+    // if (role && user.role && user.role !== role) {
+    //   console.log("❌ LOGIN FAIL: role mismatch:", { dbRole: user.role, reqRole: role });
+    //   return next(new ErrorResponse("Invalid role for this account", 401));
+    // }
 
-    // Check if user is active
+    // Check if user is active (only if status exists)
     if (user.status && user.status !== "active") {
+      console.log("❌ LOGIN FAIL: account inactive:", { email: emailNorm, status: user.status });
       return next(new ErrorResponse("Your account has been deactivated", 401));
     }
 
     // Check password
+    if (typeof user.comparePassword !== "function") {
+      console.log("❌ LOGIN FAIL: comparePassword is not defined on User model");
+      return next(new ErrorResponse("Login misconfiguration. Contact admin.", 500));
+    }
+
     const isMatch = await user.comparePassword(password);
+
     if (!isMatch) {
+      console.log("❌ LOGIN FAIL: password mismatch for:", emailNorm);
       return next(new ErrorResponse("Invalid credentials", 401));
     }
+
+    console.log("✅ LOGIN OK:", { email: emailNorm, role: user.role });
 
     // Send token response
     sendTokenResponse(user, 200, res);
@@ -102,7 +133,6 @@ exports.login = async (req, res, next) => {
 // @access  Private
 exports.getMe = async (req, res, next) => {
   try {
-    // Never return password
     const user = await User.findById(req.user.id).select("-password");
 
     if (!user) {
@@ -111,7 +141,6 @@ exports.getMe = async (req, res, next) => {
 
     let profile = null;
 
-    // Get profile based on role
     if (user.role === "candidate") {
       profile = await Candidate.findOne({ userId: user._id })
         .populate(
@@ -125,8 +154,8 @@ exports.getMe = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      user,     // ✅ easier for frontend: res.user.role
-      profile,  // ✅ candidate/recruiter profile if exists
+      user,
+      profile,
     });
   } catch (error) {
     next(error);
@@ -153,10 +182,23 @@ exports.logout = (req, res, next) => {
 // @access  Private
 exports.updateDetails = async (req, res, next) => {
   try {
-    const fieldsToUpdate = {
-      name: req.body.name,
-      email: req.body.email,
-    };
+    const fieldsToUpdate = {};
+
+    if (req.body.name !== undefined) fieldsToUpdate.name = normalizeName(req.body.name);
+    if (req.body.email !== undefined) fieldsToUpdate.email = normalizeEmail(req.body.email);
+
+    // Optional: avoid empty updates
+    if (Object.keys(fieldsToUpdate).length === 0) {
+      return next(new ErrorResponse("No fields provided to update", 400));
+    }
+
+    // Optional: prevent duplicate email change
+    if (fieldsToUpdate.email) {
+      const existing = await User.findOne({ email: fieldsToUpdate.email, _id: { $ne: req.user.id } });
+      if (existing) {
+        return next(new ErrorResponse("Email already in use", 400));
+      }
+    }
 
     const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
       new: true,
@@ -179,7 +221,14 @@ exports.updatePassword = async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id).select("+password");
 
-    // Check current password
+    if (!user) {
+      return next(new ErrorResponse("User not found", 404));
+    }
+
+    if (!req.body.currentPassword || !req.body.newPassword) {
+      return next(new ErrorResponse("Current password and new password are required", 400));
+    }
+
     if (!(await user.comparePassword(req.body.currentPassword))) {
       return next(new ErrorResponse("Password is incorrect", 401));
     }
