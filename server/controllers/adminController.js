@@ -10,7 +10,13 @@ const ErrorResponse = require("../utils/ErrorResponse");
 /* =========================================================
    Helpers
 ========================================================= */
-const planPrices = { free: 0, silver: 29, gold: 79, platinum: 149, enterprise: 299 };
+const planPrices = {
+  free: 0,
+  silver: 29,
+  gold: 79,
+  platinum: 149,
+  enterprise: 299,
+};
 
 const safeHashedPasswordFlag = (candidate) => {
   // Your UI checks: candidate.username && candidate.password
@@ -49,6 +55,7 @@ const buildActivityItem = ({ type, action, user, time }) => {
     icon: meta.icon,
     color: meta.color,
     type,
+    _rawTime: time, // ✅ used for sorting internally
   };
 };
 
@@ -75,9 +82,7 @@ exports.getDashboardStats = async (req, res, next) => {
       Candidate.countDocuments({ paymentStatus: "pending" }),
       Candidate.countDocuments({ assignedRecruiterId: null }),
       Candidate.countDocuments({ username: { $ne: "" }, passwordHash: { $ne: "" } }),
-      Candidate.aggregate([
-        { $group: { _id: "$subscriptionPlan", count: { $sum: 1 } } },
-      ]),
+      Candidate.aggregate([{ $group: { _id: "$subscriptionPlan", count: { $sum: 1 } } }]),
     ]);
 
     const monthlyRevenue = (revenueAgg || []).reduce((sum, row) => {
@@ -107,7 +112,7 @@ exports.getDashboardStats = async (req, res, next) => {
    ACTIVITY (for Admin dashboard UI)
    GET /api/v1/admin/activity
 ========================================================= */
-exports.getActivity = async (req, res, next) => {
+exports.getRecentActivity = async (req, res, next) => {
   try {
     const [recentCandidates, recentRecruiters, recentAssignments, recentCredentials] =
       await Promise.all([
@@ -153,9 +158,7 @@ exports.getActivity = async (req, res, next) => {
         buildActivityItem({
           type: "assignment",
           action: "Candidate assigned",
-          user: `${c.fullName || c.email || "Candidate"} → ${
-            c.assignedRecruiterId?.name || "Recruiter"
-          }`,
+          user: `${c.fullName || c.email || "Candidate"} → ${c.assignedRecruiterId?.name || "Recruiter"}`,
           time: c.assignedDate || c.updatedAt || c.createdAt,
         })
       );
@@ -172,16 +175,17 @@ exports.getActivity = async (req, res, next) => {
       );
     });
 
-    // Sort by real timestamps desc (fallback to now if missing)
+    // Sort by timestamps desc
     const sorted = activity.sort((a, b) => {
       const at = a._rawTime ? new Date(a._rawTime).getTime() : 0;
       const bt = b._rawTime ? new Date(b._rawTime).getTime() : 0;
       return bt - at;
     });
 
-    // If you want “recentActivity” format exactly, keep it simple:
-    // Your UI only needs: action, user, time, icon, color
-    return res.status(200).json(activity.slice(0, 10));
+    // Return only fields your UI needs
+    const clean = sorted.slice(0, 10).map(({ _rawTime, ...rest }) => rest);
+
+    return res.status(200).json(clean);
   } catch (error) {
     next(error);
   }
@@ -329,8 +333,8 @@ exports.deleteRecruiter = async (req, res, next) => {
 
 /* =========================================================
    ASSIGNMENTS
-   POST /api/v1/admin/assignments/assign
-   POST /api/v1/admin/assignments/bulk-assign
+   PUT  /api/v1/admin/assignments
+   POST /api/v1/admin/assignments/bulk
    POST /api/v1/admin/assignments/auto-assign
 ========================================================= */
 exports.assignCandidate = async (req, res, next) => {
@@ -419,7 +423,9 @@ exports.autoAssignCandidates = async (req, res, next) => {
 
     const unassigned = await Candidate.find({ assignedRecruiterId: null }).sort({ createdAt: 1 }).lean();
     if (unassigned.length === 0) {
-      return res.status(200).json({ success: true, data: { assigned: 0, message: "No unassigned candidates" } });
+      return res
+        .status(200)
+        .json({ success: true, data: { assigned: 0, message: "No unassigned candidates" } });
     }
 
     const recruiterIds = activeRecruiters.map((r) => r._id);
@@ -468,8 +474,8 @@ exports.autoAssignCandidates = async (req, res, next) => {
 
 /* =========================================================
    CREDENTIALS
-   POST /api/v1/admin/credentials/set
-   POST /api/v1/admin/credentials/reset
+   POST   /api/v1/admin/credentials
+   DELETE /api/v1/admin/credentials/:candidateId
 ========================================================= */
 exports.setCandidateCredentials = async (req, res, next) => {
   try {
