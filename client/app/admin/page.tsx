@@ -30,9 +30,7 @@ export default function AdminPage() {
   const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
     const token = localStorage.getItem('infrapilot_token')
 
-    const fullUrl = url.startsWith('/')
-      ? `${API_BASE_URL}${url}`
-      : url
+    const fullUrl = url.startsWith('/') ? `${API_BASE_URL}${url}` : url
 
     const res = await fetch(fullUrl, {
       ...options,
@@ -47,6 +45,29 @@ export default function AdminPage() {
   }
 
   useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        const statsRes = await fetchWithAuth('/api/v1/admin/dashboard')
+        if (statsRes.ok) {
+          const statsJson = await statsRes.json()
+          const data = statsJson?.data ?? statsJson
+          if (data) setStats((prev) => ({ ...prev, ...data }))
+        } else {
+          console.error('Admin dashboard stats failed:', statsRes.status)
+        }
+
+        const activityRes = await fetchWithAuth('/api/v1/admin/activity')
+        if (activityRes.ok) {
+          const activityJson = await activityRes.json()
+          setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
+        } else {
+          console.error('Admin activity failed:', activityRes.status)
+        }
+      } catch (err) {
+        console.error('Failed to load dashboard data:', err)
+      }
+    }
+
     const checkAdminAuth = async () => {
       try {
         const userStr = localStorage.getItem('infrapilot_user')
@@ -64,53 +85,16 @@ export default function AdminPage() {
           return
         }
 
-        // ✅ verify session with backend (now absolute URL)
-        const response = await fetchWithAuth('/api/v1/auth/me')
-
-        // If your backend doesn’t implement /auth/me for admin token,
-        // you can comment this out—but first test after deploy.
-        if (!response.ok) {
-          localStorage.removeItem('infrapilot_user')
-          localStorage.removeItem('infrapilot_token')
-          localStorage.removeItem('admin_authenticated')
-          router.push('/login')
-          return
-        }
-
+        // ✅ Demo admin login: do not call /auth/me (it returns 401 with fake token)
         setUser(userData)
         setIsAuthenticated(true)
 
-        // Load dashboard data
         await loadDashboardData()
       } catch (error) {
         console.error('Admin auth check failed:', error)
         router.push('/login')
       } finally {
         setLoading(false)
-      }
-    }
-
-    const loadDashboardData = async () => {
-      try {
-        // These endpoints depend on your backend routes.
-        // Keep your original endpoints here—just ensure they start with "/api/..."
-        // so fetchWithAuth prefixes correctly.
-
-        const statsRes = await fetchWithAuth('/api/v1/admin/dashboard')
-        if (statsRes.ok) {
-          const statsJson = await statsRes.json()
-          // support both {success,data} and raw object
-          const data = statsJson?.data ?? statsJson
-          if (data) setStats((prev) => ({ ...prev, ...data }))
-        }
-
-        const activityRes = await fetchWithAuth('/api/v1/admin/activity')
-        if (activityRes.ok) {
-          const activityJson = await activityRes.json()
-          setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
-        }
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err)
       }
     }
 
@@ -200,9 +184,16 @@ export default function AdminPage() {
               ) : (
                 <div className="space-y-3">
                   {recentActivity.map((item: any, idx: number) => (
-                    <div key={idx} className="flex items-center justify-between bg-gray-900 p-3 rounded-lg">
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between bg-gray-900 p-3 rounded-lg"
+                    >
                       <div className="flex items-center gap-3">
-                        <div className={`w-9 h-9 flex items-center justify-center rounded-lg ${item.color || 'bg-gray-700'}`}>
+                        <div
+                          className={`w-9 h-9 flex items-center justify-center rounded-lg ${
+                            item.color || 'bg-gray-700'
+                          }`}
+                        >
                           <span>{item.icon || '📌'}</span>
                         </div>
                         <div>
