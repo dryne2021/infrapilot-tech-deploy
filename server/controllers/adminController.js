@@ -1,327 +1,530 @@
-const User = require('../models/User');
-const Candidate = require('../models/Candidate');
-const Recruiter = require('../models/Recruiter');
-const JobApplication = require('../models/JobApplication');
-const ErrorResponse = require('../utils/ErrorResponse');
+// server/controllers/adminController.js
 
-// @desc    Get all users
-// @route   GET /api/v1/admin/users
-// @access  Private/Admin
-exports.getUsers = async (req, res, next) => {
-  try {
-    const { role, status, page = 1, limit = 10 } = req.query;
-    
-    // Build query
-    const query = {};
-    if (role) query.role = role;
-    if (status) query.status = status;
+const bcrypt = require("bcryptjs");
 
-    // Pagination
-    const pageInt = parseInt(page);
-    const limitInt = parseInt(limit);
-    const startIndex = (pageInt - 1) * limitInt;
+const User = require("../models/User");
+const Candidate = require("../models/Candidate");
+const Recruiter = require("../models/Recruiter");
+const ErrorResponse = require("../utils/ErrorResponse");
 
-    const total = await User.countDocuments(query);
-    const users = await User.find(query)
-      .select('-password')
-      .sort({ createdAt: -1 })
-      .skip(startIndex)
-      .limit(limitInt);
+/* =========================================================
+   Helpers
+========================================================= */
+const planPrices = { free: 0, silver: 29, gold: 79, platinum: 149, enterprise: 299 };
 
-    // Get profiles for each user
-    const usersWithProfiles = await Promise.all(
-      users.map(async (user) => {
-        let profile = null;
-        if (user.role === 'candidate') {
-          profile = await Candidate.findOne({ userId: user._id });
-        } else if (user.role === 'recruiter') {
-          profile = await Recruiter.findOne({ userId: user._id });
-        }
-        return {
-          ...user.toObject(),
-          profile
-        };
-      })
-    );
-
-    res.status(200).json({
-      success: true,
-      count: users.length,
-      total,
-      totalPages: Math.ceil(total / limitInt),
-      currentPage: pageInt,
-      data: usersWithProfiles
-    });
-  } catch (error) {
-    next(error);
-  }
+const safeHashedPasswordFlag = (candidate) => {
+  // Your UI checks: candidate.username && candidate.password
+  // But we store passwordHash securely, so we return a safe flag string.
+  return candidate?.passwordHash && String(candidate.passwordHash).trim() ? "SET" : "";
 };
 
-// @desc    Get single user
-// @route   GET /api/v1/admin/users/:id
-// @access  Private/Admin
-exports.getUser = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.params.id).select('-password');
-    
-    if (!user) {
-      return next(new ErrorResponse(`User not found with id of ${req.params.id}`, 404));
-    }
-
-    let profile = null;
-    let relatedData = null;
-
-    // Get profile and related data based on role
-    if (user.role === 'candidate') {
-      profile = await Candidate.findOne({ userId: user._id }).populate('assignedRecruiterId', 'name email');
-      relatedData = {
-        jobApplications: await JobApplication.find({ candidateId: profile._id })
-          .populate('recruiterId', 'name email')
-          .sort({ createdAt: -1 })
-      };
-    } else if (user.role === 'recruiter') {
-      profile = await Recruiter.findOne({ userId: user._id })
-        .populate({
-          path: 'assignedCandidates',
-          populate: {
-            path: 'userId',
-            select: 'name email'
-          }
-        });
-      relatedData = {
-        jobApplications: await JobApplication.find({ recruiterId: user._id })
-          .populate('candidateId', 'userId')
-          .populate({
-            path: 'candidateId',
-            populate: {
-              path: 'userId',
-              select: 'name email'
-            }
-          })
-          .sort({ createdAt: -1 })
-      };
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        user,
-        profile,
-        relatedData
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
+const relativeTime = (date) => {
+  if (!date) return "";
+  const d = new Date(date);
+  const diffMs = Date.now() - d.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "Just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hr ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  return `${diffDay} day${diffDay === 1 ? "" : "s"} ago`;
 };
 
-// @desc    Create user
-// @route   POST /api/v1/admin/users
-// @access  Private/Admin
-exports.createUser = async (req, res, next) => {
-  try {
-    const { name, email, password, role, skills, experience } = req.body;
+const buildActivityItem = ({ type, action, user, time }) => {
+  // Tailwind-friendly color strings your UI splits: item.color?.split(' ')
+  const map = {
+    subscription: { icon: "💎", color: "bg-blue-100 text-blue-600" },
+    recruiter: { icon: "👔", color: "bg-emerald-100 text-emerald-600" },
+    assignment: { icon: "🤝", color: "bg-violet-100 text-violet-600" },
+    credentials: { icon: "🔐", color: "bg-amber-100 text-amber-600" },
+  };
+  const meta = map[type] || { icon: "📌", color: "bg-slate-100 text-slate-600" };
 
-    // Check if user exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return next(new ErrorResponse('User already exists with this email', 400));
-    }
-
-    // Create user
-    const user = await User.create({
-      name,
-      email,
-      password,
-      role: role || 'candidate'
-    });
-
-    // Create profile based on role
-    if (user.role === 'candidate') {
-      await Candidate.create({
-        userId: user._id,
-        skills: skills || [],
-        experience: experience || 'entry'
-      });
-    } else if (user.role === 'recruiter') {
-      await Recruiter.create({
-        userId: user._id,
-        assignedCandidates: []
-      });
-    }
-
-    res.status(201).json({
-      success: true,
-      data: user
-    });
-  } catch (error) {
-    next(error);
-  }
+  return {
+    action,
+    user,
+    time: relativeTime(time),
+    icon: meta.icon,
+    color: meta.color,
+    type,
+  };
 };
 
-// @desc    Update user
-// @route   PUT /api/v1/admin/users/:id
-// @access  Private/Admin
-exports.updateUser = async (req, res, next) => {
-  try {
-    const user = await User.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    }).select('-password');
-
-    if (!user) {
-      return next(new ErrorResponse(`User not found with id of ${req.params.id}`, 404));
-    }
-
-    // If role changed, update profile
-    if (req.body.role) {
-      // Remove existing profiles
-      await Candidate.findOneAndDelete({ userId: user._id });
-      await Recruiter.findOneAndDelete({ userId: user._id });
-
-      // Create new profile based on role
-      if (req.body.role === 'candidate') {
-        await Candidate.create({
-          userId: user._id,
-          skills: req.body.skills || [],
-          experience: req.body.experience || 'entry'
-        });
-      } else if (req.body.role === 'recruiter') {
-        await Recruiter.create({
-          userId: user._id,
-          assignedCandidates: []
-        });
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      data: user
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Delete user
-// @route   DELETE /api/v1/admin/users/:id
-// @access  Private/Admin
-exports.deleteUser = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.params.id);
-
-    if (!user) {
-      return next(new ErrorResponse(`User not found with id of ${req.params.id}`, 404));
-    }
-
-    // Remove associated profiles
-    await Candidate.findOneAndDelete({ userId: user._id });
-    await Recruiter.findOneAndDelete({ userId: user._id });
-
-    // Remove user
-    await user.deleteOne();
-
-    res.status(200).json({
-      success: true,
-      data: {}
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Assign recruiter to candidate
-// @route   PUT /api/v1/admin/assign-recruiter
-// @access  Private/Admin
-exports.assignRecruiter = async (req, res, next) => {
-  try {
-    const { candidateId, recruiterId } = req.body;
-
-    // Check if candidate exists
-    const candidate = await Candidate.findById(candidateId);
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate not found', 404));
-    }
-
-    // Check if recruiter exists and is actually a recruiter
-    const recruiterUser = await User.findById(recruiterId);
-    if (!recruiterUser || recruiterUser.role !== 'recruiter') {
-      return next(new ErrorResponse('Recruiter not found or invalid role', 404));
-    }
-
-    const recruiter = await Recruiter.findOne({ userId: recruiterId });
-
-    // Update candidate's assigned recruiter
-    candidate.assignedRecruiterId = recruiterId;
-    await candidate.save();
-
-    // Add candidate to recruiter's assigned candidates if not already there
-    if (!recruiter.assignedCandidates.includes(candidate._id)) {
-      recruiter.assignedCandidates.push(candidate._id);
-      await recruiter.save();
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        candidate,
-        recruiter
-      }
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Get dashboard statistics
-// @route   GET /api/v1/admin/dashboard
-// @access  Private/Admin
+/* =========================================================
+   DASHBOARD
+   GET /api/v1/admin/dashboard
+========================================================= */
 exports.getDashboardStats = async (req, res, next) => {
   try {
     const [
       totalCandidates,
       totalRecruiters,
-      totalAdmins,
-      totalJobApplications,
-      pendingApplications,
-      appliedApplications,
-      interviewApplications,
-      rejectedApplications,
-      offerApplications
+      activeRecruiters,
+      activeSubscriptions,
+      pendingPayments,
+      unassignedCandidates,
+      candidatesWithCredentials,
+      revenueAgg,
     ] = await Promise.all([
-      User.countDocuments({ role: 'candidate' }),
-      User.countDocuments({ role: 'recruiter' }),
-      User.countDocuments({ role: 'admin' }),
-      JobApplication.countDocuments(),
-      JobApplication.countDocuments({ status: 'pending' }),
-      JobApplication.countDocuments({ status: 'applied' }),
-      JobApplication.countDocuments({ status: 'interview' }),
-      JobApplication.countDocuments({ status: 'rejected' }),
-      JobApplication.countDocuments({ status: 'offer' })
+      Candidate.countDocuments(),
+      Recruiter.countDocuments(),
+      Recruiter.countDocuments({ status: "active" }),
+      Candidate.countDocuments({ subscriptionStatus: "active" }),
+      Candidate.countDocuments({ paymentStatus: "pending" }),
+      Candidate.countDocuments({ assignedRecruiterId: null }),
+      Candidate.countDocuments({ username: { $ne: "" }, passwordHash: { $ne: "" } }),
+      Candidate.aggregate([
+        { $group: { _id: "$subscriptionPlan", count: { $sum: 1 } } },
+      ]),
     ]);
 
-    // Calculate success rate (offer / applied)
-    const successRate = appliedApplications > 0 
-      ? (offerApplications / appliedApplications * 100).toFixed(2)
-      : 0;
+    const monthlyRevenue = (revenueAgg || []).reduce((sum, row) => {
+      const plan = row._id || "free";
+      return sum + (planPrices[plan] || 0) * (row.count || 0);
+    }, 0);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         totalCandidates,
+        activeSubscriptions,
+        pendingPayments,
+        monthlyRevenue,
         totalRecruiters,
-        totalAdmins,
-        totalJobApplications,
-        applicationsByStatus: {
-          pending: pendingApplications,
-          applied: appliedApplications,
-          interview: interviewApplications,
-          rejected: rejectedApplications,
-          offer: offerApplications
-        },
-        successRate: parseFloat(successRate)
-      }
+        activeRecruiters,
+        unassignedCandidates,
+        candidatesWithCredentials,
+      },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ACTIVITY (for Admin dashboard UI)
+   GET /api/v1/admin/activity
+========================================================= */
+exports.getActivity = async (req, res, next) => {
+  try {
+    const [recentCandidates, recentRecruiters, recentAssignments, recentCredentials] =
+      await Promise.all([
+        Candidate.find().sort({ createdAt: -1 }).limit(5).lean(),
+        Recruiter.find().sort({ updatedAt: -1 }).limit(5).lean(),
+        Candidate.find({ assignedRecruiterId: { $ne: null } })
+          .sort({ assignedDate: -1 })
+          .limit(5)
+          .populate("assignedRecruiterId", "name email")
+          .lean(),
+        Candidate.find({ username: { $ne: "" }, passwordHash: { $ne: "" } })
+          .sort({ credentialsGenerated: -1 })
+          .limit(5)
+          .lean(),
+      ]);
+
+    const activity = [];
+
+    recentCandidates.forEach((c) => {
+      activity.push(
+        buildActivityItem({
+          type: "subscription",
+          action: `New ${c.subscriptionPlan || "free"} subscription`,
+          user: c.fullName || c.email || "Candidate",
+          time: c.createdAt,
+        })
+      );
+    });
+
+    recentRecruiters.forEach((r) => {
+      activity.push(
+        buildActivityItem({
+          type: "recruiter",
+          action: `Recruiter ${r.status === "active" ? "activated" : "updated"}`,
+          user: r.name || r.email || "Recruiter",
+          time: r.updatedAt || r.createdAt,
+        })
+      );
+    });
+
+    recentAssignments.forEach((c) => {
+      activity.push(
+        buildActivityItem({
+          type: "assignment",
+          action: "Candidate assigned",
+          user: `${c.fullName || c.email || "Candidate"} → ${
+            c.assignedRecruiterId?.name || "Recruiter"
+          }`,
+          time: c.assignedDate || c.updatedAt || c.createdAt,
+        })
+      );
+    });
+
+    recentCredentials.forEach((c) => {
+      activity.push(
+        buildActivityItem({
+          type: "credentials",
+          action: "Login credentials created",
+          user: c.fullName || c.email || "Candidate",
+          time: c.credentialsGenerated || c.updatedAt || c.createdAt,
+        })
+      );
+    });
+
+    // Sort by real timestamps desc (fallback to now if missing)
+    const sorted = activity.sort((a, b) => {
+      const at = a._rawTime ? new Date(a._rawTime).getTime() : 0;
+      const bt = b._rawTime ? new Date(b._rawTime).getTime() : 0;
+      return bt - at;
+    });
+
+    // If you want “recentActivity” format exactly, keep it simple:
+    // Your UI only needs: action, user, time, icon, color
+    return res.status(200).json(activity.slice(0, 10));
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   CANDIDATES
+   GET /api/v1/admin/candidates   -> returns ARRAY (UI expects array)
+   POST /api/v1/admin/candidates
+   PUT /api/v1/admin/candidates/:id
+   DELETE /api/v1/admin/candidates/:id
+========================================================= */
+exports.getCandidates = async (req, res, next) => {
+  try {
+    const candidates = await Candidate.find()
+      .sort({ createdAt: -1 })
+      .populate("assignedRecruiterId", "name email department specialization status maxCandidates")
+      .lean();
+
+    const mapped = candidates.map((c) => ({
+      ...c,
+
+      // UI expects these keys:
+      assignedRecruiter: c.assignedRecruiterId?._id || c.assignedRecruiterId || null,
+      recruiterName: c.assignedRecruiterId?.name || "",
+
+      // UI checks username && password. Do NOT expose passwordHash.
+      password: safeHashedPasswordFlag(c),
+    }));
+
+    // IMPORTANT: return raw array for your AdminPage usage: candidates.filter(...)
+    return res.status(200).json(mapped);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createCandidate = async (req, res, next) => {
+  try {
+    const created = await Candidate.create(req.body);
+    return res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateCandidate = async (req, res, next) => {
+  try {
+    const updated = await Candidate.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updated) return next(new ErrorResponse("Candidate not found", 404));
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteCandidate = async (req, res, next) => {
+  try {
+    const candidate = await Candidate.findById(req.params.id);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    await candidate.deleteOne();
+    return res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   RECRUITERS
+   GET /api/v1/admin/recruiters   -> returns ARRAY (UI expects array)
+   POST /api/v1/admin/recruiters
+   PUT /api/v1/admin/recruiters/:id
+   DELETE /api/v1/admin/recruiters/:id
+========================================================= */
+exports.getRecruiters = async (req, res, next) => {
+  try {
+    const recruiters = await Recruiter.find().sort({ createdAt: -1 }).lean();
+
+    const recruiterIds = recruiters.map((r) => r._id);
+    const counts = await Candidate.aggregate([
+      { $match: { assignedRecruiterId: { $in: recruiterIds } } },
+      { $group: { _id: "$assignedRecruiterId", count: { $sum: 1 } } },
+    ]);
+
+    const countMap = new Map(counts.map((x) => [String(x._id), x.count]));
+
+    const mapped = recruiters.map((r) => ({
+      ...r,
+      assignedCandidatesCount: countMap.get(String(r._id)) || 0,
+    }));
+
+    // IMPORTANT: return raw array for your AdminPage usage: recruiters.filter(...)
+    return res.status(200).json(mapped);
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.createRecruiter = async (req, res, next) => {
+  try {
+    const created = await Recruiter.create(req.body);
+    return res.status(201).json({ success: true, data: created });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.updateRecruiter = async (req, res, next) => {
+  try {
+    const updated = await Recruiter.findByIdAndUpdate(req.params.id, req.body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updated) return next(new ErrorResponse("Recruiter not found", 404));
+
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.deleteRecruiter = async (req, res, next) => {
+  try {
+    const recruiter = await Recruiter.findById(req.params.id);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    await Candidate.updateMany(
+      { assignedRecruiterId: recruiter._id },
+      { $set: { assignedRecruiterId: null, recruiterStatus: "", assignedDate: null } }
+    );
+
+    await recruiter.deleteOne();
+    return res.status(200).json({ success: true, data: {} });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ASSIGNMENTS
+   POST /api/v1/admin/assignments/assign
+   POST /api/v1/admin/assignments/bulk-assign
+   POST /api/v1/admin/assignments/auto-assign
+========================================================= */
+exports.assignCandidate = async (req, res, next) => {
+  try {
+    const { candidateId, recruiterId } = req.body;
+
+    const candidate = await Candidate.findById(candidateId);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    // Unassign
+    if (!recruiterId) {
+      candidate.assignedRecruiterId = null;
+      candidate.recruiterStatus = "";
+      candidate.assignedDate = null;
+      await candidate.save();
+      return res.status(200).json({ success: true, data: candidate });
+    }
+
+    const recruiter = await Recruiter.findById(recruiterId);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+
+    if (recruiter.status !== "active") {
+      return next(new ErrorResponse("Recruiter is not active", 400));
+    }
+
+    const assignedCount = await Candidate.countDocuments({ assignedRecruiterId: recruiter._id });
+    if (assignedCount >= (recruiter.maxCandidates || 10)) {
+      return next(new ErrorResponse("Recruiter is at full capacity", 400));
+    }
+
+    candidate.assignedRecruiterId = recruiter._id;
+    candidate.recruiterStatus = "new";
+    candidate.assignedDate = new Date();
+    await candidate.save();
+
+    recruiter.lastAssignment = new Date();
+    await recruiter.save();
+
+    return res.status(200).json({ success: true, data: candidate });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.bulkAssignCandidates = async (req, res, next) => {
+  try {
+    const { candidateIds, recruiterId } = req.body;
+
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) {
+      return next(new ErrorResponse("candidateIds must be a non-empty array", 400));
+    }
+
+    const recruiter = await Recruiter.findById(recruiterId);
+    if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
+    if (recruiter.status !== "active") return next(new ErrorResponse("Recruiter is not active", 400));
+
+    const assignedCount = await Candidate.countDocuments({ assignedRecruiterId: recruiter._id });
+    const capacity = recruiter.maxCandidates || 10;
+    const remaining = Math.max(0, capacity - assignedCount);
+
+    if (remaining <= 0) return next(new ErrorResponse("Recruiter is at full capacity", 400));
+
+    const toAssign = candidateIds.slice(0, remaining);
+
+    await Candidate.updateMany(
+      { _id: { $in: toAssign } },
+      { $set: { assignedRecruiterId: recruiter._id, recruiterStatus: "new", assignedDate: new Date() } }
+    );
+
+    recruiter.lastAssignment = new Date();
+    await recruiter.save();
+
+    return res.status(200).json({
+      success: true,
+      data: { assigned: toAssign.length, skipped: candidateIds.length - toAssign.length },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.autoAssignCandidates = async (req, res, next) => {
+  try {
+    const activeRecruiters = await Recruiter.find({ status: "active" }).sort({ createdAt: 1 }).lean();
+    if (activeRecruiters.length === 0) return next(new ErrorResponse("No active recruiters available", 400));
+
+    const unassigned = await Candidate.find({ assignedRecruiterId: null }).sort({ createdAt: 1 }).lean();
+    if (unassigned.length === 0) {
+      return res.status(200).json({ success: true, data: { assigned: 0, message: "No unassigned candidates" } });
+    }
+
+    const recruiterIds = activeRecruiters.map((r) => r._id);
+    const countsAgg = await Candidate.aggregate([
+      { $match: { assignedRecruiterId: { $in: recruiterIds } } },
+      { $group: { _id: "$assignedRecruiterId", count: { $sum: 1 } } },
+    ]);
+    const countMap = new Map(countsAgg.map((x) => [String(x._id), x.count]));
+
+    let assignedTotal = 0;
+    let rrIndex = 0;
+
+    for (const cand of unassigned) {
+      let tries = 0;
+      let assigned = false;
+
+      while (tries < activeRecruiters.length && !assigned) {
+        const recruiter = activeRecruiters[rrIndex];
+        rrIndex = (rrIndex + 1) % activeRecruiters.length;
+        tries++;
+
+        const currentCount = countMap.get(String(recruiter._id)) || 0;
+        const cap = recruiter.maxCandidates || 10;
+
+        if (currentCount < cap) {
+          await Candidate.updateOne(
+            { _id: cand._id },
+            { $set: { assignedRecruiterId: recruiter._id, recruiterStatus: "new", assignedDate: new Date() } }
+          );
+          countMap.set(String(recruiter._id), currentCount + 1);
+          assignedTotal++;
+          assigned = true;
+
+          await Recruiter.updateOne({ _id: recruiter._id }, { $set: { lastAssignment: new Date() } });
+        }
+      }
+
+      if (!assigned) break;
+    }
+
+    return res.status(200).json({ success: true, data: { assigned: assignedTotal } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   CREDENTIALS
+   POST /api/v1/admin/credentials/set
+   POST /api/v1/admin/credentials/reset
+========================================================= */
+exports.setCandidateCredentials = async (req, res, next) => {
+  try {
+    const { candidateId, username, password } = req.body;
+
+    if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
+    if (!username || !username.trim()) return next(new ErrorResponse("username is required", 400));
+
+    const candidate = await Candidate.findById(candidateId);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    const taken = await Candidate.findOne({ username: username.trim(), _id: { $ne: candidateId } });
+    if (taken) return next(new ErrorResponse("Username already taken", 400));
+
+    candidate.username = username.trim();
+
+    if (password && password.length > 0) {
+      if (password.length < 8) return next(new ErrorResponse("Password must be at least 8 characters", 400));
+      const salt = await bcrypt.genSalt(10);
+      candidate.passwordHash = await bcrypt.hash(password, salt);
+      candidate.credentialsGenerated = new Date();
+      candidate.credentialsUpdatedBy = "admin";
+    }
+
+    await candidate.save();
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        candidateId: candidate._id,
+        username: candidate.username,
+        credentialsGenerated: candidate.credentialsGenerated,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.resetCandidateCredentials = async (req, res, next) => {
+  try {
+    const { candidateId } = req.body;
+    if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
+
+    const candidate = await Candidate.findById(candidateId);
+    if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
+
+    candidate.username = "";
+    candidate.passwordHash = "";
+    candidate.credentialsGenerated = null;
+    candidate.credentialsUpdatedBy = "admin";
+
+    await candidate.save();
+
+    return res.status(200).json({ success: true, data: { candidateId: candidate._id } });
   } catch (error) {
     next(error);
   }

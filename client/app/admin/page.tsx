@@ -25,31 +25,76 @@ export default function AdminPage() {
   const [recentActivity, setRecentActivity] = useState([])
   const router = useRouter()
 
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+  const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('infrapilot_token')
+    
+    if (!token) {
+      router.push('/login')
+      return null
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      })
+
+      if (response.status === 401) {
+        localStorage.removeItem('infrapilot_user')
+        localStorage.removeItem('infrapilot_token')
+        router.push('/login')
+        return null
+      }
+
+      return response
+    } catch (error) {
+      console.error('API Error:', error)
+      return null
+    }
+  }
+
   useEffect(() => {
-    const checkAdminAuth = () => {
-      const userStr = localStorage.getItem('infrapilot_user')
-      const adminAuth = localStorage.getItem('admin_authenticated')
+    const checkAdminAuth = async () => {
+      const token = localStorage.getItem('infrapilot_token')
       
-      if (!userStr) {
-        router.push('/login')  // Changed from '/admin/login'
+      if (!token) {
+        router.push('/login')
         return
       }
       
       try {
-        const userData = JSON.parse(userStr)
+        const response = await fetchWithAuth('/api/v1/auth/me')
         
-        if (userData.role !== 'admin' || adminAuth !== 'true') {
-          router.push('/login')  // Changed from '/admin/login'
+        if (!response || !response.ok) {
+          localStorage.removeItem('infrapilot_user')
+          localStorage.removeItem('infrapilot_token')
+          router.push('/login')
+          return
+        }
+        
+        const userData = await response.json()
+        
+        if (userData.role !== 'admin') {
+          router.push('/login')
           return
         }
         
         setUser(userData)
         setIsAuthenticated(true)
-        loadDashboardData()
+        await loadDashboardData()
         
       } catch {
-        localStorage.clear()
-        router.push('/login')  // Changed from '/admin/login'
+        localStorage.removeItem('infrapilot_user')
+        localStorage.removeItem('infrapilot_token')
+        router.push('/login')
       } finally {
         setLoading(false)
       }
@@ -58,42 +103,42 @@ export default function AdminPage() {
     checkAdminAuth()
   }, [router])
 
-  const loadDashboardData = () => {
-    // Load candidates data
-    const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-    const activeSubs = candidates.filter(c => c.subscriptionStatus === 'active').length
-    const pendingPayments = candidates.filter(c => c.paymentStatus === 'pending').length
-    const unassignedCandidates = candidates.filter(c => !c.assignedRecruiter || c.assignedRecruiter === '').length
-    const candidatesWithCredentials = candidates.filter(c => c.username && c.password).length
-    
-    // Calculate monthly revenue (simulated)
-    const planPrices = { free: 0, silver: 29, gold: 79, platinum: 149, enterprise: 299 }
-    const revenue = candidates.reduce((sum, candidate) => {
-      return sum + (planPrices[candidate.subscriptionPlan] || 0)
-    }, 0)
-    
-    // Load recruiters data
-    const recruiters = JSON.parse(localStorage.getItem('infrapilot_recruiters') || '[]')
-    const activeRecruiters = recruiters.filter(r => r.status === 'active').length
-    
-    // Generate recent activity
-    const activities = generateRecentActivity(candidates, recruiters)
-    
-    setStats({
-      totalCandidates: candidates.length,
-      activeSubscriptions: activeSubs,
-      pendingPayments: pendingPayments,
-      monthlyRevenue: revenue,
-      totalRecruiters: recruiters.length,
-      activeRecruiters: activeRecruiters,
-      unassignedCandidates: unassignedCandidates,
-      candidatesWithCredentials: candidatesWithCredentials
-    })
-    
-    setRecentActivity(activities)
+  const loadDashboardData = async () => {
+    try {
+      // Load dashboard stats
+      const dashboardRes = await fetchWithAuth('/api/v1/admin/dashboard')
+      if (dashboardRes?.ok) {
+        const dashboardData = await dashboardRes.json()
+        setStats({
+          totalCandidates: dashboardData.totalCandidates || 0,
+          activeSubscriptions: dashboardData.activeSubscriptions || 0,
+          pendingPayments: dashboardData.pendingPayments || 0,
+          monthlyRevenue: dashboardData.monthlyRevenue || 0,
+          totalRecruiters: dashboardData.totalRecruiters || 0,
+          activeRecruiters: dashboardData.activeRecruiters || 0,
+          unassignedCandidates: dashboardData.unassignedCandidates || 0,
+          candidatesWithCredentials: dashboardData.candidatesWithCredentials || 0
+        })
+      }
+
+      // Load candidates for activity
+      const candidatesRes = await fetchWithAuth('/api/v1/admin/users?role=candidate')
+      const candidates = candidatesRes?.ok ? await candidatesRes.json() : []
+
+      // Load recruiters for activity
+      const recruitersRes = await fetchWithAuth('/api/v1/admin/users?role=recruiter')
+      const recruiters = recruitersRes?.ok ? await recruitersRes.json() : []
+
+      // Generate recent activity
+      const activities = generateRecentActivity(candidates, recruiters)
+      setRecentActivity(activities)
+
+    } catch (error) {
+      console.error('Error loading dashboard data:', error)
+    }
   }
 
-  const generateRecentActivity = (candidates, recruiters) => {
+  const generateRecentActivity = (candidates: any[], recruiters: any[]) => {
     const activities = []
     const now = new Date()
     
@@ -172,16 +217,13 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem('infrapilot_user')
     localStorage.removeItem('infrapilot_token')
-    localStorage.removeItem('admin_authenticated')
-    router.push('/login')  // Changed from '/admin/login'
+    router.push('/login')
   }
 
-  const refreshDashboard = () => {
+  const refreshDashboard = async () => {
     setLoading(true)
-    setTimeout(() => {
-      loadDashboardData()
-      setLoading(false)
-    }, 500)
+    await loadDashboardData()
+    setLoading(false)
   }
 
   if (loading && !isAuthenticated) {
@@ -246,7 +288,7 @@ export default function AdminPage() {
               Refresh
             </button>
             <button
-              onClick={() => router.push('/login')}  // Changed from '/admin/login'
+              onClick={() => router.push('/login')}
               className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-blue-500 text-white text-sm rounded-lg hover:from-blue-700 hover:to-blue-600 transition-all duration-200 shadow-md hover:shadow-lg shadow-blue-200"
             >
               Switch Admin
@@ -610,49 +652,22 @@ export default function AdminPage() {
                 <p className="text-slate-600">Manage candidate assignments and distribution</p>
               </div>
               <button
-                onClick={() => {
-                  const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-                  const recruiters = JSON.parse(localStorage.getItem('infrapilot_recruiters') || '[]')
-                  const activeRecruiters = recruiters.filter(r => r.status === 'active')
-                  
-                  if (activeRecruiters.length === 0) {
-                    alert('No active recruiters available!')
-                    return
-                  }
-                  
-                  const unassignedCandidates = candidates.filter(c => !c.assignedRecruiter || c.assignedRecruiter === '')
-                  
-                  if (unassignedCandidates.length === 0) {
-                    alert('No unassigned candidates!')
-                    return
-                  }
-                  
-                  const updatedCandidates = [...candidates]
-                  unassignedCandidates.forEach((candidate, index) => {
-                    const recruiterIndex = index % activeRecruiters.length
-                    const recruiter = activeRecruiters[recruiterIndex]
+                onClick={async () => {
+                  try {
+                    const response = await fetchWithAuth('/api/v1/admin/assignments/auto-assign', {
+                      method: 'POST',
+                    })
                     
-                    const candidateIndex = updatedCandidates.findIndex(c => c.id === candidate.id)
-                    if (candidateIndex !== -1) {
-                      updatedCandidates[candidateIndex] = {
-                        ...updatedCandidates[candidateIndex],
-                        assignedRecruiter: recruiter.id,
-                        recruiterStatus: 'new',
-                        recruiterName: recruiter.name,
-                        recruiterDetails: {
-                          id: recruiter.id,
-                          name: recruiter.name,
-                          email: recruiter.email,
-                          department: recruiter.department
-                        },
-                        assignedDate: new Date().toISOString()
-                      }
+                    if (response?.ok) {
+                      const result = await response.json()
+                      alert(`✅ ${result.assigned} candidates auto-assigned to ${result.recruiters} recruiters!`)
+                      await loadDashboardData()
+                    } else {
+                      alert('Failed to auto-assign candidates')
                     }
-                  })
-                  
-                  localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-                  alert(`✅ ${unassignedCandidates.length} candidates auto-assigned to ${activeRecruiters.length} recruiters!`)
-                  loadDashboardData()
+                  } catch (error) {
+                    alert('Error auto-assigning candidates')
+                  }
                 }}
                 className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-emerald-500 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-600 transition-all duration-200 shadow-md hover:shadow-lg shadow-emerald-200 font-medium"
               >
@@ -993,18 +1008,68 @@ const AssignmentManager = () => {
   const [availableCandidates, setAvailableCandidates] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
+  const router = useRouter()
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+  const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('infrapilot_token')
+    
+    if (!token) {
+      router.push('/login')
+      return null
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      })
+
+      if (response.status === 401) {
+        localStorage.removeItem('infrapilot_user')
+        localStorage.removeItem('infrapilot_token')
+        router.push('/login')
+        return null
+      }
+
+      return response
+    } catch (error) {
+      console.error('API Error:', error)
+      return null
+    }
+  }
 
   useEffect(() => {
     loadData()
   }, [])
 
-  const loadData = () => {
-    const savedRecruiters = localStorage.getItem('infrapilot_recruiters') || '[]'
-    const savedCandidates = localStorage.getItem('infrapilot_candidates') || '[]'
-    
-    setRecruiters(JSON.parse(savedRecruiters))
-    setCandidates(JSON.parse(savedCandidates))
-    setLoading(false)
+  const loadData = async () => {
+    try {
+      // Load candidates
+      const candidatesRes = await fetchWithAuth('/api/v1/admin/users?role=candidate')
+      if (candidatesRes?.ok) {
+        const candidatesData = await candidatesRes.json()
+        setCandidates(candidatesData)
+      }
+
+      // Load recruiters
+      const recruitersRes = await fetchWithAuth('/api/v1/admin/users?role=recruiter')
+      if (recruitersRes?.ok) {
+        const recruitersData = await recruitersRes.json()
+        setRecruiters(recruitersData)
+      }
+    } catch (error) {
+      console.error('Error loading data:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleSelectRecruiter = (recruiter: any) => {
@@ -1023,17 +1088,13 @@ const AssignmentManager = () => {
     setAvailableCandidates([...unassignedCandidates, ...recruiterCandidates])
   }
 
-  // ✅ UPDATED: Save recruiter name and details with candidate
-  const assignCandidate = (candidateId: string, assign: boolean = true) => {
-    const updatedCandidates = candidates.map(candidate => {
-      if (candidate.id === candidateId) {
-        const updatedCandidate = {
-          ...candidate,
-          assignedRecruiter: assign ? selectedRecruiter.id : '',
-          recruiterStatus: assign ? 'new' : '',
-          // ✅ ADD recruiter name so candidate can see it
-          recruiterName: assign ? selectedRecruiter.name : '',
-          // ✅ ADD recruiter details for candidate dashboard
+  const assignCandidate = async (candidateId: string, assign: boolean = true) => {
+    try {
+      const response = await fetchWithAuth(`/api/v1/admin/assignments/${candidateId}`, {
+        method: assign ? 'POST' : 'DELETE',
+        body: JSON.stringify({
+          recruiterId: assign ? selectedRecruiter.id : null,
+          recruiterName: assign ? selectedRecruiter.name : null,
           recruiterDetails: assign ? {
             id: selectedRecruiter.id,
             name: selectedRecruiter.name,
@@ -1044,64 +1105,36 @@ const AssignmentManager = () => {
             status: selectedRecruiter.status || 'active',
             bio: selectedRecruiter.bio || `${selectedRecruiter.name} is your dedicated career consultant.`,
             experience: selectedRecruiter.experience || '5+ years'
-          } : null,
-          // ✅ ADD assignment date
-          assignedDate: assign ? new Date().toISOString() : null
-        }
-        return updatedCandidate
-      }
-      return candidate
-    })
-    
-    setCandidates(updatedCandidates)
-    localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-    
-    // ✅ Also update recruiter's assigned candidates count
-    if (assign) {
-      const updatedRecruiters = recruiters.map(recruiter => {
-        if (recruiter.id === selectedRecruiter.id) {
-          const assignedCount = updatedCandidates.filter(c => c.assignedRecruiter === recruiter.id).length
-          return {
-            ...recruiter,
-            assignedCandidatesCount: assignedCount,
-            lastAssignment: new Date().toISOString()
-          }
-        }
-        return recruiter
+          } : null
+        }),
       })
-      localStorage.setItem('infrapilot_recruiters', JSON.stringify(updatedRecruiters))
-      setRecruiters(updatedRecruiters)
+
+      if (response?.ok) {
+        await loadData()
+        alert(assign ? 
+          `✅ Candidate assigned to ${selectedRecruiter.name}! The candidate can now see their recruiter in their dashboard.` : 
+          '✅ Candidate unassigned!'
+        )
+      } else {
+        alert('Failed to update assignment')
+      }
+    } catch (error) {
+      alert('Error updating assignment')
     }
-    
-    // Refresh available candidates
-    const unassignedCandidates = updatedCandidates.filter(candidate => 
-      !candidate.assignedRecruiter || candidate.assignedRecruiter === ''
-    )
-    const recruiterCandidates = updatedCandidates.filter(candidate => 
-      candidate.assignedRecruiter === selectedRecruiter.id
-    )
-    
-    setAvailableCandidates([...unassignedCandidates, ...recruiterCandidates])
-    
-    alert(assign ? 
-      `✅ Candidate assigned to ${selectedRecruiter.name}! The candidate can now see their recruiter in their dashboard.` : 
-      '✅ Candidate unassigned!'
-    )
   }
 
-  const bulkAssign = (candidateIds: string[]) => {
+  const bulkAssign = async (candidateIds: string[]) => {
     if (candidateIds.length === 0) {
       alert('Please select at least one candidate')
       return
     }
     
-    const updatedCandidates = candidates.map(candidate => {
-      if (candidateIds.includes(candidate.id)) {
-        return {
-          ...candidate,
-          assignedRecruiter: selectedRecruiter.id,
-          recruiterStatus: 'new',
-          // ✅ ADD recruiter details for candidate dashboard
+    try {
+      const response = await fetchWithAuth('/api/v1/admin/assignments/bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          candidateIds,
+          recruiterId: selectedRecruiter.id,
           recruiterName: selectedRecruiter.name,
           recruiterDetails: {
             id: selectedRecruiter.id,
@@ -1111,42 +1144,19 @@ const AssignmentManager = () => {
             department: selectedRecruiter.department || 'Recruitment',
             specialization: selectedRecruiter.specialization || 'General',
             status: selectedRecruiter.status || 'active'
-          },
-          assignedDate: new Date().toISOString()
-        }
+          }
+        }),
+      })
+
+      if (response?.ok) {
+        await loadData()
+        alert(`✅ ${candidateIds.length} candidates assigned to ${selectedRecruiter.name}! All candidates can now see their recruiter in their dashboard.`)
+      } else {
+        alert('Failed to assign candidates')
       }
-      return candidate
-    })
-    
-    setCandidates(updatedCandidates)
-    localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-    
-    // Update recruiter's count
-    const updatedRecruiters = recruiters.map(recruiter => {
-      if (recruiter.id === selectedRecruiter.id) {
-        const assignedCount = updatedCandidates.filter(c => c.assignedRecruiter === recruiter.id).length
-        return {
-          ...recruiter,
-          assignedCandidatesCount: assignedCount,
-          lastAssignment: new Date().toISOString()
-        }
-      }
-      return recruiter
-    })
-    localStorage.setItem('infrapilot_recruiters', JSON.stringify(updatedRecruiters))
-    setRecruiters(updatedRecruiters)
-    
-    // Refresh available candidates
-    const unassignedCandidates = updatedCandidates.filter(candidate => 
-      !candidate.assignedRecruiter || candidate.assignedRecruiter === ''
-    )
-    const recruiterCandidates = updatedCandidates.filter(candidate => 
-      candidate.assignedRecruiter === selectedRecruiter.id
-    )
-    
-    setAvailableCandidates([...unassignedCandidates, ...recruiterCandidates])
-    
-    alert(`✅ ${candidateIds.length} candidates assigned to ${selectedRecruiter.name}! All candidates can now see their recruiter in their dashboard.`)
+    } catch (error) {
+      alert('Error assigning candidates')
+    }
   }
 
   const filteredCandidates = availableCandidates.filter(candidate => {
@@ -1424,20 +1434,64 @@ const CredentialsManager = () => {
   })
   const [loading, setLoading] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
+  const router = useRouter()
+
+  const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001'
+
+  const fetchWithAuth = async (endpoint: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('infrapilot_token')
+    
+    if (!token) {
+      router.push('/login')
+      return null
+    }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      ...options.headers,
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+        ...options,
+        headers,
+      })
+
+      if (response.status === 401) {
+        localStorage.removeItem('infrapilot_user')
+        localStorage.removeItem('infrapilot_token')
+        router.push('/login')
+        return null
+      }
+
+      return response
+    } catch (error) {
+      console.error('API Error:', error)
+      return null
+    }
+  }
 
   useEffect(() => {
     loadData()
   }, [])
 
-  const loadData = () => {
-    const savedCandidates = localStorage.getItem('infrapilot_candidates') || '[]'
-    setCandidates(JSON.parse(savedCandidates))
-    setLoading(false)
+  const loadData = async () => {
+    try {
+      const response = await fetchWithAuth('/api/v1/admin/users?role=candidate')
+      if (response?.ok) {
+        const data = await response.json()
+        setCandidates(data)
+      }
+    } catch (error) {
+      console.error('Error loading candidates:', error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const openCreateForm = (candidate: any) => {
     setSelectedCandidate(candidate)
-    // Suggest username based on name and email
     const firstName = candidate.firstName || 'candidate'
     const lastName = candidate.lastName || candidate.id.substring(0, 4)
     const suggestedUsername = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`
@@ -1468,10 +1522,9 @@ const CredentialsManager = () => {
     }))
   }
 
-  const saveCredentials = () => {
+  const saveCredentials = async () => {
     if (!selectedCandidate) return
     
-    // Validate
     if (!formData.username.trim()) {
       alert('Username is required!')
       return
@@ -1489,60 +1542,54 @@ const CredentialsManager = () => {
       }
     }
     
-    // Check if username already exists for another candidate
-    const existingCandidate = candidates.find(c => 
-      c.id !== selectedCandidate.id && 
-      c.username === formData.username
-    )
-    
-    if (existingCandidate) {
-      alert(`Username "${formData.username}" is already taken by ${existingCandidate.firstName} ${existingCandidate.lastName}!`)
-      return
-    }
-    
-    const updatedCandidates = candidates.map(c => {
-      if (c.id === selectedCandidate.id) {
-        return {
-          ...c,
+    try {
+      const response = await fetchWithAuth(`/api/v1/admin/credentials/${selectedCandidate.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
           username: formData.username,
-          password: formData.password || c.password, // Keep existing password if not changed
+          password: formData.password || undefined,
           credentialsGenerated: new Date().toISOString(),
           credentialsUpdatedBy: 'admin'
-        }
-      }
-      return c
-    })
+        }),
+      })
 
-    setCandidates(updatedCandidates)
-    localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-    
-    setShowForm(false)
-    setSelectedCandidate(null)
-    setFormData({ username: '', password: '', confirmPassword: '' })
-    
-    alert(`✅ Credentials saved for ${selectedCandidate.firstName} ${selectedCandidate.lastName}!`)
+      if (response?.ok) {
+        await loadData()
+        setShowForm(false)
+        setSelectedCandidate(null)
+        setFormData({ username: '', password: '', confirmPassword: '' })
+        alert(`✅ Credentials saved for ${selectedCandidate.firstName} ${selectedCandidate.lastName}!`)
+      } else {
+        alert('Failed to save credentials')
+      }
+    } catch (error) {
+      alert('Error saving credentials')
+    }
   }
 
-  const resetCredentials = (candidateId: string) => {
+  const resetCredentials = async (candidateId: string) => {
     if (!confirm('Are you sure you want to reset credentials? The candidate will no longer be able to login.')) {
       return
     }
 
-    const updatedCandidates = candidates.map(c => 
-      c.id === candidateId 
-        ? { ...c, username: '', password: '', credentialsGenerated: null }
-        : c
-    )
+    try {
+      const response = await fetchWithAuth(`/api/v1/admin/credentials/${candidateId}`, {
+        method: 'DELETE',
+      })
 
-    setCandidates(updatedCandidates)
-    localStorage.setItem('infrapilot_candidates', JSON.stringify(updatedCandidates))
-    
-    if (selectedCandidate?.id === candidateId) {
-      setSelectedCandidate(null)
-      setShowForm(false)
+      if (response?.ok) {
+        await loadData()
+        if (selectedCandidate?.id === candidateId) {
+          setSelectedCandidate(null)
+          setShowForm(false)
+        }
+        alert('✅ Credentials reset!')
+      } else {
+        alert('Failed to reset credentials')
+      }
+    } catch (error) {
+      alert('Error resetting credentials')
     }
-    
-    alert('✅ Credentials reset!')
   }
 
   const copyToClipboard = (text: string) => {

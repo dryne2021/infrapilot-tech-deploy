@@ -26,8 +26,8 @@ const ExperienceSchema = new mongoose.Schema(
 
 const ResumeSchema = new mongoose.Schema(
   {
-    fileName: String,
-    fileUrl: String,
+    fileName: { type: String, trim: true },
+    fileUrl: { type: String, trim: true },
     uploadedAt: { type: Date, default: Date.now },
     isActive: { type: Boolean, default: true },
   },
@@ -42,11 +42,12 @@ const CandidateSchema = new mongoose.Schema(
       ref: "User",
       required: true,
       unique: true,
+      index: true,
     },
 
     // ✅ candidate profile fields (from the form)
-    fullName: { type: String, trim: true },
-    email: { type: String, trim: true },
+    fullName: { type: String, trim: true, index: true },
+    email: { type: String, trim: true, lowercase: true, index: true },
     phone: { type: String, trim: true },
     location: { type: String, trim: true },
 
@@ -63,6 +64,32 @@ const CandidateSchema = new mongoose.Schema(
       default: "entry",
     },
 
+    // ✅ Subscription + payment (Admin dashboard depends on these)
+    subscriptionPlan: {
+      type: String,
+      enum: ["free", "silver", "gold", "platinum", "enterprise"],
+      default: "free",
+      index: true,
+    },
+    subscriptionStatus: {
+      type: String,
+      enum: ["active", "inactive"],
+      default: "inactive",
+      index: true,
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["none", "pending", "paid"],
+      default: "none",
+      index: true,
+    },
+
+    // ✅ Credentials (IMPORTANT: NEVER store plaintext password)
+    username: { type: String, trim: true, default: "", index: true },
+    passwordHash: { type: String, default: "" },
+    credentialsGenerated: { type: Date, default: null },
+    credentialsUpdatedBy: { type: String, default: "" }, // e.g. "admin" or userId
+
     // ✅ real education + work history data
     education: [EducationSchema],
     workHistory: [ExperienceSchema],
@@ -70,13 +97,21 @@ const CandidateSchema = new mongoose.Schema(
     // existing resumes array (keep)
     resumes: [ResumeSchema],
 
-    // recruiter assignment (keep but align naming)
+    // ✅ recruiter assignment (keep your existing naming but add metadata)
     assignedRecruiterId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "User", // recruiter user account
+      default: null,
+      index: true,
     },
+    recruiterStatus: { type: String, default: "" }, // e.g. "new", "in_progress", "completed"
+    assignedDate: { type: Date, default: null },
   },
   { timestamps: true }
 );
+
+// Helpful compound index for admin searching/filtering
+CandidateSchema.index({ assignedRecruiterId: 1, subscriptionStatus: 1 });
+CandidateSchema.index({ subscriptionPlan: 1, paymentStatus: 1 });
 
 module.exports = mongoose.model("Candidate", CandidateSchema);
