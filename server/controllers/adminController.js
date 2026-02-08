@@ -177,14 +177,12 @@ exports.getRecentActivity = async (req, res, next) => {
       );
     });
 
-    // Sort by timestamps desc
     const sorted = activity.sort((a, b) => {
       const at = a._rawTime ? new Date(a._rawTime).getTime() : 0;
       const bt = b._rawTime ? new Date(b._rawTime).getTime() : 0;
       return bt - at;
     });
 
-    // Return only fields your UI needs
     const clean = sorted.slice(0, 10).map(({ _rawTime, ...rest }) => rest);
 
     return res.status(200).json(clean);
@@ -195,10 +193,6 @@ exports.getRecentActivity = async (req, res, next) => {
 
 /* =========================================================
    CANDIDATES
-   GET /api/v1/admin/candidates   -> returns ARRAY (UI expects array)
-   POST /api/v1/admin/candidates
-   PUT /api/v1/admin/candidates/:id
-   DELETE /api/v1/admin/candidates/:id
 ========================================================= */
 exports.getCandidates = async (req, res, next) => {
   try {
@@ -209,34 +203,27 @@ exports.getCandidates = async (req, res, next) => {
 
     const mapped = candidates.map((c) => ({
       ...c,
-
-      // UI expects these keys:
       assignedRecruiter: c.assignedRecruiterId?._id || c.assignedRecruiterId || null,
       recruiterName: c.assignedRecruiterId?.name || "",
-
-      // UI checks username && password. Do NOT expose passwordHash.
       password: safeHashedPasswordFlag(c),
     }));
 
-    // IMPORTANT: return raw array for your AdminPage usage: candidates.filter(...)
     return res.status(200).json(mapped);
   } catch (error) {
     next(error);
   }
 };
 
-// ✅ FIXED: sets userId + ensures required education fields exist
+// ✅ sets userId + ensures required education fields exist
 exports.createCandidate = async (req, res, next) => {
   try {
     console.log("📥 [ADMIN] createCandidate payload:", req.body);
 
-    // ✅ attach required userId automatically (admin who is creating)
     const payload = {
       ...req.body,
       userId: req.user?._id,
     };
 
-    // ✅ sanitize / default education so Mongoose validation passes
     const edu = Array.isArray(payload.education) ? payload.education : [];
 
     const hasValidEdu =
@@ -250,7 +237,6 @@ exports.createCandidate = async (req, res, next) => {
       );
 
     if (!hasValidEdu) {
-      // schema requires these fields -> provide safe placeholders
       payload.education = [
         {
           school: "Not Provided",
@@ -261,7 +247,6 @@ exports.createCandidate = async (req, res, next) => {
         },
       ];
     } else {
-      // trim to avoid " " failing required checks
       payload.education = edu.map((e) => ({
         ...e,
         school: String(e.school || "").trim(),
@@ -273,7 +258,9 @@ exports.createCandidate = async (req, res, next) => {
     const created = await Candidate.create(payload);
 
     console.log(
-      `✅ [ADMIN] candidate saved: ${created._id} email=${created.email || ""} name=${created.fullName || ""}`
+      `✅ [ADMIN] candidate saved: ${created._id} email=${created.email || ""} name=${
+        created.fullName || ""
+      }`
     );
 
     return res.status(201).json({ success: true, data: created });
@@ -312,10 +299,6 @@ exports.deleteCandidate = async (req, res, next) => {
 
 /* =========================================================
    RECRUITERS
-   GET /api/v1/admin/recruiters   -> returns ARRAY (UI expects array)
-   POST /api/v1/admin/recruiters
-   PUT /api/v1/admin/recruiters/:id
-   DELETE /api/v1/admin/recruiters/:id
 ========================================================= */
 exports.getRecruiters = async (req, res, next) => {
   try {
@@ -341,10 +324,8 @@ exports.getRecruiters = async (req, res, next) => {
 };
 
 /**
- * ✅ FIXED createRecruiter:
- * - Creates a User (role: recruiter) with hashed password
- * - Creates Recruiter profile with REQUIRED fields: userId + name
- * - Never stores/returns plain password
+ * ✅ createRecruiter FIXED:
+ * - DO NOT hash password here (User model hashes in pre('save'))
  */
 exports.createRecruiter = async (req, res, next) => {
   try {
@@ -367,31 +348,29 @@ exports.createRecruiter = async (req, res, next) => {
       );
     }
 
-    // Prevent duplicate recruiter logins
-    const existing = await User.findOne({ $or: [{ email }, { username }] });
+    const emailNorm = String(email).trim().toLowerCase();
+    const usernameNorm = String(username).trim();
+
+    const existing = await User.findOne({
+      $or: [{ email: emailNorm }, { username: usernameNorm }],
+    });
     if (existing) {
       return next(new ErrorResponse("Email or username already exists", 400));
     }
 
-    // Hash password (secure)
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // 1) Create recruiter login user
     const createdUser = await User.create({
       name: `${firstName} ${lastName || ""}`.trim(),
-      email,
-      username,
-      password: hashedPassword,
+      email: emailNorm,
+      username: usernameNorm,
+      password, // ✅ plain -> hashed once by model hook
       role: "recruiter",
       status: isActive === false ? "inactive" : "active",
     });
 
-    // 2) Create recruiter profile (must contain userId + name)
     const createdRecruiter = await Recruiter.create({
-      userId: createdUser._id, // ✅ REQUIRED
-      name: createdUser.name, // ✅ REQUIRED
-      email,
+      userId: createdUser._id,
+      name: createdUser.name,
+      email: emailNorm,
       phone: phone || "",
       department: department || "Technical",
       specialization: specialization || "IT/Software",
@@ -407,7 +386,7 @@ exports.createRecruiter = async (req, res, next) => {
       data: {
         ...createdRecruiter.toObject(),
         username: createdUser.username,
-        password: "SET", // safe flag for UI (do not expose real password)
+        password: "SET",
       },
     });
   } catch (error) {
@@ -435,13 +414,11 @@ exports.deleteRecruiter = async (req, res, next) => {
     const recruiter = await Recruiter.findById(req.params.id);
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
 
-    // Unassign candidates from this recruiter
     await Candidate.updateMany(
       { assignedRecruiterId: recruiter._id },
       { $set: { assignedRecruiterId: null, recruiterStatus: "", assignedDate: null } }
     );
 
-    // (Optional) delete the linked recruiter login user
     if (recruiter.userId) {
       await User.findByIdAndDelete(recruiter.userId);
     }
@@ -455,9 +432,6 @@ exports.deleteRecruiter = async (req, res, next) => {
 
 /* =========================================================
    ASSIGNMENTS
-   PUT  /api/v1/admin/assignments
-   POST /api/v1/admin/assignments/bulk
-   POST /api/v1/admin/assignments/auto-assign
 ========================================================= */
 exports.assignCandidate = async (req, res, next) => {
   try {
@@ -466,7 +440,6 @@ exports.assignCandidate = async (req, res, next) => {
     const candidate = await Candidate.findById(candidateId);
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
 
-    // Unassign
     if (!recruiterId) {
       candidate.assignedRecruiterId = null;
       candidate.recruiterStatus = "";
@@ -511,7 +484,8 @@ exports.bulkAssignCandidates = async (req, res, next) => {
 
     const recruiter = await Recruiter.findById(recruiterId);
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
-    if (recruiter.status !== "active") return next(new ErrorResponse("Recruiter is not active", 400));
+    if (recruiter.status !== "active")
+      return next(new ErrorResponse("Recruiter is not active", 400));
 
     const assignedCount = await Candidate.countDocuments({ assignedRecruiterId: recruiter._id });
     const capacity = recruiter.maxCandidates || 10;
@@ -523,7 +497,13 @@ exports.bulkAssignCandidates = async (req, res, next) => {
 
     await Candidate.updateMany(
       { _id: { $in: toAssign } },
-      { $set: { assignedRecruiterId: recruiter._id, recruiterStatus: "new", assignedDate: new Date() } }
+      {
+        $set: {
+          assignedRecruiterId: recruiter._id,
+          recruiterStatus: "new",
+          assignedDate: new Date(),
+        },
+      }
     );
 
     recruiter.lastAssignment = new Date();
@@ -541,7 +521,8 @@ exports.bulkAssignCandidates = async (req, res, next) => {
 exports.autoAssignCandidates = async (req, res, next) => {
   try {
     const activeRecruiters = await Recruiter.find({ status: "active" }).sort({ createdAt: 1 }).lean();
-    if (activeRecruiters.length === 0) return next(new ErrorResponse("No active recruiters available", 400));
+    if (activeRecruiters.length === 0)
+      return next(new ErrorResponse("No active recruiters available", 400));
 
     const unassigned = await Candidate.find({ assignedRecruiterId: null }).sort({ createdAt: 1 }).lean();
     if (unassigned.length === 0) {
@@ -575,7 +556,13 @@ exports.autoAssignCandidates = async (req, res, next) => {
         if (currentCount < cap) {
           await Candidate.updateOne(
             { _id: cand._id },
-            { $set: { assignedRecruiterId: recruiter._id, recruiterStatus: "new", assignedDate: new Date() } }
+            {
+              $set: {
+                assignedRecruiterId: recruiter._id,
+                recruiterStatus: "new",
+                assignedDate: new Date(),
+              },
+            }
           );
           countMap.set(String(recruiter._id), currentCount + 1);
           assignedTotal++;
@@ -596,8 +583,6 @@ exports.autoAssignCandidates = async (req, res, next) => {
 
 /* =========================================================
    CREDENTIALS
-   POST   /api/v1/admin/credentials
-   DELETE /api/v1/admin/credentials/:candidateId
 ========================================================= */
 exports.setCandidateCredentials = async (req, res, next) => {
   try {
@@ -615,7 +600,8 @@ exports.setCandidateCredentials = async (req, res, next) => {
     candidate.username = username.trim();
 
     if (password && password.length > 0) {
-      if (password.length < 8) return next(new ErrorResponse("Password must be at least 8 characters", 400));
+      if (password.length < 8)
+        return next(new ErrorResponse("Password must be at least 8 characters", 400));
       const salt = await bcrypt.genSalt(10);
       candidate.passwordHash = await bcrypt.hash(password, salt);
       candidate.credentialsGenerated = new Date();
@@ -653,6 +639,42 @@ exports.resetCandidateCredentials = async (req, res, next) => {
     await candidate.save();
 
     return res.status(200).json({ success: true, data: { candidateId: candidate._id } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   ✅ MISSING PIECE: ADMIN RESET USER PASSWORD (FOR FIXING OLD RECRUITERS)
+   POST /api/v1/admin/users/reset-password
+   body: { email, newPassword }
+========================================================= */
+exports.adminResetUserPassword = async (req, res, next) => {
+  try {
+    const emailNorm = String(req.body.email || "").trim().toLowerCase();
+    const newPassword = String(req.body.newPassword || "");
+
+    if (!emailNorm || !newPassword) {
+      return next(new ErrorResponse("email and newPassword are required", 400));
+    }
+    if (newPassword.length < 6) {
+      return next(new ErrorResponse("newPassword must be at least 6 characters", 400));
+    }
+
+    const user = await User.findOne({ email: emailNorm }).select("+password");
+    if (!user) {
+      return next(new ErrorResponse("User not found", 404));
+    }
+
+    // ✅ Set plain password and save => model hashes ONCE (fixes old double-hashed users)
+    user.password = newPassword;
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+      data: { email: user.email, role: user.role },
+    });
   } catch (error) {
     next(error);
   }
