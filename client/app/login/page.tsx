@@ -7,19 +7,18 @@ import Image from 'next/image'
 type Panel = 'candidate' | 'recruiter' | 'admin'
 
 /**
- * ✅ Option B (Real backend auth for ALL roles)
- * Assumes your backend supports:
- *   POST {API_URL}/api/v1/auth/login
- * Body:
- *   { emailOrUsername: string, password: string, role: 'admin'|'recruiter'|'candidate' }
- * Response (example):
- *   { success: true, token: string, user: { id, name, email, role, ... } }
+ * ✅ Real backend auth for ALL roles
+ * POST {API_URL}/api/v1/auth/login
+ * Body: { emailOrUsername: string, password: string, role }
+ *
+ * NOTE: Your backend currently looks up Users by EMAIL.
+ * So recruiters MUST login using an email address (not "nicole").
  */
 export default function LoginPage() {
   const router = useRouter()
 
   const API_URL =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '' // e.g. https://your-backend.onrender.com
+    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '' // e.g. https://infrapilot-tech-deploy.onrender.com
 
   const [panel, setPanel] = useState<Panel>('candidate')
 
@@ -32,9 +31,9 @@ export default function LoginPage() {
   const [adminLoading, setAdminLoading] = useState(false)
 
   // ---------------------------
-  // RECRUITER
+  // RECRUITER (EMAIL LOGIN)
   // ---------------------------
-  const [recruiterUsername, setRecruiterUsername] = useState('')
+  const [recruiterEmail, setRecruiterEmail] = useState('')
   const [recruiterPassword, setRecruiterPassword] = useState('')
   const [recruiterError, setRecruiterError] = useState('')
   const [recruiterLoading, setRecruiterLoading] = useState(false)
@@ -58,6 +57,10 @@ export default function LoginPage() {
     role: 'admin' | 'recruiter' | 'candidate'
   }): Promise<{ success: boolean; message?: string; token?: string; user?: any }> {
     try {
+      if (!API_URL) {
+        return { success: false, message: 'Missing NEXT_PUBLIC_API_URL in frontend environment.' }
+      }
+
       const res = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -77,7 +80,14 @@ export default function LoginPage() {
         }
       }
 
-      if (!data?.token || !data?.user) {
+      // Support multiple response shapes:
+      // 1) { token, user }
+      // 2) { success, token, user }
+      // 3) { data: { token, user } }
+      const token = data?.token || data?.data?.token || data?.accessToken
+      const user = data?.user || data?.data?.user
+
+      if (!token || !user) {
         return {
           success: false,
           message: 'Login response missing token/user. Check backend login response.',
@@ -85,20 +95,21 @@ export default function LoginPage() {
       }
 
       // ✅ Store real JWT + user
-      localStorage.setItem('infrapilot_token', data.token)
-      localStorage.setItem('infrapilot_user', JSON.stringify(data.user))
+      localStorage.setItem('infrapilot_token', token)
+      localStorage.setItem('infrapilot_user', JSON.stringify(user))
 
       // Optional flags if your app expects them
       if (args.role === 'candidate') {
         localStorage.setItem('candidate_authenticated', 'true')
-        if (data.user?.id) localStorage.setItem('candidate_id', data.user.id)
-      }
-      if (args.role === 'recruiter') {
-        localStorage.setItem('recruiter_authenticated', 'true')
-        if (data.user?.id) localStorage.setItem('recruiter_id', data.user.id)
+        if (user?.id || user?._id) localStorage.setItem('candidate_id', user?.id || user?._id)
       }
 
-      return { success: true, token: data.token, user: data.user }
+      if (args.role === 'recruiter') {
+        localStorage.setItem('recruiter_authenticated', 'true')
+        if (user?.id || user?._id) localStorage.setItem('recruiter_id', user?.id || user?._id)
+      }
+
+      return { success: true, token, user }
     } catch (e: any) {
       return { success: false, message: e?.message || 'Network error' }
     }
@@ -134,8 +145,9 @@ export default function LoginPage() {
     setRecruiterError('')
     setRecruiterLoading(true)
 
+    // ✅ recruiters must login with email (backend searches Users by email)
     const result = await backendLogin({
-      emailOrUsername: recruiterUsername,
+      emailOrUsername: recruiterEmail,
       password: recruiterPassword,
       role: 'recruiter',
     })
@@ -178,12 +190,12 @@ export default function LoginPage() {
   }
 
   const handleRecruiterDemoLogin = (who: 'john' | 'sarah') => {
-    // Demo prefill only (still authenticates via backend)
+    // ✅ IMPORTANT: use REAL recruiter emails that exist in your Users collection
     if (who === 'john') {
-      setRecruiterUsername('john.smith')
+      setRecruiterEmail('john@infrapilot.com') // <-- change to a real email in your DB
       setRecruiterPassword('password123')
     } else {
-      setRecruiterUsername('sarah.j')
+      setRecruiterEmail('sarah@infrapilot.com') // <-- change to a real email in your DB
       setRecruiterPassword('password123')
     }
   }
@@ -360,23 +372,21 @@ export default function LoginPage() {
             {recruiterError && (
               <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
                 <p className="text-red-300 text-sm">{recruiterError}</p>
-                <p className="text-gray-400 text-xs mt-2">
-                  Contact admin if you forgot your credentials
-                </p>
+                <p className="text-gray-400 text-xs mt-2">Use your recruiter EMAIL + password</p>
               </div>
             )}
 
             <form onSubmit={handleRecruiterSubmit} className="space-y-6">
               <div>
                 <label className="block text-gray-300 mb-2 text-sm font-medium">
-                  Email or Username
+                  Recruiter Email
                 </label>
                 <input
-                  type="text"
-                  value={recruiterUsername}
-                  onChange={(e) => setRecruiterUsername(e.target.value)}
+                  type="email"
+                  value={recruiterEmail}
+                  onChange={(e) => setRecruiterEmail(e.target.value)}
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your email or username"
+                  placeholder="Enter your email (e.g. nicole@gmail.com)"
                   required
                   disabled={recruiterLoading}
                 />
@@ -404,20 +414,6 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <div className="flex items-center">
-                  <input type="checkbox" className="h-4 w-4 text-blue-600 rounded" />
-                  <label className="ml-2 text-sm text-gray-400">Remember me</label>
-                </div>
-                <button
-                  type="button"
-                  className="text-sm text-blue-400 hover:text-blue-300"
-                  onClick={() => alert('Contact admin to reset password')}
-                >
-                  Forgot password?
-                </button>
-              </div>
-
               <button
                 type="submit"
                 disabled={recruiterLoading || !API_URL}
@@ -442,14 +438,14 @@ export default function LoginPage() {
                   onClick={() => handleRecruiterDemoLogin('john')}
                   className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 text-sm"
                 >
-                  John Smith (Tech)
+                  John (Demo)
                 </button>
                 <button
                   type="button"
                   onClick={() => handleRecruiterDemoLogin('sarah')}
                   className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 text-sm"
                 >
-                  Sarah Johnson (Finance)
+                  Sarah (Demo)
                 </button>
               </div>
             </div>

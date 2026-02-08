@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function RecruiterLogin() {
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+
+  // ✅ Use your deployed backend URL (or use NEXT_PUBLIC_API_URL if you already have it)
+  const API_URL =
+    process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -18,60 +22,48 @@ export default function RecruiterLogin() {
     setLoading(true)
 
     try {
-      // Get recruiters from localStorage
-      const savedRecruiters = localStorage.getItem('infrapilot_recruiters')
-      if (!savedRecruiters) {
-        setError('No recruiters found in system. Contact admin.')
-        setLoading(false)
+      const res = await fetch(`${API_URL}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,               // ✅ must be an email now
+          password,
+          role: 'recruiter',   // optional (backend role check currently disabled)
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data?.message || 'Invalid credentials')
         return
       }
 
-      const recruiters = JSON.parse(savedRecruiters)
-      
-      // Find recruiter with matching credentials
-      const recruiter = recruiters.find(
-        r => r.username === username && r.password === password && r.isActive
-      )
+      // ✅ Store session like your other pages expect
+      // sendTokenResponse usually returns token + user; handle both shapes safely
+      const token = data?.token || data?.data?.token || data?.data || data?.accessToken
+      const user = data?.user || data?.data?.user || data?.data
 
-      if (recruiter) {
-        // Create recruiter session
-        const recruiterUser = {
-          id: recruiter.id,
-          name: recruiter.fullName,
-          email: recruiter.email,
-          role: 'recruiter',
-          department: recruiter.department,
-          specialization: recruiter.specialization,
-          isActive: recruiter.isActive,
-          recruiterAuthenticated: true
-        }
-        
-        // Store in localStorage
-        localStorage.setItem('infrapilot_user', JSON.stringify(recruiterUser))
-        localStorage.setItem('infrapilot_token', `recruiter_${recruiter.id}`)
-        localStorage.setItem('recruiter_authenticated', 'true')
-        localStorage.setItem('recruiter_id', recruiter.id)
-        
-        // Redirect to recruiter dashboard
-        router.push('/recruiter')
-        router.refresh()
-      } else {
-        setError('Invalid credentials or account inactive. Contact admin.')
+      // If backend returns { success, token, user }
+      const recruiterUser = {
+        id: user?._id || user?.id,
+        name: user?.name,
+        email: user?.email,
+        role: user?.role || 'recruiter',
+        recruiterAuthenticated: true,
       }
+
+      localStorage.setItem('infrapilot_user', JSON.stringify(recruiterUser))
+      if (token) localStorage.setItem('infrapilot_token', token)
+      localStorage.setItem('recruiter_authenticated', 'true')
+      if (recruiterUser.id) localStorage.setItem('recruiter_id', recruiterUser.id)
+
+      router.push('/recruiter')
+      router.refresh()
     } catch (err) {
       setError('Login failed. Please try again.')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleDemoLogin = (role) => {
-    if (role === 'john') {
-      setUsername('john.smith')
-      setPassword('password123')
-    } else if (role === 'sarah') {
-      setUsername('sarah.j')
-      setPassword('password123')
     }
   }
 
@@ -85,32 +77,32 @@ export default function RecruiterLogin() {
           <h1 className="text-3xl font-bold text-white mb-2">Recruiter Portal</h1>
           <p className="text-gray-400">Enter your credentials to access candidate dashboard</p>
         </div>
-        
+
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <p className="text-red-300 text-sm">{error}</p>
-            <p className="text-gray-400 text-xs mt-2">Contact admin if you forgot your credentials</p>
+            <p className="text-gray-400 text-xs mt-2">Confirm you are using your recruiter email + password</p>
           </div>
         )}
-        
+
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-gray-300 mb-2 text-sm font-medium">Username</label>
+            <label className="block text-gray-300 mb-2 text-sm font-medium">Email</label>
             <input
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="Enter your username"
+              placeholder="Enter your email"
               required
             />
           </div>
-          
+
           <div>
             <label className="block text-gray-300 mb-2 text-sm font-medium">Password</label>
             <div className="relative">
               <input
-                type={showPassword ? "text" : "password"}
+                type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
@@ -122,28 +114,11 @@ export default function RecruiterLogin() {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-3 top-3 text-gray-400 hover:text-white"
               >
-                {showPassword ? "👁️" : "👁️‍🗨️"}
+                {showPassword ? '👁️' : '👁️‍🗨️'}
               </button>
             </div>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                className="h-4 w-4 text-blue-600 rounded"
-              />
-              <label className="ml-2 text-sm text-gray-400">Remember me</label>
-            </div>
-            <button
-              type="button"
-              className="text-sm text-blue-400 hover:text-blue-300"
-              onClick={() => alert('Contact admin to reset password')}
-            >
-              Forgot password?
-            </button>
-          </div>
-          
+
           <button
             type="submit"
             disabled={loading}
@@ -159,35 +134,12 @@ export default function RecruiterLogin() {
             )}
           </button>
         </form>
-        
-        {/* Demo Login Buttons */}
-        <div className="mt-6">
-          <p className="text-gray-400 text-sm text-center mb-3">Demo Accounts:</p>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('john')}
-              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 text-sm"
-            >
-              John Smith (Tech)
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDemoLogin('sarah')}
-              className="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg hover:bg-gray-600 text-sm"
-            >
-              Sarah Johnson (Finance)
-            </button>
-          </div>
-        </div>
-        
+
         <div className="mt-8 pt-6 border-t border-gray-700">
           <div className="text-center">
-            <p className="text-gray-500 text-sm">
-              Need access? Contact your administrator
-            </p>
-            <Link 
-              href="/admin/login" 
+            <p className="text-gray-500 text-sm">Need access? Contact your administrator</p>
+            <Link
+              href="/admin/login"
               className="inline-block mt-2 text-sm text-blue-400 hover:text-blue-300"
             >
               Admin Login →
