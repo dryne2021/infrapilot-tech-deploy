@@ -8,12 +8,12 @@ export interface User {
   name: string
   email: string
   role: 'admin' | 'recruiter' | 'candidate'
-  status: 'active' | 'inactive'
+  status?: 'active' | 'inactive'
   assignedCandidates?: string[]
   assignedRecruiterId?: string
   skills?: string[]
   experience?: string
-  createdAt: string
+  createdAt?: string
 }
 
 interface AuthContextType {
@@ -28,78 +28,39 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Mock users for development
-const mockUsers: User[] = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@infrapilot.com',
-    role: 'admin',
-    status: 'active',
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '2',
-    name: 'John Recruiter',
-    email: 'recruiter@infrapilot.com',
-    role: 'recruiter',
-    status: 'active',
-    assignedCandidates: ['3', '4', '5'],
-    createdAt: new Date().toISOString()
-  },
-  {
-    id: '3',
-    name: 'Jane Candidate',
-    email: 'candidate@infrapilot.com',
-    role: 'candidate',
-    status: 'active',
-    skills: ['React', 'Node.js', 'TypeScript'],
-    experience: '3 years',
-    assignedRecruiterId: '2',
-    createdAt: new Date().toISOString()
+// ✅ Backend base URL (set NEXT_PUBLIC_API_URL in Render/Vercel for the frontend)
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+  'https://infrapilot-tech-deploy.onrender.com'
+
+// ---------- helpers ----------
+const safeJsonParse = <T,>(value: string | null): T | null => {
+  if (!value) return null
+  try {
+    return JSON.parse(value) as T
+  } catch {
+    return null
   }
-]
+}
+
+const normalizeUser = (apiUser: any): User => {
+  return {
+    id: apiUser?._id || apiUser?.id || apiUser?.userId || '',
+    name: apiUser?.name || apiUser?.fullName || '',
+    email: apiUser?.email || '',
+    role: apiUser?.role || 'candidate',
+    status: apiUser?.status,
+    skills: apiUser?.skills,
+    experience: apiUser?.experience,
+    createdAt: apiUser?.createdAt
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const pathname = usePathname()
-
-  // Check for stored auth on mount
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Check localStorage for stored user
-        const storedUser = localStorage.getItem('infrapilot_user')
-        const storedToken = localStorage.getItem('infrapilot_token')
-
-        if (storedUser && storedToken) {
-          const userData = JSON.parse(storedUser)
-          
-          // Find user in mock data
-          const foundUser = mockUsers.find(u => u.id === userData.id)
-          
-          if (foundUser) {
-            setUser(foundUser)
-            
-            // Redirect based on role if on login page
-            if (pathname === '/login') {
-              redirectBasedOnRole(foundUser.role)
-            }
-          }
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error)
-        localStorage.removeItem('infrapilot_user')
-        localStorage.removeItem('infrapilot_token')
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkAuth()
-  }, [pathname])
 
   const redirectBasedOnRole = (role: string) => {
     switch (role) {
@@ -117,28 +78,107 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // ✅ Load session on mount by validating token with /auth/me
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const storedToken = localStorage.getItem('infrapilot_token')
+        const storedUser = safeJsonParse<User>(localStorage.getItem('infrapilot_user'))
+
+        if (!storedToken) {
+          setUser(null)
+          return
+        }
+
+        // Try to validate token and fetch real user
+        const res = await fetch(`${API_BASE}/api/v1/auth/me`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${storedToken}`
+          }
+        })
+
+        if (!res.ok) {
+          // token invalid/expired
+          localStorage.removeItem('infrapilot_token')
+          localStorage.removeItem('infrapilot_user')
+          setUser(null)
+          return
+        }
+
+        const data = await res.json()
+
+        // Your backend returns: { success, user, profile }
+        const apiUser = data?.user || data?.data || data
+        const normalized = normalizeUser(apiUser)
+
+        // Update local storage & state
+        localStorage.setItem('infrapilot_user', JSON.stringify(normalized))
+        setUser(normalized)
+
+        // If user is on login page, redirect
+        if (pathname === '/login') {
+          redirectBasedOnRole(normalized.role)
+        }
+      } catch (error) {
+        console.error('Auth check failed:', error)
+        localStorage.removeItem('infrapilot_token')
+        localStorage.removeItem('infrapilot_user')
+        setUser(null)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    checkAuth()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
   const login = async (email: string, password: string) => {
     setIsLoading(true)
     try {
-      // Find user in mock data
-      const foundUser = mockUsers.find(u => u.email === email)
-      
-      if (!foundUser) {
-        return { success: false, message: 'Invalid credentials' }
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || data?.success === false) {
+        return { success: false, message: data?.error || data?.message || 'Invalid credentials' }
       }
 
-      // Check password
-      if (password !== 'password123') {
-        return { success: false, message: 'Invalid credentials' }
+      // Your backend returns: { success, token, ... }
+      const token = data?.token
+      if (!token) {
+        return { success: false, message: 'Login failed: token missing from server response.' }
       }
 
-      // Store auth data
-      const token = `mock-jwt-token-${foundUser.id}`
       localStorage.setItem('infrapilot_token', token)
-      localStorage.setItem('infrapilot_user', JSON.stringify(foundUser))
-      
-      setUser(foundUser)
-      redirectBasedOnRole(foundUser.role)
+
+      // Immediately fetch /me so we store the real user role
+      const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      if (!meRes.ok) {
+        localStorage.removeItem('infrapilot_token')
+        return { success: false, message: 'Login failed: could not fetch user profile.' }
+      }
+
+      const meData = await meRes.json()
+      const apiUser = meData?.user || meData?.data || meData
+      const normalized = normalizeUser(apiUser)
+
+      localStorage.setItem('infrapilot_user', JSON.stringify(normalized))
+      setUser(normalized)
+      redirectBasedOnRole(normalized.role)
 
       return { success: true, message: 'Login successful' }
     } catch (error) {
@@ -159,31 +199,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (userData: Partial<User> & { password: string }) => {
     setIsLoading(true)
     try {
-      // Check if user already exists
-      const userExists = mockUsers.some(u => u.email === userData.email)
-      if (userExists) {
-        return { success: false, message: 'User already exists' }
-      }
-
-      // Create new user
-      const newUser: User = {
-        id: `mock-${Date.now()}`,
-        name: userData.name || '',
-        email: userData.email || '',
+      // Map frontend fields to your backend register fields
+      const payload = {
+        name: userData.name,
+        email: userData.email,
+        password: userData.password,
         role: userData.role || 'candidate',
-        status: 'active',
         skills: userData.skills || [],
-        experience: userData.experience || '',
-        createdAt: new Date().toISOString()
+        experienceLevel: (userData as any).experienceLevel || 'entry'
       }
 
-      // Mock storage
-      const token = `mock-jwt-token-${newUser.id}`
+      const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await res.json().catch(() => ({}))
+
+      if (!res.ok || data?.success === false) {
+        return { success: false, message: data?.error || data?.message || 'Registration failed' }
+      }
+
+      const token = data?.token
+      if (!token) {
+        return { success: false, message: 'Registration failed: token missing from server response.' }
+      }
+
       localStorage.setItem('infrapilot_token', token)
-      localStorage.setItem('infrapilot_user', JSON.stringify(newUser))
-      
-      setUser(newUser)
-      redirectBasedOnRole(newUser.role)
+
+      // Fetch /me to store the real user
+      const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      })
+
+      const meData = await meRes.json().catch(() => ({}))
+      const apiUser = meData?.user || meData?.data || meData
+      const normalized = normalizeUser(apiUser)
+
+      localStorage.setItem('infrapilot_user', JSON.stringify(normalized))
+      setUser(normalized)
+      redirectBasedOnRole(normalized.role)
 
       return { success: true, message: 'Registration successful' }
     } catch (error) {
@@ -202,7 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  const value = {
+  const value: AuthContextType = {
     user,
     isLoading,
     login,
@@ -212,11 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAuthenticated: !!user
   }
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
