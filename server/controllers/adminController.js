@@ -340,10 +340,76 @@ exports.getRecruiters = async (req, res, next) => {
   }
 };
 
+/**
+ * ✅ FIXED createRecruiter:
+ * - Creates a User (role: recruiter) with hashed password
+ * - Creates Recruiter profile with REQUIRED fields: userId + name
+ * - Never stores/returns plain password
+ */
 exports.createRecruiter = async (req, res, next) => {
   try {
-    const created = await Recruiter.create(req.body);
-    return res.status(201).json({ success: true, data: created });
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      username,
+      password,
+      department,
+      specialization,
+      maxCandidates,
+      isActive,
+    } = req.body;
+
+    if (!firstName || !email || !username || !password) {
+      return next(
+        new ErrorResponse("firstName, email, username, and password are required", 400)
+      );
+    }
+
+    // Prevent duplicate recruiter logins
+    const existing = await User.findOne({ $or: [{ email }, { username }] });
+    if (existing) {
+      return next(new ErrorResponse("Email or username already exists", 400));
+    }
+
+    // Hash password (secure)
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    // 1) Create recruiter login user
+    const createdUser = await User.create({
+      name: `${firstName} ${lastName || ""}`.trim(),
+      email,
+      username,
+      password: hashedPassword,
+      role: "recruiter",
+      status: isActive === false ? "inactive" : "active",
+    });
+
+    // 2) Create recruiter profile (must contain userId + name)
+    const createdRecruiter = await Recruiter.create({
+      userId: createdUser._id, // ✅ REQUIRED
+      name: createdUser.name, // ✅ REQUIRED
+      email,
+      phone: phone || "",
+      department: department || "Technical",
+      specialization: specialization || "IT/Software",
+      maxCandidates: Number(maxCandidates || 20),
+      status: isActive === false ? "inactive" : "active",
+      isActive: isActive !== false,
+      assignedCandidates: [],
+      lastAssignment: null,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        ...createdRecruiter.toObject(),
+        username: createdUser.username,
+        password: "SET", // safe flag for UI (do not expose real password)
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -369,10 +435,16 @@ exports.deleteRecruiter = async (req, res, next) => {
     const recruiter = await Recruiter.findById(req.params.id);
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
 
+    // Unassign candidates from this recruiter
     await Candidate.updateMany(
       { assignedRecruiterId: recruiter._id },
       { $set: { assignedRecruiterId: null, recruiterStatus: "", assignedDate: null } }
     );
+
+    // (Optional) delete the linked recruiter login user
+    if (recruiter.userId) {
+      await User.findByIdAndDelete(recruiter.userId);
+    }
 
     await recruiter.deleteOne();
     return res.status(200).json({ success: true, data: {} });

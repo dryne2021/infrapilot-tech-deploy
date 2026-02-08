@@ -19,6 +19,9 @@ const candidatesRoutes = require("./routes/candidatesRoutes");
 // ✅ NEW: Job applications routes
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 
+// ✅ NEW: Plans routes (Admin Plans API)
+const planRoutes = require("./routes/planRoutes");
+
 // ✅ Load env vars explicitly from server/.env (local). On Render, env vars come from dashboard.
 dotenv.config({ path: path.join(__dirname, ".env") });
 
@@ -58,6 +61,10 @@ app.use(
 // ✅ Mount routers
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
+
+// ✅ NEW: Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
+app.use("/api/v1/admin/plans", planRoutes);
+
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/recruiter", recruiterRoutes);
 app.use("/api/v1/candidates", candidatesRoutes);
