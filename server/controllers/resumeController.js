@@ -2,8 +2,15 @@
 
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
-// ✅ DOCX imports (single import at top)
-const { Document, Packer, Paragraph, TextRun, AlignmentType } = require("docx");
+// ✅ DOCX imports (updated with BorderStyle)
+const {
+  Document,
+  Packer,
+  Paragraph,
+  TextRun,
+  AlignmentType,
+  BorderStyle,
+} = require("docx");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
@@ -73,10 +80,21 @@ function makeRun(text, opts = {}) {
   });
 }
 
+// ✅ Updated heading with line under it
 function makeHeadingParagraph(text) {
   return new Paragraph({
-    children: [makeRun(String(text).toUpperCase(), { bold: true, size: HEADING_SIZE })],
-    spacing: { before: 200, after: 120 },
+    children: [
+      makeRun(String(text).toUpperCase(), { bold: true, size: HEADING_SIZE }),
+    ],
+    spacing: { before: 160, after: 80 },
+    border: {
+      bottom: {
+        style: BorderStyle.SINGLE,
+        size: 6, // thickness (try 4–8)
+        space: 2,
+        color: "000000",
+      },
+    },
   });
 }
 
@@ -87,11 +105,13 @@ function makeBodyParagraph(text, spacingAfter = 80) {
   });
 }
 
+// ✅ Improved bullet indent
 function makeBulletParagraph(text) {
   return new Paragraph({
     children: [makeRun(text, { size: BODY_SIZE })],
     bullet: { level: 0 },
     spacing: { after: 60 },
+    indent: { left: 360, hanging: 180 }, // clean bullet alignment
   });
 }
 
@@ -181,12 +201,13 @@ function parseHosTextToParagraphs(hosText) {
   const nameLine = normalizeLine(lines[idx++] || "");
   const contactLine = normalizeLine(lines[idx++] || "");
 
+  // ✅ Updated top header (centered + tighter)
   if (nameLine) {
     paragraphs.push(
       new Paragraph({
         children: [makeRun(nameLine, { bold: true, size: NAME_SIZE })],
-        alignment: AlignmentType.LEFT,
-        spacing: { after: 60 },
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 40 },
       })
     );
   }
@@ -195,7 +216,7 @@ function parseHosTextToParagraphs(hosText) {
     paragraphs.push(
       new Paragraph({
         children: [makeRun(contactLine, { size: BODY_SIZE })],
-        alignment: AlignmentType.LEFT,
+        alignment: AlignmentType.CENTER,
         spacing: { after: 140 },
       })
     );
@@ -386,6 +407,7 @@ exports.downloadResumeAsWord = async (req, res) => {
       resumeText: decodedText,
     });
 
+    // ✅ Updated with tighter margins (0.5")
     const doc = new Document({
       styles: {
         default: {
@@ -396,7 +418,16 @@ exports.downloadResumeAsWord = async (req, res) => {
       },
       sections: [
         {
-          properties: {},
+          properties: {
+            page: {
+              margin: {
+                top: 720, // 0.5"
+                bottom: 720,
+                left: 720,
+                right: 720,
+              },
+            },
+          },
           children: parseHosTextToParagraphs(hosText),
         },
       ],
@@ -509,6 +540,7 @@ Rules:
       resumeText: resumeTextRaw,
     });
 
+    // ✅ Updated with tighter margins (0.5")
     const doc = new Document({
       styles: {
         default: {
@@ -517,7 +549,21 @@ Rules:
           },
         },
       },
-      sections: [{ properties: {}, children: parseHosTextToParagraphs(hosText) }],
+      sections: [
+        {
+          properties: {
+            page: {
+              margin: {
+                top: 720, // 0.5"
+                bottom: 720,
+                left: 720,
+                right: 720,
+              },
+            },
+          },
+          children: parseHosTextToParagraphs(hosText),
+        },
+      ],
     });
 
     const buffer = await Packer.toBuffer(doc);
