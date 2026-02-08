@@ -3,15 +3,18 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import { useAuth } from '@/contexts/AuthContext' // ✅ real backend auth
 
 type Panel = 'candidate' | 'recruiter' | 'admin'
 
 export default function LoginPage() {
   const router = useRouter()
+  const { login } = useAuth()
+
   const [panel, setPanel] = useState<Panel>('candidate')
 
   // ---------------------------
-  // ADMIN (UNCHANGED logic)
+  // ADMIN (UPDATED -> real backend)
   // ---------------------------
   const [adminEmail, setAdminEmail] = useState('')
   const [adminPassword, setAdminPassword] = useState('')
@@ -24,36 +27,18 @@ export default function LoginPage() {
     setAdminLoading(true)
 
     try {
-      // Hardcoded admin credentials (UNCHANGED)
-      const ADMIN_CREDENTIALS = {
-        email: 'admin@infrapilot.com',
-        password: 'Admin@123',
+      const result = await login(adminEmail.trim(), adminPassword)
+
+      if (!result.success) {
+        setAdminError(result.message || 'Invalid credentials')
+        return
       }
 
-      // Simulate API call (UNCHANGED)
-      await new Promise((resolve) => setTimeout(resolve, 500))
-
-      if (adminEmail === ADMIN_CREDENTIALS.email && adminPassword === ADMIN_CREDENTIALS.password) {
-        const adminUser = {
-          id: 'admin_001',
-          name: 'Administrator',
-          email: ADMIN_CREDENTIALS.email,
-          role: 'admin',
-          isAdmin: true,
-          adminAuthenticated: true,
-        }
-
-        localStorage.setItem('infrapilot_user', JSON.stringify(adminUser))
-        localStorage.setItem('infrapilot_token', 'admin_auth_token')
-        localStorage.setItem('admin_authenticated', 'true')
-
-        router.push('/admin')
-        router.refresh()
-      } else {
-        setAdminError('Invalid admin credentials')
-      }
-    } catch {
-      setAdminError('Authentication failed')
+      // AuthContext will redirect by role, but we force admin page here too
+      router.push('/admin')
+      router.refresh()
+    } catch (err) {
+      setAdminError('Authentication failed. Please try again.')
     } finally {
       setAdminLoading(false)
     }
@@ -74,7 +59,6 @@ export default function LoginPage() {
     setRecruiterLoading(true)
 
     try {
-      // Get recruiters from localStorage (UNCHANGED)
       const savedRecruiters = localStorage.getItem('infrapilot_recruiters')
       if (!savedRecruiters) {
         setRecruiterError('No recruiters found in system. Contact admin.')
@@ -84,14 +68,12 @@ export default function LoginPage() {
 
       const recruiters = JSON.parse(savedRecruiters)
 
-      // Find recruiter with matching credentials (UNCHANGED)
       const recruiter = recruiters.find(
         (r: any) =>
           r.username === recruiterUsername && r.password === recruiterPassword && r.isActive
       )
 
       if (recruiter) {
-        // Create recruiter session (UNCHANGED)
         const recruiterUser = {
           id: recruiter.id,
           name: recruiter.fullName,
@@ -103,13 +85,11 @@ export default function LoginPage() {
           recruiterAuthenticated: true,
         }
 
-        // Store in localStorage (UNCHANGED)
         localStorage.setItem('infrapilot_user', JSON.stringify(recruiterUser))
         localStorage.setItem('infrapilot_token', `recruiter_${recruiter.id}`)
         localStorage.setItem('recruiter_authenticated', 'true')
         localStorage.setItem('recruiter_id', recruiter.id)
 
-        // Redirect (UNCHANGED)
         router.push('/recruiter')
         router.refresh()
       } else {
@@ -147,10 +127,8 @@ export default function LoginPage() {
     setCandidateError('')
 
     try {
-      // Get candidates from localStorage (UNCHANGED)
       const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
 
-      // Find candidate with matching credentials (UNCHANGED)
       const candidate = candidates.find(
         (c: any) => c.username === candidateUsername && c.password === candidatePassword
       )
@@ -161,14 +139,12 @@ export default function LoginPage() {
         return
       }
 
-      // Check if candidate is active (UNCHANGED)
       if (candidate.subscriptionStatus !== 'active' && candidate.subscriptionPlan !== 'free') {
         setCandidateError('Your account is not active. Please contact admin.')
         setCandidateLoading(false)
         return
       }
 
-      // Create user session (UNCHANGED)
       const userData = {
         id: candidate.id,
         name: candidate.fullName || `${candidate.firstName} ${candidate.lastName}`,
@@ -184,7 +160,6 @@ export default function LoginPage() {
       localStorage.setItem('candidate_authenticated', 'true')
       localStorage.setItem('candidate_id', candidate.id)
 
-      // Redirect (UNCHANGED)
       router.push('/candidate/dashboard')
     } catch (err) {
       console.error('Login error:', err)
@@ -362,7 +337,9 @@ export default function LoginPage() {
             {recruiterError && (
               <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
                 <p className="text-red-300 text-sm">{recruiterError}</p>
-                <p className="text-gray-400 text-xs mt-2">Contact admin if you forgot your credentials</p>
+                <p className="text-gray-400 text-xs mt-2">
+                  Contact admin if you forgot your credentials
+                </p>
               </div>
             )}
 
@@ -458,7 +435,6 @@ export default function LoginPage() {
             {adminError && (
               <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
                 <p className="text-red-300 text-sm">{adminError}</p>
-                <p className="text-gray-400 text-xs mt-2">For demo: admin@infrapilot.com / Admin@123</p>
               </div>
             )}
 
@@ -470,7 +446,7 @@ export default function LoginPage() {
                   value={adminEmail}
                   onChange={(e) => setAdminEmail(e.target.value)}
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="admin@infrapilot.com"
+                  placeholder="you@company.com"
                   required
                 />
               </div>
