@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import API_BASE_URL from '@/utils/apiBase'
+
+import { fetchWithAuth } from '@/utils/fetchWithAuth'
 
 import CandidateManagement from './CandidateManagement'
 import PlanManagement from './PlanManagement'
@@ -26,27 +27,10 @@ export default function AdminPage() {
   const [recentActivity, setRecentActivity] = useState<any[]>([])
   const router = useRouter()
 
-  // ✅ Always call backend with absolute URL in production
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('infrapilot_token')
-    const fullUrl = url.startsWith('/') ? `${API_BASE_URL}${url}` : url
-
-    const res = await fetch(fullUrl, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(options.headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-    })
-
-    return res
-  }
-
   const handleLogout = () => {
     localStorage.removeItem('infrapilot_user')
     localStorage.removeItem('infrapilot_token')
-    localStorage.removeItem('admin_authenticated') // kept for cleanup if it exists
+    localStorage.removeItem('admin_authenticated') // cleanup if it exists
     router.replace('/login')
   }
 
@@ -91,7 +75,7 @@ export default function AdminPage() {
         const userStr = localStorage.getItem('infrapilot_user')
         const token = localStorage.getItem('infrapilot_token')
 
-        // ✅ FIX: do NOT rely on admin_authenticated flag (it was never set on login)
+        // ✅ do NOT rely on admin_authenticated flag
         if (!userStr || !token) {
           router.replace('/login')
           return
