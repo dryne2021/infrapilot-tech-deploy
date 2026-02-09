@@ -1,33 +1,45 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const ErrorResponse = require("../utils/ErrorResponse");
+
+// Helper: safely read cookie value (works with or without cookie-parser)
+function getCookie(req, name) {
+  // If cookie-parser is used
+  if (req.cookies && req.cookies[name]) return req.cookies[name];
+
+  // Fallback: manual parse
+  const raw = req.headers.cookie;
+  if (!raw) return null;
+
+  const parts = raw.split(";").map((p) => p.trim());
+  const found = parts.find((p) => p.startsWith(`${name}=`));
+  if (!found) return null;
+
+  // token may be URL encoded
+  const value = found.substring(name.length + 1);
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 // Protect routes - user must be authenticated
 exports.protect = async (req, res, next) => {
-  let token;
+  let token = null;
 
-  // 1) Check for token in Authorization header (Bearer)
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
-    token = req.headers.authorization.split(" ")[1];
+  // 1) Check Authorization header (Bearer)
+  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
+    token = req.headers.authorization.split(" ")[1]?.trim();
   }
 
-  // 2) Check for token in cookies (if you use cookie auth)
-  // NOTE: This works even without cookie-parser by reading req.headers.cookie manually.
-  if (!token && req.headers.cookie) {
-    const cookieStr = req.headers.cookie; // "a=b; token=xxx; c=d"
-    const tokenPair = cookieStr
-      .split(";")
-      .map((c) => c.trim())
-      .find((c) => c.startsWith("token="));
-
-    if (tokenPair) token = tokenPair.split("=")[1];
-  }
-
-  // Make sure token exists
+  // 2) Check cookies
   if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: "Not authorized to access this route",
-    });
+    token = getCookie(req, "token");
+  }
+
+  if (!token) {
+    return next(new ErrorResponse("Not authorized to access this route", 401));
   }
 
   try {
@@ -36,29 +48,24 @@ exports.protect = async (req, res, next) => {
 
     // Get user from database
     const user = await User.findById(decoded.id).select("-password");
-
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: "User not found",
-      });
+      return next(new ErrorResponse("User not found", 401));
     }
 
-    // If you have status, enforce it; if not present, allow
+    // If status exists, enforce it
     if (user.status && user.status !== "active") {
-      return res.status(401).json({
-        success: false,
-        error: "User account is inactive",
-      });
+      return next(new ErrorResponse("User account is inactive", 401));
     }
 
+    // ✅ attach consistent fields
     req.user = user;
+    req.userId = user._id.toString(); // consistent across code
+    req.token = token;
+    req.jwt = decoded;
+
     next();
   } catch (err) {
-    return res.status(401).json({
-      success: false,
-      error: "Not authorized to access this route",
-    });
+    return next(new ErrorResponse("Not authorized to access this route", 401));
   }
 };
 
@@ -66,10 +73,12 @@ exports.protect = async (req, res, next) => {
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        error: `User role ${req.user?.role} is not authorized to access this route`,
-      });
+      return next(
+        new ErrorResponse(
+          `User role ${req.user?.role} is not authorized to access this route`,
+          403
+        )
+      );
     }
     next();
   };
@@ -82,30 +91,21 @@ exports.checkOwnershipOrAdmin = (model, paramName = "id") => {
       const resource = await model.findById(req.params[paramName]);
 
       if (!resource) {
-        return res.status(404).json({
-          success: false,
-          error: "Resource not found",
-        });
+        return next(new ErrorResponse("Resource not found", 404));
       }
 
-      // Check ownership or admin role
-      const isOwner = resource.userId && resource.userId.toString() === req.user.id;
-      const isAdmin = req.user.role === "admin";
+      const ownerId = resource.userId ? resource.userId.toString() : null;
+      const isOwner = ownerId && ownerId === req.userId;
+      const isAdmin = req.user?.role === "admin";
 
       if (!isOwner && !isAdmin) {
-        return res.status(403).json({
-          success: false,
-          error: "Not authorized to access this resource",
-        });
+        return next(new ErrorResponse("Not authorized to access this resource", 403));
       }
 
       req.resource = resource;
       next();
     } catch (error) {
-      return res.status(500).json({
-        success: false,
-        error: "Server error",
-      });
+      return next(new ErrorResponse("Server error", 500));
     }
   };
 };

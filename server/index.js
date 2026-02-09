@@ -16,10 +16,10 @@ const recruiterRoutes = require("./routes/recruiter");
 const resumeRoutes = require("./routes/resumeRoutes");
 const candidatesRoutes = require("./routes/candidatesRoutes");
 
-// ✅ NEW: Job applications routes
+// ✅ Job applications routes
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 
-// ✅ NEW: Plans routes (Admin Plans API)
+// ✅ Plans routes (Admin Plans API)
 const planRoutes = require("./routes/planRoutes");
 
 // ✅ Load env vars explicitly from server/.env (local). On Render, env vars come from dashboard.
@@ -32,59 +32,86 @@ console.log("CLIENT_URL:", process.env.CLIENT_URL);
 
 const app = express();
 
-// Body parser
+/* =========================================================
+   Body parser
+========================================================= */
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ✅ Improved CORS (local + deployed)
+/* =========================================================
+   CORS (FIXED for Render + cookies)
+   - Must return exact origin when credentials:true
+========================================================= */
 const allowedOrigins = [
-  process.env.CLIENT_URL, // deployed frontend
-  "http://localhost:3000", // local dev
+  process.env.CLIENT_URL,      // deployed frontend (Render/Vercel etc)
+  "http://localhost:3000",     // local dev
 ].filter(Boolean);
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      // allow requests with no origin (curl, server-to-server, etc.)
-      if (!origin) return callback(null, true);
+const corsOptions = {
+  origin: function (origin, callback) {
+    // allow requests with no origin (curl, server-to-server, mobile apps)
+    if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin)) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
 
-      return callback(new Error(`CORS blocked for origin: ${origin}`));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+    // ✅ Do not throw (throwing can break preflight + cause weird browser behavior)
+    console.log("❌ CORS blocked origin:", origin);
+    return callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+  optionsSuccessStatus: 204,
+};
 
-// ✅ Mount routers
+app.use(cors(corsOptions));
+
+// ✅ Preflight handling (IMPORTANT for cookies + complex requests)
+app.options("*", cors(corsOptions));
+
+/* =========================================================
+   Mount routers
+========================================================= */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/admin", adminRoutes);
 
-// ✅ NEW: Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
+// ✅ Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
 app.use("/api/v1/admin/plans", planRoutes);
 
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/recruiter", recruiterRoutes);
 app.use("/api/v1/candidates", candidatesRoutes);
 
-// ✅ NEW: Job applications
+// ✅ Job applications
 app.use("/api/v1/job-applications", jobApplicationRoutes);
 
 // ✅ Resume routes
 console.log("✅ Resume routes mounted at /api/v1/resume");
 app.use("/api/v1/resume", resumeRoutes);
 
-// Serve static files
+/* =========================================================
+   Static files
+========================================================= */
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-// Error handler middleware
+/* =========================================================
+   Error handler middleware (must be last)
+========================================================= */
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-// ✅ Start server only after DB connects, then seed admin (prod only)
+/* =========================================================
+   Start server only after DB connects, then seed admin (prod only)
+========================================================= */
 async function startServer() {
   try {
     await connectDB();
@@ -93,7 +120,6 @@ async function startServer() {
     // ✅ Auto-seed admin in production (no shell needed)
     if (process.env.NODE_ENV === "production") {
       try {
-        // This file will create the admin only if missing
         require("./scripts/seedAdmin"); // runs immediately
         console.log("✅ Admin seed check triggered");
       } catch (e) {
@@ -103,6 +129,7 @@ async function startServer() {
 
     app.listen(PORT, () => {
       console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+      console.log("✅ Allowed CORS origins:", allowedOrigins);
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);

@@ -7,6 +7,25 @@ const generateToken = (id, role) => {
   });
 };
 
+// Helper: build safe user object for frontend
+const toSafeUser = (user) => {
+  if (!user) return null;
+
+  // If your User model has getSafeUser() (from the updated User.js), use it
+  if (typeof user.getSafeUser === "function") return user.getSafeUser();
+
+  // fallback: minimal safe fields
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    username: user.username,
+    role: user.role,
+    status: user.status,
+    createdAt: user.createdAt,
+  };
+};
+
 // Generate token response
 const sendTokenResponse = (user, statusCode, res) => {
   const token = generateToken(user._id, user.role);
@@ -17,24 +36,37 @@ const sendTokenResponse = (user, statusCode, res) => {
 
   const isProd = process.env.NODE_ENV === "production";
 
-  const options = {
+  /**
+   * IMPORTANT:
+   * - If frontend and backend are on different domains (common on Render),
+   *   you MUST use:
+   *     sameSite: "none"
+   *     secure: true
+   * - In local dev, use sameSite: "lax" and secure: false
+   *
+   * Also: frontend fetch MUST use credentials: "include"
+   * and backend CORS must set credentials: true + origin set to your client URL.
+   */
+  const cookieOptions = {
     expires,
     httpOnly: true,
-    secure: isProd, // ✅ required on HTTPS (Render)
-    // ✅ Important for cross-site frontend (Render frontend calling Render API):
-    // - If frontend and backend are on different domains, you need SameSite=None
-    // - SameSite=None requires secure=true (production)
+    secure: isProd, // ✅ required when sameSite="none"
     sameSite: isProd ? "none" : "lax",
+    // ✅ cookie available across all routes
+    path: "/",
   };
 
-  // Remove password from output
-  if (user && user.password) user.password = undefined;
+  // ✅ do NOT mutate mongoose user doc (avoid side effects)
+  const safeUser = toSafeUser(user);
 
-  return res.status(statusCode).cookie("token", token, options).json({
-    success: true,
-    token, // optional: frontend can still store in memory if you want
-    user,
-  });
+  return res
+    .status(statusCode)
+    .cookie("token", token, cookieOptions)
+    .json({
+      success: true,
+      token, // keep token for clients that prefer Authorization header
+      user: safeUser,
+    });
 };
 
 module.exports = {
