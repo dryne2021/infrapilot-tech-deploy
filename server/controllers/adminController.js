@@ -1,6 +1,7 @@
 // server/controllers/adminController.js
 
 const bcrypt = require("bcryptjs");
+const mongoose = require("mongoose"); // ✅ ADDED (needed for transactions)
 
 const User = require("../models/User");
 const Candidate = require("../models/Candidate");
@@ -30,7 +31,7 @@ const relativeTime = (date) => {
   const diffMs = Date.now() - d.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 60) return "Just now";
-  const diffMin = Math.floor(diffSec / 60);
+  const diffMin = Math.floor(diffMs / 60 / 1000);
   if (diffMin < 60) return `${diffMin} min ago`;
   const diffHr = Math.floor(diffMin / 60);
   if (diffHr < 24) return `${diffHr} hr ago`;
@@ -416,7 +417,7 @@ exports.deleteRecruiter = async (req, res, next) => {
 
     await Candidate.updateMany(
       { assignedRecruiterId: recruiter._id },
-      { $set: { assignedRecruiterId: null, recruiterStatus: "", assignedDate: null } }
+      { $set: { assignedRecruiterId: null, assignedRecruiter: null, recruiterStatus: "", assignedDate: null } }
     );
 
     if (recruiter.userId) {
@@ -442,6 +443,7 @@ exports.assignCandidate = async (req, res, next) => {
 
     if (!recruiterId) {
       candidate.assignedRecruiterId = null;
+      candidate.assignedRecruiter = null;
       candidate.recruiterStatus = "";
       candidate.assignedDate = null;
       await candidate.save();
@@ -461,6 +463,7 @@ exports.assignCandidate = async (req, res, next) => {
     }
 
     candidate.assignedRecruiterId = recruiter._id;
+    candidate.assignedRecruiter = recruiter._id;
     candidate.recruiterStatus = "new";
     candidate.assignedDate = new Date();
     await candidate.save();
@@ -500,6 +503,7 @@ exports.bulkAssignCandidates = async (req, res, next) => {
       {
         $set: {
           assignedRecruiterId: recruiter._id,
+          assignedRecruiter: recruiter._id,
           recruiterStatus: "new",
           assignedDate: new Date(),
         },
@@ -559,6 +563,7 @@ exports.autoAssignCandidates = async (req, res, next) => {
             {
               $set: {
                 assignedRecruiterId: recruiter._id,
+                assignedRecruiter: recruiter._id,
                 recruiterStatus: "new",
                 assignedDate: new Date(),
               },
@@ -686,7 +691,10 @@ exports.adminResetUserPassword = async (req, res, next) => {
 ========================================================= */
 exports.getUnassignedCandidates = async (req, res, next) => {
   try {
-    const candidates = await Candidate.find({ assignedRecruiterId: null })
+    const candidates = await Candidate.find({
+      assignedRecruiterId: null,
+      assignedRecruiter: null,
+    })
       .sort({ createdAt: -1 })
       .lean();
 
@@ -707,7 +715,8 @@ exports.getRecruiterCandidates = async (req, res, next) => {
     const recruiter = await Recruiter.findById(recruiterId).lean();
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
 
-    const candidates = await Candidate.find({ assignedRecruiterId: recruiterId })
+    // ✅ use DB truth: Candidate.assignedRecruiter (Recruiter ref)
+    const candidates = await Candidate.find({ assignedRecruiter: recruiterId })
       .sort({ assignedDate: -1, createdAt: -1 })
       .lean();
 
@@ -723,43 +732,68 @@ exports.getRecruiterCandidates = async (req, res, next) => {
    body: { candidateId }
 ========================================================= */
 exports.assignCandidateToRecruiter = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const recruiterId = req.params.id;
     const { candidateId } = req.body;
 
     if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
 
-    const recruiter = await Recruiter.findById(recruiterId);
+    const recruiter = await Recruiter.findById(recruiterId).session(session);
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
 
     const recruiterActive = recruiter.status === "active" || recruiter.isActive === true;
     if (!recruiterActive) return next(new ErrorResponse("Recruiter is not active", 400));
 
-    const candidate = await Candidate.findById(candidateId);
+    const candidate = await Candidate.findById(candidateId).session(session);
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
 
-    const assignedCount = await Candidate.countDocuments({
-      assignedRecruiterId: recruiter._id,
-    });
+    // ✅ block if assigned elsewhere
+    if (
+      candidate.assignedRecruiter &&
+      String(candidate.assignedRecruiter) !== String(recruiterId)
+    ) {
+      return next(new ErrorResponse("Candidate already assigned to another recruiter", 400));
+    }
+
+    // ✅ capacity check using Recruiter.assignedCandidates
+    const currentCount = Array.isArray(recruiter.assignedCandidates)
+      ? recruiter.assignedCandidates.length
+      : 0;
 
     const capacity = recruiter.maxCandidates || 10;
-    if (assignedCount >= capacity) {
+    if (currentCount >= capacity) {
       return next(new ErrorResponse("Recruiter is at full capacity", 400));
     }
 
-    candidate.assignedRecruiterId = recruiter._id;
+    // ✅ update candidate (keep old field + new field)
+    candidate.assignedRecruiterId = recruiter._id; // (legacy) for admin UI/activity
+    candidate.assignedRecruiter = recruiter._id; // (new) recruiter dashboard truth
     candidate.recruiterStatus = "new";
     candidate.assignedDate = new Date();
-    await candidate.save();
+    await candidate.save({ session });
+
+    // ✅ update recruiter list
+    const alreadyIn = recruiter.assignedCandidates?.some(
+      (id) => String(id) === String(candidate._id)
+    );
+    if (!alreadyIn) recruiter.assignedCandidates.push(candidate._id);
 
     recruiter.lastAssignment = new Date();
-    await recruiter.save();
+    await recruiter.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(200).json({
       success: true,
       data: { candidateId: candidate._id, recruiterId: recruiter._id },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };
@@ -770,32 +804,49 @@ exports.assignCandidateToRecruiter = async (req, res, next) => {
    body: { candidateId }
 ========================================================= */
 exports.unassignCandidateFromRecruiter = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const recruiterId = req.params.id;
     const { candidateId } = req.body;
 
     if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
 
-    const recruiter = await Recruiter.findById(recruiterId);
+    const recruiter = await Recruiter.findById(recruiterId).session(session);
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
 
-    const candidate = await Candidate.findById(candidateId);
+    const candidate = await Candidate.findById(candidateId).session(session);
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
 
-    if (String(candidate.assignedRecruiterId || "") !== String(recruiterId)) {
+    // ✅ ensure this candidate is assigned to THIS recruiter
+    if (String(candidate.assignedRecruiter || "") !== String(recruiterId)) {
       return next(new ErrorResponse("Candidate is not assigned to this recruiter", 400));
     }
 
+    // ✅ clear candidate assignment (both fields)
     candidate.assignedRecruiterId = null;
+    candidate.assignedRecruiter = null;
     candidate.recruiterStatus = "";
     candidate.assignedDate = null;
-    await candidate.save();
+    await candidate.save({ session });
+
+    // ✅ remove from recruiter.assignedCandidates
+    recruiter.assignedCandidates = (recruiter.assignedCandidates || []).filter(
+      (id) => String(id) !== String(candidate._id)
+    );
+    await recruiter.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     return res.status(200).json({
       success: true,
       data: { candidateId: candidate._id, recruiterId },
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
     next(error);
   }
 };

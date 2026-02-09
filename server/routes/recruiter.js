@@ -2,6 +2,7 @@ const express = require('express');
 const {
   getCandidates,
   getCandidate,
+  updateCandidateStatus, // ✅ ADD THIS
   createApplication,
   getApplications,
   getApplication,
@@ -23,6 +24,10 @@ router.route('/candidates')
 
 router.route('/candidates/:id')
   .get(getCandidate);
+
+// ✅ NEW: update recruiterStatus (used by recruiter dashboard)
+router.route('/candidates/:id/status')
+  .put(updateCandidateStatus);
 
 // Application routes
 router.route('/applications')

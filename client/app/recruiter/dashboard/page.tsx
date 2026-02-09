@@ -42,19 +42,25 @@ export default function RecruiterPage() {
   const [resumeGenerationHistory, setResumeGenerationHistory] = useState<any[]>([])
   const [resumeError, setResumeError] = useState('')
   
-  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:5000'
+  // ✅ FIXED: Use window.location.origin or NEXT_PUBLIC_API_BASE_URL (no localhost fallback)
+  const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
+    (typeof window !== 'undefined' ? window.location.origin : '')
+  
   const router = useRouter()
 
-  // ✅ FIXED: API HELPER FUNCTION with proper TypeScript types
+  // ✅ FIXED: API HELPER FUNCTION with Bearer Token
   const api = async (
     path: string,
     options: (RequestInit & { headers?: HeadersInit }) = {}
   ) => {
+    const token = localStorage.getItem('infrapilot_token');
+    
     const res = await fetch(`${apiBaseUrl}${path}`, {
       credentials: 'include',
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -72,9 +78,9 @@ export default function RecruiterPage() {
     return data;
   };
 
-  // ✅ recruiter loads assigned candidates from DB
-  const fetchAssignedCandidates = (recruiterId: string) =>
-    api(`/api/v1/recruiter/${recruiterId}/candidates`, { method: 'GET' });
+  // ✅ FIXED: recruiter loads assigned candidates from DB - CORRECT ENDPOINT
+  const fetchAssignedCandidates = () =>
+    api(`/api/v1/recruiter/candidates`, { method: 'GET' });
 
   // ✅ MONGO-BACKED JOB APIS (UPDATED ROUTES)
   const fetchCandidateJobs = (candidateId: string, recruiterId: string) =>
@@ -199,6 +205,7 @@ export default function RecruiterPage() {
 
   // ✅ HELPER: download .docx from backend using POST /resume/download
   const downloadDocxFromText = async (candidate: any, resumeText: string) => {
+    const token = localStorage.getItem('infrapilot_token');
     const fileSafeName =
       (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
         .replace(/\s+/g, '_');
@@ -213,7 +220,10 @@ export default function RecruiterPage() {
 
     const res = await fetch(`${apiBaseUrl}/api/v1/resume/download`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      },
       credentials: 'include',
       body: JSON.stringify(payload),
     });
@@ -264,6 +274,7 @@ export default function RecruiterPage() {
 
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
+      const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
         fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
@@ -284,7 +295,10 @@ export default function RecruiterPage() {
       // 1) Generate resume text (JSON)
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
@@ -338,6 +352,7 @@ export default function RecruiterPage() {
 
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
+      const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
         fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
@@ -357,7 +372,10 @@ export default function RecruiterPage() {
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         credentials: 'include',
         body: JSON.stringify(payload),
       });
@@ -526,9 +544,9 @@ export default function RecruiterPage() {
           setResumeGenerationHistory(JSON.parse(savedResumeHistory))
         }
         
-        // ✅ Load assigned candidates from backend (not localStorage)
+        // ✅ FIXED: Load assigned candidates from backend (using correct endpoint)
         try {
-          const myCandidates = await fetchAssignedCandidates(recruiterId || '');
+          const myCandidates = await fetchAssignedCandidates();
           setAssignedCandidates(myCandidates);
 
           const activeSubs = myCandidates.filter((c: any) => c.subscriptionStatus === 'active').length;
@@ -681,13 +699,11 @@ export default function RecruiterPage() {
     router.push('/login')
   }
 
-  // ✅ FIXED: Update candidate status (no localStorage, backend only)
+  // ✅ FIXED: Update candidate status (using correct endpoint)
   const updateCandidateStatus = async (candidateId: string, newStatus: string) => {
     try {
-      const recruiterId = localStorage.getItem('recruiter_id') || '';
-      
-      // Call backend API to update candidate status
-      await api(`/api/v1/recruiter/${recruiterId}/candidates/${candidateId}/status`, {
+      // ✅ FIXED: Correct endpoint - /api/v1/recruiter/candidates/:id/status
+      await api(`/api/v1/recruiter/candidates/${candidateId}/status`, {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
       });

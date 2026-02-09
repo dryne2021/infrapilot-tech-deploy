@@ -7,7 +7,7 @@ const ErrorResponse = require('../utils/ErrorResponse');
 // Helper: ensure recruiter exists
 // -----------------------------
 async function getRecruiterOrThrow(userId, next) {
-  const recruiter = await Recruiter.findOne({ userId });
+  const recruiter = await Recruiter.findOne({ userId }).lean();
   if (!recruiter) {
     next(new ErrorResponse('Recruiter profile not found', 404));
     return null;
@@ -16,14 +16,12 @@ async function getRecruiterOrThrow(userId, next) {
 }
 
 // -----------------------------
-// Helper: ensure candidate assigned (IMPORTANT: must stop execution if not assigned)
+// Helper: ensure candidate assigned (DB truth = Candidate.assignedRecruiterId)
 // -----------------------------
-function ensureCandidateAssigned(recruiter, candidateId, next) {
-  const assigned = recruiter.assignedCandidates?.some(
-    (id) => id.toString() === candidateId.toString()
-  );
+function ensureCandidateAssigned(recruiter, candidate, next) {
+  const assignedRecruiterId = candidate?.assignedRecruiterId;
 
-  if (!assigned) {
+  if (!assignedRecruiterId || String(assignedRecruiterId) !== String(recruiter._id)) {
     next(new ErrorResponse('Not authorized for this candidate', 403));
     return false;
   }
@@ -35,23 +33,18 @@ function ensureCandidateAssigned(recruiter, candidateId, next) {
 // @access  Private/Recruiter
 exports.getCandidates = async (req, res, next) => {
   try {
-    const recruiter = await Recruiter.findOne({ userId: req.user.id }).populate({
-      path: 'assignedCandidates',
-      populate: {
-        path: 'userId',
-        select: 'name email status',
-      },
-    });
-
+    const recruiter = await Recruiter.findOne({ userId: req.user.id }).lean();
     if (!recruiter) {
       return next(new ErrorResponse('Recruiter profile not found', 404));
     }
 
-    res.status(200).json({
-      success: true,
-      count: recruiter.assignedCandidates.length,
-      data: recruiter.assignedCandidates,
-    });
+    // ✅ DB truth: admin assigns by setting Candidate.assignedRecruiterId = recruiter._id
+    const candidates = await Candidate.find({ assignedRecruiterId: recruiter._id })
+      .sort({ assignedDate: -1, createdAt: -1 })
+      .populate('userId', 'name email status')
+      .lean();
+
+    return res.status(200).json(candidates);
   } catch (error) {
     next(error);
   }
@@ -73,16 +66,55 @@ exports.getCandidate = async (req, res, next) => {
       return next(new ErrorResponse('Candidate not found', 404));
     }
 
-    const ok = ensureCandidateAssigned(recruiter, candidate._id, next);
+    const ok = ensureCandidateAssigned(recruiter, candidate, next);
     if (!ok) return;
 
     const applications = await JobApplication.find({ candidateId: candidate._id })
       .sort({ createdAt: -1 })
       .limit(10);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: { candidate, applications },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ NEW: Update recruiterStatus for an assigned candidate
+// @desc    Update candidate recruiter status
+// @route   PUT /api/v1/recruiter/candidates/:id/status
+// @access  Private/Recruiter
+exports.updateCandidateStatus = async (req, res, next) => {
+  try {
+    const { status } = req.body;
+
+    // keep your UI options; allow safe values only
+    const allowed = ['new', 'contacted', 'screening', 'interview', 'shortlisted', 'rejected', 'hired'];
+    if (!allowed.includes(String(status || ''))) {
+      return next(new ErrorResponse('Invalid recruiter status', 400));
+    }
+
+    const recruiter = await Recruiter.findOne({ userId: req.user.id }).lean();
+    if (!recruiter) {
+      return next(new ErrorResponse('Recruiter profile not found', 404));
+    }
+
+    const candidate = await Candidate.findById(req.params.id);
+    if (!candidate) {
+      return next(new ErrorResponse('Candidate not found', 404));
+    }
+
+    const ok = ensureCandidateAssigned(recruiter, candidate, next);
+    if (!ok) return;
+
+    candidate.recruiterStatus = status;
+    await candidate.save();
+
+    return res.status(200).json({
+      success: true,
+      data: { candidateId: candidate._id, recruiterStatus: candidate.recruiterStatus },
     });
   } catch (error) {
     next(error);
@@ -118,7 +150,7 @@ exports.createApplication = async (req, res, next) => {
       return next(new ErrorResponse('Candidate not found', 404));
     }
 
-    const ok = ensureCandidateAssigned(recruiter, candidateId, next);
+    const ok = ensureCandidateAssigned(recruiter, candidate, next);
     if (!ok) return;
 
     // ✅ Normalize resumeUsed
@@ -139,7 +171,7 @@ exports.createApplication = async (req, res, next) => {
       };
     }
 
-    // ✅ IMPORTANT: recruiterId should be recruiter._id (not user id)
+    // ✅ recruiterId should be recruiter._id
     const application = await JobApplication.create({
       candidateId,
       recruiterId: recruiter._id,
@@ -151,7 +183,7 @@ exports.createApplication = async (req, res, next) => {
       notes: notes ? [{ content: notes, addedBy: req.user.id }] : [],
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       data: application,
     });
@@ -188,7 +220,7 @@ exports.getApplications = async (req, res, next) => {
       .skip(startIndex)
       .limit(limitInt);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       count: applications.length,
       total,
@@ -221,7 +253,7 @@ exports.getApplication = async (req, res, next) => {
       return next(new ErrorResponse('Application not found', 404));
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: application,
     });
@@ -248,7 +280,7 @@ exports.updateApplicationStatus = async (req, res, next) => {
       { _id: req.params.id, recruiterId: recruiter._id },
       {
         status,
-        ...(status === 'applied' ? { appliedDate: new Date() } : {}), // ✅ FIX
+        ...(status === 'applied' ? { appliedDate: new Date() } : {}),
       },
       { new: true, runValidators: true }
     );
@@ -257,7 +289,7 @@ exports.updateApplicationStatus = async (req, res, next) => {
       return next(new ErrorResponse('Application not found', 404));
     }
 
-    res.status(200).json({ success: true, data: application });
+    return res.status(200).json({ success: true, data: application });
   } catch (error) {
     next(error);
   }
@@ -288,7 +320,7 @@ exports.addApplicationNote = async (req, res, next) => {
     application.notes.push({ content, addedBy: req.user.id });
     await application.save();
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: application.notes[application.notes.length - 1],
     });
@@ -314,7 +346,9 @@ exports.getDashboardStats = async (req, res, next) => {
       rejectedApplications,
       offerApplications,
     ] = await Promise.all([
-      Candidate.countDocuments({ _id: { $in: recruiter.assignedCandidates } }),
+      // ✅ FIX: correct DB field
+      Candidate.countDocuments({ assignedRecruiterId: recruiter._id }),
+
       JobApplication.countDocuments({ recruiterId: recruiter._id }),
       JobApplication.countDocuments({ recruiterId: recruiter._id, status: 'pending' }),
       JobApplication.countDocuments({ recruiterId: recruiter._id, status: 'applied' }),
@@ -325,10 +359,10 @@ exports.getDashboardStats = async (req, res, next) => {
 
     const successRate =
       appliedApplications > 0
-        ? (offerApplications / appliedApplications * 100).toFixed(2)
+        ? ((offerApplications / appliedApplications) * 100).toFixed(2)
         : 0;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       data: {
         totalCandidates,

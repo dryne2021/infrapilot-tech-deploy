@@ -68,6 +68,14 @@ const RecruiterSchema = new mongoose.Schema(
       default: "",
     },
 
+    // ✅ NEW: assigned candidates (DB truth for recruiter dashboard)
+    assignedCandidates: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Candidate",
+      },
+    ],
+
     // Assignment metadata
     lastAssignment: {
       type: Date,
@@ -80,5 +88,8 @@ const RecruiterSchema = new mongoose.Schema(
 // Helpful compound indexes for admin filtering
 RecruiterSchema.index({ status: 1, specialization: 1 });
 RecruiterSchema.index({ department: 1 });
+
+// ✅ NEW index for recruiter → candidates lookup
+RecruiterSchema.index({ assignedCandidates: 1 });
 
 module.exports = mongoose.model("Recruiter", RecruiterSchema);

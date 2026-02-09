@@ -104,6 +104,15 @@ const CandidateSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+
+    // ✅ NEW: recruiter profile reference (MongoDB truth for recruiter dashboard)
+    assignedRecruiter: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Recruiter",
+      default: null,
+      index: true,
+    },
+
     recruiterStatus: { type: String, default: "" }, // e.g. "new", "in_progress", "completed"
     assignedDate: { type: Date, default: null },
   },
