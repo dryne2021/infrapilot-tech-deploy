@@ -65,8 +65,6 @@ const userSchema = new mongoose.Schema(
 
 /* =========================================================
    INDEXES (kept explicit + safe)
-   - unique creates an index automatically, but keeping these
-     doesn't hurt and makes intent clear.
 ========================================================= */
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
@@ -108,6 +106,11 @@ userSchema.pre("save", async function (next) {
 ========================================================= */
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return bcrypt.compare(String(enteredPassword || ""), this.password);
+};
+
+// ✅ ADD THIS: authController expects comparePassword()
+userSchema.methods.comparePassword = async function (enteredPassword) {
+  return this.matchPassword(enteredPassword);
 };
 
 // Optional helper (nice for responses, but not required)
