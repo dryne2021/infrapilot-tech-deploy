@@ -98,6 +98,7 @@ exports.getDashboardStats = async (req, res, next) => {
       Candidate.countDocuments({ paymentStatus: "pending" }),
       Candidate.countDocuments({ assignedRecruiterId: null }),
 
+      // We count credentialed candidates by username+passwordHash existence.
       Candidate.countDocuments({
         username: { $exists: true, $ne: "" },
         passwordHash: { $exists: true, $ne: "" },
@@ -229,8 +230,8 @@ exports.getCandidates = async (req, res, next) => {
     const mapped = candidates.map((c) => {
       const u = userMap.get(String(c.userId));
 
-      // We DO NOT rely on passwordHash being returned (it may be select:false).
-      // Use credentialsGenerated as the canonical flag.
+      // ✅ We do NOT rely on passwordHash being returned (it may be select:false).
+      // Use credentialsGenerated OR username as the canonical UI flag.
       const credsFlag = !!c.credentialsGenerated || (!!c.username && String(c.username).trim().length > 0);
 
       return {
@@ -239,7 +240,7 @@ exports.getCandidates = async (req, res, next) => {
         recruiterName: c.assignedRecruiterId?.name || "",
         credentialsGenerated: credsFlag, // ✅ makes UI badge reliable
         password: credsFlag ? "SET" : (u?.username ? "SET" : safeHashedPasswordFlag(c)),
-        username: (u?.username || c.username || ""),
+        username: u?.username || c.username || "",
       };
     });
 
@@ -249,7 +250,7 @@ exports.getCandidates = async (req, res, next) => {
   }
 };
 
-// ✅ createCandidate (as you had)
+// ✅ createCandidate
 exports.createCandidate = async (req, res, next) => {
   try {
     console.log("📥 [ADMIN] createCandidate payload:", req.body);
@@ -284,7 +285,9 @@ exports.createCandidate = async (req, res, next) => {
 
     const existingCandidate = await Candidate.findOne({ userId: user._id });
     if (existingCandidate) {
-      return next(new ErrorResponse("Candidate profile already exists for this email. Use update.", 400));
+      return next(
+        new ErrorResponse("Candidate profile already exists for this email. Use update.", 400)
+      );
     }
 
     const payload = {
@@ -294,6 +297,7 @@ exports.createCandidate = async (req, res, next) => {
       fullName: fullNameNorm,
     };
 
+    // Ensure education minimal
     const edu = Array.isArray(payload.education) ? payload.education : [];
     const hasValidEdu =
       edu.length > 0 &&
@@ -307,7 +311,13 @@ exports.createCandidate = async (req, res, next) => {
 
     if (!hasValidEdu) {
       payload.education = [
-        { school: "Not Provided", degree: "Not Provided", field: "Not Provided", startYear: "", endYear: "" },
+        {
+          school: "Not Provided",
+          degree: "Not Provided",
+          field: "Not Provided",
+          startYear: "",
+          endYear: "",
+        },
       ];
     } else {
       payload.education = edu.map((e) => ({
@@ -723,7 +733,7 @@ exports.setCandidateCredentials = async (req, res, next) => {
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
     if (!candidate.userId) return next(new ErrorResponse("Candidate userId missing", 400));
 
-    // ✅ enforce unique username on Candidate collection (case-insensitive match)
+    // ✅ enforce unique username on Candidate collection
     const takenCandidate = await Candidate.findOne({
       username: usernameNorm,
       _id: { $ne: candidateId },
@@ -785,14 +795,12 @@ exports.resetCandidateCredentials = async (req, res, next) => {
     const user = await User.findById(candidate.userId).select("+password");
     if (!user) return next(new ErrorResponse("Candidate user not found", 404));
 
-    // Clear Candidate creds
     candidate.username = "";
     candidate.passwordHash = "";
     candidate.credentialsGenerated = null;
     candidate.credentialsUpdatedBy = String(req.user?._id || "admin");
     await candidate.save();
 
-    // Reset User password to a temp one
     const tempPassword = generateRandomPassword(10);
     user.password = tempPassword;
     if (userSupportsUsername()) user.username = "";

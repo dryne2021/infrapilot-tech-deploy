@@ -43,8 +43,8 @@ app.use(express.urlencoded({ extended: true }));
    - Must return exact origin when credentials:true
 ========================================================= */
 const allowedOrigins = [
-  process.env.CLIENT_URL,      // deployed frontend (Render/Vercel etc)
-  "http://localhost:3000",     // local dev
+  process.env.CLIENT_URL, // deployed frontend (Render/Vercel etc)
+  "http://localhost:3000", // local dev
 ].filter(Boolean);
 
 const corsOptions = {
@@ -62,13 +62,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "X-Requested-With",
-    "Accept",
-    "Origin",
-  ],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
   optionsSuccessStatus: 204,
 };
 
@@ -81,13 +75,23 @@ app.options("*", cors(corsOptions));
    Mount routers
 ========================================================= */
 app.use("/api/v1/auth", authRoutes);
+
+// ✅ Admin core routes
 app.use("/api/v1/admin", adminRoutes);
 
 // ✅ Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
 app.use("/api/v1/admin/plans", planRoutes);
 
+// ✅ ✅ FIX: Mount admin candidates endpoints so this works:
+// POST /api/v1/admin/candidates/:id/credentials
+// GET  /api/v1/admin/candidates/:id
+app.use("/api/v1/admin/candidates", candidatesRoutes);
+
+// Existing candidate/recruiter app routes
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/recruiter", recruiterRoutes);
+
+// (Optional) Keep this if other parts of your app use /api/v1/candidates
 app.use("/api/v1/candidates", candidatesRoutes);
 
 // ✅ Job applications
@@ -130,6 +134,7 @@ async function startServer() {
     app.listen(PORT, () => {
       console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
       console.log("✅ Allowed CORS origins:", allowedOrigins);
+      console.log("✅ Mounted admin candidates at /api/v1/admin/candidates");
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);
