@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { fetchWithAuth } from '@/utils/fetchWithAuth'
 
 // Subscription Plans Configuration
@@ -10,15 +10,6 @@ const SUBSCRIPTION_PLANS = [
   { id: 'gold', name: 'Gold', price: 79, duration: 30 },
   { id: 'platinum', name: 'Platinum', price: 149, duration: 30 },
   { id: 'enterprise', name: 'Enterprise', price: 299, duration: 90 },
-]
-
-// Sample Recruiters (still local for now; later we can load from backend)
-const RECRUITERS = [
-  { id: 'rec1', name: 'John Smith', email: 'john@infrapilot.com', candidates: 12, status: 'Active' },
-  { id: 'rec2', name: 'Sarah Johnson', email: 'sarah@infrapilot.com', candidates: 8, status: 'Active' },
-  { id: 'rec3', name: 'Mike Chen', email: 'mike@infrapilot.com', candidates: 15, status: 'Active' },
-  { id: 'rec4', name: 'Emma Wilson', email: 'emma@infrapilot.com', candidates: 5, status: 'On Leave' },
-  { id: 'rec5', name: 'David Brown', email: 'david@infrapilot.com', candidates: 10, status: 'Active' },
 ]
 
 // Skills Options
@@ -43,9 +34,19 @@ const SKILLS_OPTIONS: any = {
 }
 
 type Candidate = any
+type Recruiter = {
+  _id: string
+  name?: string
+  email?: string
+  status?: string
+  isActive?: boolean
+  maxCandidates?: number
+  assignedCandidatesCount?: number
+}
 
 const CandidateManagement = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([])
+  const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
   const [loading, setLoading] = useState(false)
 
@@ -56,6 +57,17 @@ const CandidateManagement = () => {
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPlan, setFilterPlan] = useState('all')
   const [filterPayment, setFilterPayment] = useState('all')
+
+  // -----------------------------
+  // ✅ NEW: Credentials Modal state
+  // -----------------------------
+  const [showCredModal, setShowCredModal] = useState(false)
+  const [credCandidate, setCredCandidate] = useState<any>(null)
+  const [credUsername, setCredUsername] = useState('')
+  const [credPassword, setCredPassword] = useState('')
+  const [credLoading, setCredLoading] = useState(false)
+  const [credError, setCredError] = useState('')
+  const [credSuccess, setCredSuccess] = useState('')
 
   const initialFormState: any = {
     // Personal Information
@@ -150,7 +162,9 @@ const CandidateManagement = () => {
     // Subscription & Assignment
     subscriptionPlan: 'gold',
     paymentStatus: 'paid',
-    assignedRecruiter: 'rec1',
+
+    // ✅ IMPORTANT: must be Mongo Recruiter _id (ObjectId string) or '' for unassigned
+    assignedRecruiter: '',
   }
 
   const [formData, setFormData] = useState<any>(initialFormState)
@@ -175,13 +189,45 @@ const CandidateManagement = () => {
     }
   }
 
+  // ✅ BACKEND: load recruiters (Mongo _id)
+  const loadRecruiters = async () => {
+    try {
+      const res = await fetchWithAuth('/api/v1/admin/recruiters')
+      if (!res.ok) return
+
+      const json = await res.json().catch(() => ({}))
+      const list = json?.data ?? json
+
+      const arr = Array.isArray(list) ? list : []
+      // optional: show active first
+      arr.sort((a: any, b: any) => {
+        const aActive = a?.status === 'active' || a?.isActive === true
+        const bActive = b?.status === 'active' || b?.isActive === true
+        if (aActive === bActive) return 0
+        return aActive ? -1 : 1
+      })
+
+      setRecruiters(arr)
+    } catch {
+      // ignore recruiter load errors
+    }
+  }
+
   useEffect(() => {
     ;(async () => {
       setPageLoading(true)
-      await loadCandidates()
+      await Promise.all([loadCandidates(), loadRecruiters()])
       setPageLoading(false)
     })()
   }, [])
+
+  const recruiterById = useMemo(() => {
+    const m = new Map<string, Recruiter>()
+    recruiters.forEach((r) => {
+      if (r?._id) m.set(String(r._id), r)
+    })
+    return m
+  }, [recruiters])
 
   const handleInputChange = (e: any) => {
     const { name, value, type, checked } = e.target
@@ -307,7 +353,7 @@ const CandidateManagement = () => {
 
   const stripUiId = (arr: any[]) => (Array.isArray(arr) ? arr.map(({ id, ...rest }) => rest) : [])
 
-  // ✅ BACKEND: create candidate (fixed 400)
+  // ✅ BACKEND: create candidate
   const handleAddCandidate = async (e: any) => {
     e.preventDefault()
     setError('')
@@ -321,9 +367,7 @@ const CandidateManagement = () => {
 
     try {
       const selectedPlan = SUBSCRIPTION_PLANS.find((p) => p.id === formData.subscriptionPlan)
-      const recruiter = RECRUITERS.find((r) => r.id === formData.assignedRecruiter)
 
-      // ✅ send a clean payload: correct types, remove UI-only ids
       const payload: any = {
         // identity
         firstName: formData.firstName,
@@ -349,7 +393,7 @@ const CandidateManagement = () => {
         noticePeriod: formData.noticePeriod,
         availability: formData.availability,
 
-        // numbers (avoid "" causing validation/cast errors)
+        // numbers
         experienceYears: toNumberOrUndefined(formData.experienceYears),
         expectedSalary: toNumberOrUndefined(formData.expectedSalary),
 
@@ -361,7 +405,7 @@ const CandidateManagement = () => {
 
         summary: formData.summary,
 
-        // nested arrays (remove UI id)
+        // nested arrays
         experience: stripUiId(formData.experience || []),
         education: stripUiId(formData.education || []),
         projects: stripUiId(formData.projects || []),
@@ -374,14 +418,13 @@ const CandidateManagement = () => {
         references: formData.references,
         notes: formData.notes,
 
-        // subscription / assignment
+        // subscription
         subscriptionPlan: formData.subscriptionPlan,
         paymentStatus: formData.paymentStatus,
         subscriptionStatus: formData.paymentStatus === 'paid' ? 'active' : 'pending',
         daysRemaining: selectedPlan ? selectedPlan.duration : 30,
 
-        assignedRecruiter: formData.assignedRecruiter,
-        assignedRecruiterName: recruiter ? recruiter.name : 'Unassigned',
+        assignedRecruiter: formData.assignedRecruiter ? String(formData.assignedRecruiter) : null,
 
         status: 'New',
       }
@@ -389,7 +432,6 @@ const CandidateManagement = () => {
       const res = await fetchWithAuth('/api/v1/admin/candidates', {
         method: 'POST',
         headers: {
-          // ✅ IMPORTANT: ensures Express parses JSON body
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
@@ -404,7 +446,7 @@ const CandidateManagement = () => {
         return
       }
 
-      await loadCandidates()
+      await Promise.all([loadCandidates(), loadRecruiters()])
       setFormData(initialFormState)
       setShowAddForm(false)
       alert('Candidate added successfully (saved in backend)!')
@@ -415,7 +457,7 @@ const CandidateManagement = () => {
     }
   }
 
-  // ⚠️ For now, keep delete/update local only? We will wire backend later file-by-file.
+  // ⚠️ For now, keep delete/update local only? We will wire backend later.
   const handleDeleteCandidate = async (id: string) => {
     alert('Next step: we will connect Delete to backend (DELETE endpoint). For now, backend create/load is working.')
   }
@@ -428,11 +470,6 @@ const CandidateManagement = () => {
 
           if (field === 'paymentStatus') {
             updated.subscriptionStatus = value === 'paid' ? 'active' : 'pending'
-          }
-
-          if (field === 'assignedRecruiter') {
-            const recruiter = RECRUITERS.find((r) => r.id === value)
-            updated.assignedRecruiterName = recruiter ? recruiter.name : 'Unassigned'
           }
 
           return updated
@@ -491,6 +528,91 @@ const CandidateManagement = () => {
   }
 
   const getCandidateKey = (c: any) => c._id || c.id
+
+  // -----------------------------
+  // ✅ NEW: Credentials helpers
+  // -----------------------------
+  const generatePassword = (length = 12) => {
+    // simple strong-ish generator: letters + digits + symbols
+    const chars =
+      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-='
+    let out = ''
+    for (let i = 0; i < length; i++) {
+      out += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return out
+  }
+
+  const openCredentialsModal = (candidate: any) => {
+    setCredCandidate(candidate)
+    setCredUsername(candidate?.email || '')
+    setCredPassword(generatePassword(12))
+    setCredError('')
+    setCredSuccess('')
+    setShowCredModal(true)
+  }
+
+  const closeCredentialsModal = () => {
+    setShowCredModal(false)
+    setCredCandidate(null)
+    setCredUsername('')
+    setCredPassword('')
+    setCredLoading(false)
+    setCredError('')
+    setCredSuccess('')
+  }
+
+  const submitCredentials = async (e: any) => {
+    e.preventDefault()
+    setCredError('')
+    setCredSuccess('')
+
+    if (!credCandidate?._id && !credCandidate?.id) {
+      setCredError('Missing candidate id.')
+      return
+    }
+    if (!credUsername.trim()) {
+      setCredError('Username is required.')
+      return
+    }
+    if (!credPassword.trim() || credPassword.trim().length < 6) {
+      setCredError('Password must be at least 6 characters.')
+      return
+    }
+
+    const candidateId = String(credCandidate._id || credCandidate.id)
+
+    setCredLoading(true)
+    try {
+      const res = await fetchWithAuth(`/api/v1/admin/candidates/${candidateId}/credentials`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          username: credUsername.trim(),
+          password: credPassword.trim(), // backend may accept OR auto-generate if omitted
+        }),
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        setCredError(json?.error || json?.message || `Failed (${res.status})`)
+        setCredLoading(false)
+        return
+      }
+
+      setCredSuccess('Credentials saved successfully ✅')
+      await loadCandidates() // refresh list so UI reflects candidate.credentialsGenerated etc.
+      // keep modal open briefly so they can copy username/password, but we don't store/display hash
+    } catch (err: any) {
+      setCredError(err?.message || 'Network error creating credentials.')
+    } finally {
+      setCredLoading(false)
+    }
+  }
 
   if (pageLoading) {
     return <div className="text-white">Loading candidates from backend…</div>
@@ -578,6 +700,103 @@ const CandidateManagement = () => {
           </div>
         </div>
       </div>
+
+      {/* ✅ NEW: Create Credentials Modal */}
+      {showCredModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="border-b border-gray-200 p-6">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">🔐 Create Login Credentials</h3>
+                  <p className="text-sm text-gray-700 mt-1">
+                    Candidate: <span className="font-semibold text-gray-900">
+                      {credCandidate?.fullName || `${credCandidate?.firstName || ''} ${credCandidate?.lastName || ''}`.trim() || credCandidate?.email}
+                    </span>
+                  </p>
+                </div>
+                <button onClick={closeCredentialsModal} className="text-gray-900 hover:text-gray-700 text-2xl">
+                  &times;
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={submitCredentials} className="p-6 space-y-4">
+              {credError && (
+                <div className="p-3 bg-red-100 border border-red-200 rounded-lg">
+                  <p className="text-red-700 text-sm">{credError}</p>
+                </div>
+              )}
+              {credSuccess && (
+                <div className="p-3 bg-green-100 border border-green-200 rounded-lg">
+                  <p className="text-green-700 text-sm">{credSuccess}</p>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-1">Username</label>
+                <input
+                  type="text"
+                  value={credUsername}
+                  onChange={(e) => setCredUsername(e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                  placeholder="default = candidate email"
+                />
+                <p className="text-xs text-gray-600 mt-1">Tip: Use email as username (recommended).</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-900 mb-1">Password</label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={credPassword}
+                    onChange={(e) => setCredPassword(e.target.value)}
+                    className="flex-1 p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                    placeholder="Enter a password or generate one"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCredPassword(generatePassword(12))}
+                    className="px-4 py-2 bg-gray-100 text-gray-900 rounded-lg hover:bg-gray-200"
+                  >
+                    Generate
+                  </button>
+                </div>
+                <p className="text-xs text-gray-600 mt-1">Minimum 6 characters.</p>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={closeCredentialsModal}
+                  className="px-6 py-3 border border-gray-300 text-gray-900 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={credLoading}
+                  className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center gap-2"
+                >
+                  {credLoading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    'Save Credentials'
+                  )}
+                </button>
+              </div>
+
+              <div className="text-xs text-gray-600 pt-2">
+                Note: For security, only the password you enter here is shown. The backend stores a hash.
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Candidate Form Modal */}
       {showAddForm && (
@@ -723,10 +942,7 @@ const CandidateManagement = () => {
                   </div>
                 </div>
 
-                {/* ✅ KEEP THE REST OF YOUR FORM SECTIONS EXACTLY AS YOU HAVE THEM NOW
-                    (Contact & Profiles, Skills, Experience, Education, Projects, Subscription & Assignment, etc.)
-                    No changes needed there for the 400 fix.
-                */}
+                {/* ✅ KEEP THE REST OF YOUR FORM SECTIONS EXACTLY AS YOU HAVE THEM NOW */}
               </div>
 
               <div className="mt-8 flex justify-end gap-3">
@@ -807,7 +1023,7 @@ const CandidateManagement = () => {
             </select>
 
             <button
-              onClick={() => loadCandidates()}
+              onClick={() => Promise.all([loadCandidates(), loadRecruiters()])}
               className="px-4 py-2 border border-gray-300 text-gray-900 rounded-lg hover:bg-gray-50"
             >
               Refresh
@@ -847,8 +1063,25 @@ const CandidateManagement = () => {
                 {filteredCandidates.map((candidate: any) => {
                   const daysRemaining = calculateDaysRemaining(candidate)
                   const plan = SUBSCRIPTION_PLANS.find((p) => p.id === candidate.subscriptionPlan)
-                  const recruiter = RECRUITERS.find((r) => r.id === candidate.assignedRecruiter)
                   const id = getCandidateKey(candidate)
+
+                  const recruiterId =
+                    candidate.assignedRecruiter ||
+                    candidate.assignedRecruiterId ||
+                    candidate.assignedRecruiter?._id ||
+                    candidate.assignedRecruiterId?._id ||
+                    ''
+
+                  const recruiter = recruiterId ? recruiterById.get(String(recruiterId)) : null
+                  const recruiterName = recruiter?.name || candidate.recruiterName || 'Unassigned'
+                  const recruiterLoad = recruiter?.assignedCandidatesCount ?? ''
+
+                  // ✅ Detect if credentials already exist (field names may vary)
+                  const hasCreds =
+                    candidate?.credentialsGenerated === true ||
+                    candidate?.hasCredentials === true ||
+                    Boolean(candidate?.username) ||
+                    Boolean(candidate?.passwordHash)
 
                   return (
                     <tr key={id} className="hover:bg-gray-50">
@@ -866,6 +1099,17 @@ const CandidateManagement = () => {
                             <p className="text-sm text-gray-800">{candidate.email}</p>
                             <p className="text-xs text-gray-700">{candidate.phone || 'No phone'}</p>
                             {candidate.targetRole && <p className="text-xs text-blue-600 mt-1">{candidate.targetRole}</p>}
+                            <div className="mt-1">
+                              {hasCreds ? (
+                                <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                                  ✅ Credentials Set
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                  ⏳ No Credentials
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -914,19 +1158,10 @@ const CandidateManagement = () => {
                       </td>
 
                       <td className="p-4">
-                        <select
-                          value={candidate.assignedRecruiter || ''}
-                          onChange={(e) => updateCandidateField(id, 'assignedRecruiter', e.target.value)}
-                          className="p-2 border border-gray-300 rounded-lg text-sm w-full text-gray-900 bg-white"
-                        >
-                          <option value="" className="text-gray-900">Unassigned</option>
-                          {RECRUITERS.map((rec) => (
-                            <option key={rec.id} value={rec.id} className="text-gray-900">
-                              {rec.name} ({rec.candidates})
-                            </option>
-                          ))}
-                        </select>
-                        <p className="text-xs text-gray-800 mt-1">Currently: {recruiter?.name || 'Unassigned'}</p>
+                        <p className="text-sm text-gray-900 font-medium">{recruiterName}</p>
+                        <p className="text-xs text-gray-700">
+                          {recruiterLoad !== '' ? `Workload: ${recruiterLoad}` : ''}
+                        </p>
                       </td>
 
                       <td className="p-4">
@@ -945,6 +1180,20 @@ const CandidateManagement = () => {
                           >
                             View Full
                           </button>
+
+                          {/* ✅ NEW: Create Login Credentials */}
+                          <button
+                            onClick={() => openCredentialsModal(candidate)}
+                            className={`px-3 py-1 text-sm rounded ${
+                              hasCreds
+                                ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
+                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                            }`}
+                            title={hasCreds ? 'Update / Reset credentials' : 'Create credentials'}
+                          >
+                            {hasCreds ? 'Reset Credentials' : 'Create Credentials'}
+                          </button>
+
                           <button
                             onClick={() => handleDeleteCandidate(id)}
                             className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
