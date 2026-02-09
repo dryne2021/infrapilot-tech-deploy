@@ -65,7 +65,6 @@ function isSectionHeader(line) {
     "SUMMARY",
     "SKILLS",
     "EXPERIENCE",
-    "TECHNOLOGIES USED",
     "EDUCATION",
     "CERTIFICATIONS",
   ]);
@@ -116,22 +115,8 @@ function makeBulletParagraph(text) {
   });
 }
 
-// ✅ Bold role headings under EXPERIENCE
-function makeExperienceHeadingParagraph(text) {
-  return new Paragraph({
-    children: [makeRun(text, { size: BODY_SIZE, bold: true })],
-    spacing: { after: 80 },
-  });
-}
-
 // ---------- Enforce your exact HOS format ----------
-function enforceHosFormat({
-  fullName = "",
-  email = "",
-  phone = "",
-  location = "",
-  resumeText = "",
-}) {
+function enforceHosFormat({ fullName = "", email = "", phone = "", location = "", resumeText = "" }) {
   const cleaned = String(resumeText || "").replace(/```/g, "").trim();
   const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
 
@@ -161,7 +146,6 @@ function enforceHosFormat({
     "PROFESSIONAL SUMMARY",
     "SKILLS",
     "EXPERIENCE",
-    "TECHNOLOGIES USED",
     "EDUCATION",
     "CERTIFICATIONS",
   ];
@@ -238,8 +222,6 @@ function parseHosTextToParagraphs(hosText) {
     );
   }
 
-  let currentSection = null;
-
   for (; idx < lines.length; idx++) {
     const raw = lines[idx];
     if (!raw || raw.trim() === "") continue;
@@ -248,8 +230,6 @@ function parseHosTextToParagraphs(hosText) {
     if (!line) continue;
 
     if (isSectionHeader(line)) {
-      currentSection =
-        line.toUpperCase() === "SUMMARY" ? "PROFESSIONAL SUMMARY" : line.toUpperCase();
       paragraphs.push(makeHeadingParagraph(line));
       continue;
     }
@@ -257,12 +237,6 @@ function parseHosTextToParagraphs(hosText) {
     if (isBulletLine(raw)) {
       const bulletText = normalizeLine(stripBulletMarker(raw));
       if (bulletText) paragraphs.push(makeBulletParagraph(bulletText));
-      continue;
-    }
-
-    // ✅ Bold experience role headings (non-bullet lines under EXPERIENCE)
-    if (currentSection === "EXPERIENCE") {
-      paragraphs.push(makeExperienceHeadingParagraph(line));
       continue;
     }
 
@@ -320,16 +294,13 @@ ${fullName}
 ${email || ""} | ${phone || ""} | ${location || ""}
 
 PROFESSIONAL SUMMARY
-(Exactly 8 bullet points. Each bullet must be detailed and tailored to the job description. Use • bullets.)
+(2–4 lines. Mention total years of experience. Tailor to the job description.)
 
 SKILLS
-(Exactly 12 bullet points. Use • bullets. Each skill should align with the job description.)
+(One clean list, comma-separated, aligned with the job description.)
 
 EXPERIENCE
-(Include 1–2 roles. Each role: Title — Company, Location | Dates, then exactly 12 bullet points with measurable impact. Use • bullets.)
-
-TECHNOLOGIES USED
-(Exactly 3 bullet points. Use • bullets. Tools/tech aligned with the job and experience above.)
+(Include 1–2 roles. Each role: Title — Company, Location | Dates, then 6–10 bullet points with measurable impact.)
 
 EDUCATION
 (Include degree, school, location, year.)
@@ -352,10 +323,9 @@ Skills provided (use and expand with job keywords as appropriate):
 ${skillsList.join(", ")}
 
 Strict rules:
-- Headings must match exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, TECHNOLOGIES USED, EDUCATION, CERTIFICATIONS
+- Headings must match exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS
 - Do not add extra sections (no Projects, no Links, no References).
-- Use bullets under PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, and TECHNOLOGIES USED only.
-- Bullet counts MUST be exact as specified above.
+- Use bullets only under EXPERIENCE.
 - Output ONLY the resume text in the required format.
 `.trim();
 
@@ -521,16 +491,13 @@ ${fullName}
 ${email || ""} | ${phone || ""} | ${location || ""}
 
 PROFESSIONAL SUMMARY
-(Exactly 8 bullet points. Use • bullets. Detailed and tailored to the job.)
+(2–4 lines tailored to the job; include total years of experience.)
 
 SKILLS
-(Exactly 12 bullet points. Use • bullets. Aligned to the job.)
+(Comma-separated list aligned to the job.)
 
 EXPERIENCE
-(1–2 roles; each role has exactly 12 bullet points with measurable outcomes. Use • bullets.)
-
-TECHNOLOGIES USED
-(Exactly 3 bullet points. Use • bullets. Tools/tech aligned with the job and experience above.)
+(1–2 roles; each role has bullets with measurable outcomes.)
 
 EDUCATION
 (Degree, School, Location, Year.)
@@ -546,10 +513,9 @@ Existing Summary (optional): ${summary || ""}
 Skills provided: ${skillsList.join(", ")}
 
 Rules:
-- Headings must be exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, TECHNOLOGIES USED, EDUCATION, CERTIFICATIONS
+- Headings must be exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS
 - No extra sections.
-- Use bullets under PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, and TECHNOLOGIES USED only.
-- Bullet counts MUST be exact as specified above.
+- Bullets only under EXPERIENCE.
 - Output ONLY the resume text.
 `.trim();
 

@@ -20,7 +20,6 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
       validate: [validator.isEmail, "Please provide a valid email"],
-      index: true,
     },
 
     // ✅ Login by username OR email
@@ -33,7 +32,6 @@ const userSchema = new mongoose.Schema(
       minlength: [3, "Username must be at least 3 characters"],
       maxlength: [30, "Username cannot exceed 30 characters"],
       match: [/^[a-zA-Z0-9_.-]+$/, "Username contains invalid characters"],
-      index: true,
     },
 
     password: {
@@ -47,7 +45,6 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["admin", "recruiter", "candidate"],
       default: "candidate",
-      index: true,
     },
 
     status: {
@@ -64,7 +61,7 @@ const userSchema = new mongoose.Schema(
 );
 
 /* =========================================================
-   INDEXES (kept explicit + safe)
+   INDEXES (single source of truth)
 ========================================================= */
 userSchema.index({ email: 1 });
 userSchema.index({ username: 1 });
@@ -108,12 +105,12 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
   return bcrypt.compare(String(enteredPassword || ""), this.password);
 };
 
-// ✅ ADD THIS: authController expects comparePassword()
+// ✅ authController expects comparePassword()
 userSchema.methods.comparePassword = async function (enteredPassword) {
   return this.matchPassword(enteredPassword);
 };
 
-// Optional helper (nice for responses, but not required)
+// Optional helper (safe user object)
 userSchema.methods.getSafeUser = function () {
   return {
     id: this._id,
