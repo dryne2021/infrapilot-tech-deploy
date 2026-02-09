@@ -228,15 +228,17 @@ exports.getCandidates = async (req, res, next) => {
 
     const mapped = candidates.map((c) => {
       const u = userMap.get(String(c.userId));
-      const hasCandidateCreds =
-        (c.username && String(c.username).trim()) &&
-        (c.passwordHash && String(c.passwordHash).trim());
+
+      // We DO NOT rely on passwordHash being returned (it may be select:false).
+      // Use credentialsGenerated as the canonical flag.
+      const credsFlag = !!c.credentialsGenerated || (!!c.username && String(c.username).trim().length > 0);
 
       return {
         ...c,
         assignedRecruiter: c.assignedRecruiterId?._id || c.assignedRecruiterId || null,
         recruiterName: c.assignedRecruiterId?.name || "",
-        password: hasCandidateCreds ? "SET" : (u?.username ? "SET" : safeHashedPasswordFlag(c)),
+        credentialsGenerated: credsFlag, // ✅ makes UI badge reliable
+        password: credsFlag ? "SET" : (u?.username ? "SET" : safeHashedPasswordFlag(c)),
         username: (u?.username || c.username || ""),
       };
     });
@@ -698,14 +700,14 @@ exports.autoAssignCandidates = async (req, res, next) => {
 };
 
 /* =========================================================
-   CREDENTIALS (✅ FIXED SAFELY)
-   - ALWAYS writes hashed creds to Candidate (username + passwordHash)
-   - ALSO writes password to linked User so email-login works (User model hashes)
-   - If User schema supports username, we store it there too; otherwise we skip
+   CREDENTIALS (✅ FIXED FOR YOUR UI)
+   POST /api/v1/admin/candidates/:id/credentials
+   body: { username, password }
 ========================================================= */
 exports.setCandidateCredentials = async (req, res, next) => {
   try {
-    const { candidateId, username, password } = req.body;
+    const candidateId = req.params.id; // ✅ FIX: comes from URL param
+    const { username, password } = req.body;
 
     if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
 
