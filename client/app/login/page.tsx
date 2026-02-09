@@ -1,24 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
 type Panel = 'candidate' | 'recruiter' | 'admin'
 
-/**
- * ✅ Real backend auth for ALL roles
- * POST {API_URL}/api/v1/auth/login
- * Body: { emailOrUsername: string, password: string, role }
- *
- * NOTE: Your backend currently looks up Users by EMAIL.
- * So recruiters MUST login using an email address (not "nicole").
- */
 export default function LoginPage() {
   const router = useRouter()
 
-  const API_URL =
-    process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '' // e.g. https://infrapilot-tech-deploy.onrender.com
+  const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || ''
 
   const [panel, setPanel] = useState<Panel>('candidate')
 
@@ -31,7 +22,7 @@ export default function LoginPage() {
   const [adminLoading, setAdminLoading] = useState(false)
 
   // ---------------------------
-  // RECRUITER (EMAIL LOGIN)
+  // RECRUITER
   // ---------------------------
   const [recruiterEmail, setRecruiterEmail] = useState('')
   const [recruiterPassword, setRecruiterPassword] = useState('')
@@ -47,6 +38,36 @@ export default function LoginPage() {
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [candidateError, setCandidateError] = useState('')
   const [showCandidatePassword, setShowCandidatePassword] = useState(false)
+
+  const clearAuthStorage = () => {
+    try {
+      localStorage.removeItem('infrapilot_token')
+      localStorage.removeItem('infrapilot_user')
+      localStorage.removeItem('admin_authenticated')
+      localStorage.removeItem('candidate_authenticated')
+      localStorage.removeItem('recruiter_authenticated')
+      localStorage.removeItem('candidate_id')
+      localStorage.removeItem('recruiter_id')
+    } catch {}
+  }
+
+  // ✅ if already logged in, go to the right dashboard (prevents useless re-login)
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('infrapilot_token')
+      const userStr = localStorage.getItem('infrapilot_user')
+      if (!token || !userStr) return
+
+      const u = JSON.parse(userStr)
+      if (u?.role === 'admin') router.replace('/admin')
+      else if (u?.role === 'recruiter') router.replace('/recruiter')
+      else if (u?.role === 'candidate') router.replace('/candidate/dashboard')
+    } catch {
+      // if corrupted storage, wipe it
+      clearAuthStorage()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ---------------------------
   // Shared backend login helper
@@ -64,6 +85,7 @@ export default function LoginPage() {
       const res = await fetch(`${API_URL}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', // ✅ IMPORTANT (cookie auth support)
         body: JSON.stringify({
           emailOrUsername: args.emailOrUsername.trim(),
           password: args.password,
@@ -74,16 +96,16 @@ export default function LoginPage() {
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        return {
-          success: false,
-          message: data?.message || `Login failed (${res.status})`,
-        }
+        // ✅ support common backend error shapes
+        const msg =
+          data?.message ||
+          data?.error ||
+          data?.errors?.[0]?.message ||
+          `Login failed (${res.status})`
+        return { success: false, message: msg }
       }
 
-      // Support multiple response shapes:
-      // 1) { token, user }
-      // 2) { success, token, user }
-      // 3) { data: { token, user } }
+      // ✅ Support multiple response shapes:
       const token = data?.token || data?.data?.token || data?.accessToken
       const user = data?.user || data?.data?.user
 
@@ -94,20 +116,17 @@ export default function LoginPage() {
         }
       }
 
-      // ✅ Store real JWT + user
+      // ✅ Always clear old flags first (prevents redirect loops)
+      clearAuthStorage()
+
+      // ✅ Store JWT + user
       localStorage.setItem('infrapilot_token', token)
       localStorage.setItem('infrapilot_user', JSON.stringify(user))
 
-      // Optional flags if your app expects them
-      if (args.role === 'candidate') {
-        localStorage.setItem('candidate_authenticated', 'true')
-        if (user?.id || user?._id) localStorage.setItem('candidate_id', user?.id || user?._id)
-      }
-
-      if (args.role === 'recruiter') {
-        localStorage.setItem('recruiter_authenticated', 'true')
-        if (user?.id || user?._id) localStorage.setItem('recruiter_id', user?.id || user?._id)
-      }
+      // Optional ids (if other pages read them)
+      const uid = user?.id || user?._id
+      if (args.role === 'candidate' && uid) localStorage.setItem('candidate_id', uid)
+      if (args.role === 'recruiter' && uid) localStorage.setItem('recruiter_id', uid)
 
       return { success: true, token, user }
     } catch (e: any) {
@@ -135,7 +154,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/admin')
+    router.replace('/admin')
     router.refresh()
     setAdminLoading(false)
   }
@@ -145,7 +164,6 @@ export default function LoginPage() {
     setRecruiterError('')
     setRecruiterLoading(true)
 
-    // ✅ recruiters must login with email (backend searches Users by email)
     const result = await backendLogin({
       emailOrUsername: recruiterEmail,
       password: recruiterPassword,
@@ -158,7 +176,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/recruiter')
+    router.replace('/recruiter')
     router.refresh()
     setRecruiterLoading(false)
   }
@@ -180,7 +198,7 @@ export default function LoginPage() {
       return
     }
 
-    router.push('/candidate/dashboard')
+    router.replace('/candidate/dashboard')
     router.refresh()
     setCandidateLoading(false)
   }
@@ -190,12 +208,11 @@ export default function LoginPage() {
   }
 
   const handleRecruiterDemoLogin = (who: 'john' | 'sarah') => {
-    // ✅ IMPORTANT: use REAL recruiter emails that exist in your Users collection
     if (who === 'john') {
-      setRecruiterEmail('john@infrapilot.com') // <-- change to a real email in your DB
+      setRecruiterEmail('john@infrapilot.com')
       setRecruiterPassword('password123')
     } else {
-      setRecruiterEmail('sarah@infrapilot.com') // <-- change to a real email in your DB
+      setRecruiterEmail('sarah@infrapilot.com')
       setRecruiterPassword('password123')
     }
   }
@@ -386,7 +403,7 @@ export default function LoginPage() {
                   value={recruiterEmail}
                   onChange={(e) => setRecruiterEmail(e.target.value)}
                   className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter your email (e.g. nicole@gmail.com)"
+                  placeholder="Enter your email"
                   required
                   disabled={recruiterLoading}
                 />

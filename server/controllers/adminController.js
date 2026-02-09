@@ -88,10 +88,7 @@ exports.getDashboardStats = async (req, res, next) => {
       activeSubscriptions,
       pendingPayments,
       unassignedCandidates,
-
-      // ✅ credentials truth: Candidate.username/passwordHash (works even if User has no username)
       candidatesWithCredentials,
-
       revenueAgg,
     ] = await Promise.all([
       Candidate.countDocuments(),
@@ -147,8 +144,6 @@ exports.getRecentActivity = async (req, res, next) => {
           .limit(5)
           .populate("assignedRecruiterId", "name email")
           .lean(),
-
-        // ✅ credential activity
         Candidate.find({ credentialsGenerated: { $ne: null } })
           .sort({ credentialsGenerated: -1 })
           .limit(5)
@@ -227,7 +222,6 @@ exports.getCandidates = async (req, res, next) => {
       .populate("assignedRecruiterId", "name email department specialization status maxCandidates")
       .lean();
 
-    // Optional: if your User schema has username, we can expose it too
     const userIds = candidates.map((c) => c.userId).filter(Boolean);
     const users = await User.find({ _id: { $in: userIds } }).select("username role").lean();
     const userMap = new Map(users.map((u) => [String(u._id), u]));
@@ -242,7 +236,6 @@ exports.getCandidates = async (req, res, next) => {
         ...c,
         assignedRecruiter: c.assignedRecruiterId?._id || c.assignedRecruiterId || null,
         recruiterName: c.assignedRecruiterId?.name || "",
-        // UI expects password flag string
         password: hasCandidateCreds ? "SET" : (u?.username ? "SET" : safeHashedPasswordFlag(c)),
         username: (u?.username || c.username || ""),
       };
@@ -268,7 +261,6 @@ exports.createCandidate = async (req, res, next) => {
 
     if (!emailNorm) return next(new ErrorResponse("Email is required", 400));
 
-    // Ensure unique Candidate.userId by creating/reusing a candidate User
     let user = await User.findOne({ email: emailNorm });
 
     if (!user) {
@@ -276,7 +268,7 @@ exports.createCandidate = async (req, res, next) => {
       user = await User.create({
         name: fullNameNorm || "Candidate",
         email: emailNorm,
-        password: tempPassword, // hashed by model
+        password: tempPassword,
         role: "candidate",
         status: "active",
       });
@@ -300,7 +292,6 @@ exports.createCandidate = async (req, res, next) => {
       fullName: fullNameNorm,
     };
 
-    // EDUCATION defaults
     const edu = Array.isArray(payload.education) ? payload.education : [];
     const hasValidEdu =
       edu.length > 0 &&
@@ -325,7 +316,6 @@ exports.createCandidate = async (req, res, next) => {
       }));
     }
 
-    // Recruiter assignment sanitize
     const incomingAssignedRecruiter = body.assignedRecruiter;
 
     payload.assignedRecruiter = null;
@@ -367,7 +357,6 @@ exports.createCandidate = async (req, res, next) => {
       }
     }
 
-    // Normalize skills
     const mergedSkills = []
       .concat(payload.skills || [])
       .concat(payload.technicalSkills || [])
@@ -378,7 +367,6 @@ exports.createCandidate = async (req, res, next) => {
 
     if (mergedSkills.length) payload.skills = Array.from(new Set(mergedSkills));
 
-    // If schema expects workHistory but UI sends experience
     if (!payload.workHistory && Array.isArray(payload.experience)) {
       payload.workHistory = payload.experience.map((x) => ({
         company: String(x.company || "").trim() || "Not Provided",
@@ -721,7 +709,7 @@ exports.setCandidateCredentials = async (req, res, next) => {
 
     if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
 
-    const usernameNorm = String(username || "").trim();
+    const usernameNorm = String(username || "").trim().toLowerCase();
     if (!usernameNorm) return next(new ErrorResponse("username is required", 400));
 
     const pw = String(password || "");
@@ -733,37 +721,37 @@ exports.setCandidateCredentials = async (req, res, next) => {
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
     if (!candidate.userId) return next(new ErrorResponse("Candidate userId missing", 400));
 
-    // ✅ enforce unique username on Candidate collection (this is what your UI/admin uses)
+    // ✅ enforce unique username on Candidate collection (case-insensitive match)
     const takenCandidate = await Candidate.findOne({
       username: usernameNorm,
       _id: { $ne: candidateId },
-    });
+    }).lean();
     if (takenCandidate) return next(new ErrorResponse("Username already taken", 400));
 
     // ✅ update Candidate creds (username + passwordHash)
     const salt = await bcrypt.genSalt(10);
     candidate.username = usernameNorm;
     candidate.passwordHash = await bcrypt.hash(pw, salt);
-    candidate.credentialsCreated = true;
     candidate.credentialsGenerated = new Date();
-    candidate.credentialsUpdatedBy = "admin";
+    candidate.credentialsUpdatedBy = String(req.user?._id || "admin");
     await candidate.save();
 
     // ✅ also set linked User password so login-by-email works reliably
     const user = await User.findById(candidate.userId).select("+password");
     if (!user) return next(new ErrorResponse("Candidate user not found", 404));
 
-    // Only set username on User if schema supports it (your current User.js may not)
+    // Only set username on User if schema supports it
     if (userSupportsUsername()) {
       const existingU = await User.findOne({
         username: usernameNorm,
         _id: { $ne: user._id },
-      });
+      }).lean();
       if (existingU) return next(new ErrorResponse("Username already taken", 400));
       user.username = usernameNorm;
     }
 
-    user.password = pw; // hashed by User model pre('save')
+    // IMPORTANT: assign plaintext password to User model so it hashes in pre('save')
+    user.password = pw;
     user.role = user.role || "candidate";
     user.status = "active";
     await user.save();
@@ -798,14 +786,13 @@ exports.resetCandidateCredentials = async (req, res, next) => {
     // Clear Candidate creds
     candidate.username = "";
     candidate.passwordHash = "";
-    candidate.credentialsCreated = false;
     candidate.credentialsGenerated = null;
-    candidate.credentialsUpdatedBy = "admin";
+    candidate.credentialsUpdatedBy = String(req.user?._id || "admin");
     await candidate.save();
 
-    // Reset User password to a temp one (so admin can share if needed)
+    // Reset User password to a temp one
     const tempPassword = generateRandomPassword(10);
-    user.password = tempPassword; // hashed by User model
+    user.password = tempPassword;
     if (userSupportsUsername()) user.username = "";
     await user.save();
 
@@ -815,7 +802,7 @@ exports.resetCandidateCredentials = async (req, res, next) => {
         candidateId: candidate._id,
         userId: user._id,
         email: user.email,
-        tempPassword, // admin can share with candidate
+        tempPassword,
       },
     });
   } catch (error) {
@@ -928,8 +915,8 @@ exports.assignCandidateToRecruiter = async (req, res, next) => {
     const capacity = recruiter.maxCandidates || 10;
     if (currentCount >= capacity) return next(new ErrorResponse("Recruiter is at full capacity", 400));
 
-    candidate.assignedRecruiterId = recruiter._id; // legacy
-    candidate.assignedRecruiter = recruiter._id; // truth
+    candidate.assignedRecruiterId = recruiter._id;
+    candidate.assignedRecruiter = recruiter._id;
     candidate.recruiterStatus = "new";
     candidate.assignedDate = new Date();
     await candidate.save({ session });

@@ -3,18 +3,32 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-import { fetchWithAuth } from '@/utils/fetchWithAuth'
-
 import CandidateManagement from './CandidateManagement'
 import PlanManagement from './PlanManagement'
 import RecruiterManagement from './RecruiterManagement'
 
+type AdminStats = {
+  totalCandidates: number
+  activeSubscriptions: number
+  pendingPayments: number
+  monthlyRevenue: number
+  totalRecruiters: number
+  activeRecruiters: number
+  unassignedCandidates: number
+  candidatesWithCredentials: number
+}
+
 export default function AdminPage() {
+  const router = useRouter()
+
   const [user, setUser] = useState<any>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('dashboard')
-  const [stats, setStats] = useState({
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'candidates' | 'recruiters' | 'plans'>(
+    'dashboard'
+  )
+
+  const [stats, setStats] = useState<AdminStats>({
     totalCandidates: 0,
     activeSubscriptions: 0,
     pendingPayments: 0,
@@ -24,85 +38,135 @@ export default function AdminPage() {
     unassignedCandidates: 0,
     candidatesWithCredentials: 0,
   })
-  const [recentActivity, setRecentActivity] = useState<any[]>([])
-  const router = useRouter()
 
-  const handleLogout = () => {
-    localStorage.removeItem('infrapilot_user')
-    localStorage.removeItem('infrapilot_token')
-    localStorage.removeItem('admin_authenticated') // cleanup if it exists
+  const [recentActivity, setRecentActivity] = useState<any[]>([])
+
+  const clearAuthAndGoLogin = () => {
+    try {
+      localStorage.removeItem('infrapilot_user')
+      localStorage.removeItem('infrapilot_token')
+      localStorage.removeItem('admin_authenticated')
+    } catch {}
+    setUser(null)
+    setIsAuthenticated(false)
     router.replace('/login')
   }
 
-  useEffect(() => {
-    const loadDashboardData = async () => {
-      try {
-        const statsRes = await fetchWithAuth('/api/v1/admin/dashboard')
-        if (statsRes.status === 401) {
-          console.error('Admin dashboard stats failed: 401 (unauthorized)')
-          handleLogout()
-          return
-        }
+  // ✅ Robust fetch: sends Bearer token + cookies
+  const apiFetch = async (path: string, init?: RequestInit) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('infrapilot_token') : null
 
-        if (statsRes.ok) {
-          const statsJson = await statsRes.json()
-          const data = statsJson?.data ?? statsJson
-          if (data) setStats((prev) => ({ ...prev, ...data }))
-        } else {
-          console.error('Admin dashboard stats failed:', statsRes.status)
-        }
+    const headers = new Headers(init?.headers || {})
+    headers.set('Content-Type', 'application/json')
+    if (token) headers.set('Authorization', `Bearer ${token}`)
 
-        const activityRes = await fetchWithAuth('/api/v1/admin/activity')
-        if (activityRes.status === 401) {
-          console.error('Admin activity failed: 401 (unauthorized)')
-          handleLogout()
-          return
-        }
+    // Support both absolute and relative API URLs
+    const base =
+      process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ||
+      '' // if blank, assumes same-origin proxy/rewrite
 
-        if (activityRes.ok) {
-          const activityJson = await activityRes.json()
-          setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
-        } else {
-          console.error('Admin activity failed:', activityRes.status)
-        }
-      } catch (err) {
-        console.error('Failed to load dashboard data:', err)
-      }
+    const url = path.startsWith('http') ? path : `${base}${path}`
+
+    const res = await fetch(url, {
+      ...init,
+      headers,
+      credentials: 'include',
+      cache: 'no-store',
+    })
+
+    return res
+  }
+
+  const loadDashboardData = async () => {
+    // Stats
+    const statsRes = await apiFetch('/api/v1/admin/dashboard')
+    if (statsRes.status === 401) return 'unauthorized' as const
+    if (statsRes.ok) {
+      const statsJson = await statsRes.json()
+      const data = statsJson?.data ?? statsJson
+      if (data) setStats((prev) => ({ ...prev, ...data }))
+    } else {
+      console.error('Admin dashboard stats failed:', statsRes.status)
     }
 
-    const checkAdminAuth = async () => {
+    // Activity
+    const activityRes = await apiFetch('/api/v1/admin/activity')
+    if (activityRes.status === 401) return 'unauthorized' as const
+    if (activityRes.ok) {
+      const activityJson = await activityRes.json()
+      setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
+    } else {
+      console.error('Admin activity failed:', activityRes.status)
+    }
+
+    return 'ok' as const
+  }
+
+  useEffect(() => {
+    let cancelled = false
+
+    const boot = async () => {
       try {
-        const userStr = localStorage.getItem('infrapilot_user')
         const token = localStorage.getItem('infrapilot_token')
-
-        // ✅ do NOT rely on admin_authenticated flag
-        if (!userStr || !token) {
-          router.replace('/login')
+        if (!token) {
+          clearAuthAndGoLogin()
           return
         }
 
-        const userData = JSON.parse(userStr)
-
-        if (userData.role !== 'admin' && !userData.isAdmin) {
-          router.replace('/login')
+        // ✅ Verify who is logged in from backend (prevents stale localStorage loops)
+        const meRes = await apiFetch('/api/v1/auth/me')
+        if (meRes.status === 401) {
+          clearAuthAndGoLogin()
           return
         }
 
-        setUser(userData)
+        if (!meRes.ok) {
+          console.error('Auth me failed:', meRes.status)
+          clearAuthAndGoLogin()
+          return
+        }
+
+        const meJson = await meRes.json()
+        const meUser = meJson?.user
+
+        if (!meUser || (meUser.role !== 'admin' && !meUser.isAdmin)) {
+          clearAuthAndGoLogin()
+          return
+        }
+
+        // Store/refresh user in localStorage so other pages see it
+        try {
+          localStorage.setItem('infrapilot_user', JSON.stringify(meUser))
+        } catch {}
+
+        if (cancelled) return
+        setUser(meUser)
         setIsAuthenticated(true)
 
-        await loadDashboardData()
-      } catch (error) {
-        console.error('Admin auth check failed:', error)
-        router.replace('/login')
+        const dashStatus = await loadDashboardData()
+        if (dashStatus === 'unauthorized') {
+          clearAuthAndGoLogin()
+          return
+        }
+      } catch (err) {
+        console.error('Admin boot failed:', err)
+        clearAuthAndGoLogin()
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
 
-    checkAdminAuth()
+    boot()
+
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const handleLogout = () => {
+    clearAuthAndGoLogin()
+  }
 
   if (loading) {
     return (
@@ -133,7 +197,7 @@ export default function AdminPage() {
       {/* Tabs */}
       <div className="px-6 pt-6">
         <div className="flex gap-2 mb-6">
-          {['dashboard', 'candidates', 'recruiters', 'plans'].map((tab) => (
+          {(['dashboard', 'candidates', 'recruiters', 'plans'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

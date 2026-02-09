@@ -16,40 +16,72 @@ export default function CandidateLayout({
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    const checkAuth = () => {
-      const userStr = localStorage.getItem('infrapilot_user')
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
-      if (!userStr) {
-        router.push('/login')
+  const forceLogoutToCandidateLogin = () => {
+    localStorage.removeItem('infrapilot_user')
+    localStorage.removeItem('infrapilot_token')
+    localStorage.removeItem('infrapilot_profile')
+    localStorage.removeItem('candidate_authenticated')
+    localStorage.removeItem('candidate_id')
+    router.push('/candidate/login') // ✅ correct path
+  }
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      const userStr = localStorage.getItem('infrapilot_user')
+      const token = localStorage.getItem('infrapilot_token')
+
+      // ✅ require BOTH user + token
+      if (!userStr || !token) {
+        forceLogoutToCandidateLogin()
         return
       }
 
       try {
         const userData = JSON.parse(userStr)
 
-        if (userData.role !== 'candidate') {
-          router.push('/login')
+        // ✅ must be candidate
+        if (userData?.role !== 'candidate') {
+          forceLogoutToCandidateLogin()
           return
         }
 
-        setUser(userData)
-      } catch {
-        localStorage.removeItem('infrapilot_user')
-        localStorage.removeItem('infrapilot_token')
-        router.push('/login')
+        // ✅ OPTIONAL but recommended: verify token still valid
+        const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+
+        if (!meRes.ok) {
+          // token invalid/expired
+          forceLogoutToCandidateLogin()
+          return
+        }
+
+        const me = await meRes.json()
+
+        // Refresh stored user/profile (keeps things consistent)
+        if (me?.user) localStorage.setItem('infrapilot_user', JSON.stringify(me.user))
+        if (me?.profile) localStorage.setItem('infrapilot_profile', JSON.stringify(me.profile))
+        if (me?.profile?._id) localStorage.setItem('candidate_id', me.profile._id)
+
+        setUser(me.user || userData)
+      } catch (err) {
+        console.error('Candidate auth check failed:', err)
+        forceLogoutToCandidateLogin()
       } finally {
         setLoading(false)
       }
     }
 
     checkAuth()
-  }, [router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleLogout = () => {
-    localStorage.removeItem('infrapilot_user')
-    localStorage.removeItem('infrapilot_token')
-    router.push('/login')
+    forceLogoutToCandidateLogin()
   }
 
   if (loading) {
@@ -75,9 +107,7 @@ export default function CandidateLayout({
                 <div className="w-10 h-10 bg-gradient-to-r from-green-600 to-blue-600 rounded-lg flex items-center justify-center mr-3">
                   <span className="text-white font-bold">IP</span>
                 </div>
-                <span className="text-xl font-bold text-gray-900">
-                  Infrapilot
-                </span>
+                <span className="text-xl font-bold text-gray-900">Infrapilot</span>
               </div>
 
               {/* Logout */}
@@ -106,22 +136,14 @@ export default function CandidateLayout({
                     <span className="text-white text-sm font-bold">IP</span>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      Infrapilot Career Platform
-                    </p>
-                    <p className="text-xs text-gray-600">
-                      © 2024 All rights reserved
-                    </p>
+                    <p className="text-sm font-medium text-gray-900">Infrapilot Career Platform</p>
+                    <p className="text-xs text-gray-600">© 2024 All rights reserved</p>
                   </div>
                 </div>
               </div>
               <div className="text-center md:text-right">
-                <p className="text-xs text-gray-600">
-                  Candidate Portal • Version 2.0
-                </p>
-                <p className="text-xs text-gray-600 mt-1">
-                  Need help? Contact support@infrapilot.tech
-                </p>
+                <p className="text-xs text-gray-600">Candidate Portal • Version 2.0</p>
+                <p className="text-xs text-gray-600 mt-1">Need help? Contact support@infrapilot.tech</p>
               </div>
             </div>
           </div>

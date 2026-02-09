@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function CandidateLogin() {
-  const [username, setUsername] = useState('')
+  const [username, setUsername] = useState('') // can be username OR email
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+
+  // ✅ change this if you use env var (recommended)
+  const API_BASE =
+    process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
   const handleLogin = async (e) => {
     e.preventDefault()
@@ -18,46 +22,60 @@ export default function CandidateLogin() {
     setError('')
 
     try {
-      // Get candidates from localStorage
-      const candidates = JSON.parse(localStorage.getItem('infrapilot_candidates') || '[]')
-      
-      // Find candidate with matching credentials
-      const candidate = candidates.find(c => 
-        c.username === username && c.password === password
-      )
+      // ✅ Call backend auth/login (supports emailOrUsername)
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailOrUsername: username,
+          password,
+          role: 'candidate',
+        }),
+      })
 
-      if (!candidate) {
-        setError('Invalid username or password')
+      const data = await res.json()
+
+      if (!res.ok) {
+        setError(data?.error || data?.message || 'Invalid username or password')
         setLoading(false)
         return
       }
 
-      // Check if candidate is active
-      if (candidate.subscriptionStatus !== 'active' && candidate.subscriptionPlan !== 'free') {
-        setError('Your account is not active. Please contact admin.')
+      // ✅ Support both response formats:
+      // 1) { success, token, user } OR
+      // 2) your generateToken util sometimes returns { success, token, data: user }
+      const token = data?.token
+      const user = data?.user || data?.data
+
+      if (!token || !user) {
+        console.error('Login response missing token/user:', data)
+        setError('Login failed: server response invalid')
         setLoading(false)
         return
       }
 
-      // Create user session
-      const userData = {
-        id: candidate.id,
-        name: candidate.fullName || `${candidate.firstName} ${candidate.lastName}`,
-        email: candidate.email,
-        role: 'candidate',
-        subscriptionPlan: candidate.subscriptionPlan,
-        subscriptionStatus: candidate.subscriptionStatus,
-        assignedRecruiter: candidate.assignedRecruiter
-      }
-
-      localStorage.setItem('infrapilot_user', JSON.stringify(userData))
-      localStorage.setItem('infrapilot_token', `candidate_${Date.now()}`)
+      // Save session (use same keys your dashboards already use)
+      localStorage.setItem('infrapilot_token', token)
+      localStorage.setItem('infrapilot_user', JSON.stringify(user))
       localStorage.setItem('candidate_authenticated', 'true')
-      localStorage.setItem('candidate_id', candidate.id)
 
-      // Redirect to dashboard
+      // ✅ fetch profile using /auth/me so dashboard has the Candidate doc too
+      const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (meRes.ok) {
+        const me = await meRes.json()
+        // Store profile for fast dashboard load (optional)
+        if (me?.profile) localStorage.setItem('infrapilot_profile', JSON.stringify(me.profile))
+        // Candidate id convenience
+        if (me?.profile?._id) localStorage.setItem('candidate_id', me.profile._id)
+      }
+
       router.push('/candidate/dashboard')
-      
     } catch (err) {
       console.error('Login error:', err)
       setError('Login failed. Please try again.')
@@ -89,8 +107,8 @@ export default function CandidateLogin() {
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6 border border-white/20">
               <h2 className="text-xl font-bold mb-4">Welcome Back!</h2>
               <p className="text-blue-100">
-                Access your personalized career dashboard to track job applications, 
-                communicate with your recruiter, and manage your career progress.
+                Access your personalized career dashboard to track job applications, communicate with your recruiter,
+                and manage your career progress.
               </p>
             </div>
 
@@ -149,19 +167,19 @@ export default function CandidateLogin() {
 
             <div>
               <label className="block text-sm font-medium text-gray-900 mb-2">
-                Username
+                Username or Email
               </label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-                placeholder="Enter your username"
+                placeholder="Enter your username or email"
                 required
                 disabled={loading}
               />
               <p className="text-xs text-gray-500 mt-1">
-                Your username was provided by your recruiter/admin
+                Provided by your recruiter/admin (you can also use your email if enabled)
               </p>
             </div>
 
@@ -171,7 +189,7 @@ export default function CandidateLogin() {
               </label>
               <div className="relative">
                 <input
-                  type={showPassword ? "text" : "password"}
+                  type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900 pr-10"
@@ -188,7 +206,7 @@ export default function CandidateLogin() {
                 </button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Your password was provided by your recruiter/admin
+                Provided by your recruiter/admin
               </p>
             </div>
 

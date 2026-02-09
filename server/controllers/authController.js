@@ -10,7 +10,8 @@ const { sendTokenResponse } = require("../utils/generateToken");
 // helpers
 const normalizeEmail = (v) => (v || "").toString().trim().toLowerCase();
 const normalizeName = (v) => (v || "").toString().trim();
-const normalizeUsername = (v) => (v || "").toString().trim();
+// ✅ IMPORTANT: normalize username same way as schema (lowercase + trim)
+const normalizeUsername = (v) => (v || "").toString().trim().toLowerCase();
 
 const looksLikeEmail = (v) => {
   const s = (v || "").toString().trim();
@@ -49,7 +50,7 @@ exports.register = async (req, res, next) => {
     const user = await User.create({
       name: nameNorm,
       email: emailNorm,
-      username: usernameNorm, // only works if your User schema includes it (recommended)
+      username: usernameNorm, // only works if your User schema includes it
       password,
       role: role || "candidate",
       status: "active",
@@ -63,7 +64,6 @@ exports.register = async (req, res, next) => {
         skills: Array.isArray(skills) ? skills : [],
         fullName: nameNorm,
         email: emailNorm,
-        credentialsCreated: true,
       });
     } else if (user.role === "recruiter") {
       await Recruiter.create({
@@ -91,17 +91,14 @@ exports.login = async (req, res, next) => {
      * 2) { emailOrUsername, password, role } (new)
      * 3) { username, password } (optional)
      */
-    const identifierRaw =
-      req.body.emailOrUsername || req.body.email || req.body.username;
-
+    const identifierRaw = req.body.emailOrUsername || req.body.email || req.body.username;
     const password = req.body.password;
     const role = req.body.role;
 
     const identifier = (identifierRaw || "").toString().trim();
+
     if (!identifier || !password) {
-      return next(
-        new ErrorResponse("Please provide email/username and password", 400)
-      );
+      return next(new ErrorResponse("Please provide email/username and password", 400));
     }
 
     // Safe logs for Render debugging (NO password)
@@ -112,22 +109,15 @@ exports.login = async (req, res, next) => {
     });
 
     // 1) Try login against User collection (email or username)
-    const emailNorm = looksLikeEmail(identifier) ? normalizeEmail(identifier) : null;
-    const usernameNorm = !looksLikeEmail(identifier) ? normalizeUsername(identifier) : null;
+    const isEmail = looksLikeEmail(identifier);
+    const emailNorm = isEmail ? normalizeEmail(identifier) : null;
+    const usernameNorm = !isEmail ? normalizeUsername(identifier) : null;
 
-    const userQuery = looksLikeEmail(identifier)
-      ? { email: emailNorm }
-      : { username: usernameNorm };
+    const userQuery = isEmail ? { email: emailNorm } : { username: usernameNorm };
 
     let user = await User.findOne(userQuery).select("+password");
 
     if (user) {
-      // Optional role enforcement (keep OFF until stable)
-      // if (role && user.role && user.role !== role) {
-      //   console.log("❌ LOGIN FAIL: role mismatch:", { dbRole: user.role, reqRole: role });
-      //   return next(new ErrorResponse("Invalid role for this account", 401));
-      // }
-
       if (user.status && user.status !== "active") {
         console.log("❌ LOGIN FAIL: account inactive:", { id: user._id, status: user.status });
         return next(new ErrorResponse("Your account has been deactivated", 401));
@@ -148,14 +138,13 @@ exports.login = async (req, res, next) => {
       return sendTokenResponse(user, 200, res);
     }
 
-    // 2) FALLBACK (IMPORTANT):
-    // If admin created candidate credentials in Candidate model (username + passwordHash),
-    // allow login via Candidate, then load the linked User (candidate.userId) to issue JWT.
-    const candidateQuery = looksLikeEmail(identifier)
+    // 2) Candidate fallback (admin-created creds stored on Candidate)
+    const candidateQuery = isEmail
       ? { email: normalizeEmail(identifier) }
       : { username: normalizeUsername(identifier) };
 
-    const candidate = await Candidate.findOne(candidateQuery).lean();
+    // ✅ IMPORTANT: passwordHash is select:false in schema → must explicitly include
+    const candidate = await Candidate.findOne(candidateQuery).select("+passwordHash");
 
     if (!candidate) {
       console.log("❌ LOGIN FAIL: user not found in User, and candidate not found:", {
@@ -215,7 +204,6 @@ exports.getMe = async (req, res, next) => {
     let profile = null;
 
     if (user.role === "candidate") {
-      // ✅ populate resilient (supports assignedRecruiter OR assignedRecruiterId)
       profile = await Candidate.findOne({ userId: user._id })
         .populate("assignedRecruiter", "name email department specialization status phone bio experience")
         .populate("assignedRecruiterId", "name email department specialization status phone bio experience")
@@ -264,7 +252,6 @@ exports.updateDetails = async (req, res, next) => {
       return next(new ErrorResponse("No fields provided to update", 400));
     }
 
-    // prevent duplicate email change
     if (fieldsToUpdate.email) {
       const existing = await User.findOne({
         email: fieldsToUpdate.email,
@@ -273,7 +260,6 @@ exports.updateDetails = async (req, res, next) => {
       if (existing) return next(new ErrorResponse("Email already in use", 400));
     }
 
-    // prevent duplicate username change
     if (fieldsToUpdate.username) {
       const existingU = await User.findOne({
         username: fieldsToUpdate.username,
