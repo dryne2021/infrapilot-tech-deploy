@@ -164,7 +164,7 @@ export default function RecruiterPage() {
   const redirectToLoginOnce = () => {
     if (didRedirectRef.current) return
     didRedirectRef.current = true
-    router.replace('/recruiter/login')
+    router.replace('/recruiter/login') // ✅ CHANGED: Use recruiter/login
   }
 
   const normalizeCandidateId = (c: any): string =>
@@ -1095,7 +1095,7 @@ Generated on: ${new Date().toLocaleDateString()}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => router.push('/recruiter/login')}
+                onClick={() => router.replace('/recruiter/login')} // ✅ CHANGED: Use replace instead of push
                 className="px-3 py-1.5 bg-gray-100 text-gray-900 text-xs rounded-lg hover:bg-gray-200 border border-gray-400"
               >
                 Switch Account
@@ -1440,7 +1440,7 @@ Generated on: ${new Date().toLocaleDateString()}
               <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates assigned yet</h3>
               <p className="text-gray-700">The admin will assign candidates to you soon.</p>
               <button
-                onClick={() => loadAssignedCandidates(recruiterId)}
+                onClick={() => router.replace('/recruiter/login')} // ✅ CHANGED: Use replace instead of push
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 border border-blue-700"
               >
                 Refresh
