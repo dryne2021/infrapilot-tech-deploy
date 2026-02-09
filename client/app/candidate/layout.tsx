@@ -1,7 +1,6 @@
 'use client'
 
 import { Inter } from 'next/font/google'
-import '../globals.css'
 import { useState, useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 
