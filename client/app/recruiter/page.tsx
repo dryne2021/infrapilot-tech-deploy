@@ -496,7 +496,7 @@ export default function RecruiterPage() {
       const recruiterId = localStorage.getItem('recruiter_id')
       
       if (!userStr || !recruiterAuth || recruiterAuth !== 'true') {
-        router.push('/login')
+        router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
         return
       }
       
@@ -504,7 +504,7 @@ export default function RecruiterPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'recruiter') {
-          router.push('/login')
+          router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
           return
         }
         
@@ -568,7 +568,7 @@ export default function RecruiterPage() {
         localStorage.removeItem('infrapilot_token')
         localStorage.removeItem('recruiter_authenticated')
         localStorage.removeItem('recruiter_id')
-        router.push('/login')
+        router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
       } finally {
         setLoading(false)
       }
@@ -696,7 +696,7 @@ export default function RecruiterPage() {
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('recruiter_authenticated')
     localStorage.removeItem('recruiter_id')
-    router.push('/login')
+    router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
   }
 
   // ✅ FIXED: Update candidate status (using correct endpoint)
@@ -916,7 +916,7 @@ export default function RecruiterPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => router.push('/login')}
+                onClick={() => router.replace('/recruiter/login')}  // ✅ CHANGED: Use replace instead of push
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 border border-gray-300"
               >
                 Switch Account
@@ -1263,7 +1263,7 @@ export default function RecruiterPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates assigned yet</h3>
               <p className="text-gray-500">The admin will assign candidates to you soon.</p>
               <button
-                onClick={() => router.push('/login')}
+                onClick={() => router.replace('/recruiter/login')}  // ✅ CHANGED: Use replace instead of push
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Refresh
