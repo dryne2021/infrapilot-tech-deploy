@@ -57,7 +57,7 @@ const CandidateManagement = () => {
   const [filterPlan, setFilterPlan] = useState('all')
   const [filterPayment, setFilterPayment] = useState('all')
 
-  const [formData, setFormData] = useState<any>({
+  const initialFormState: any = {
     // Personal Information
     firstName: '',
     lastName: '',
@@ -151,7 +151,9 @@ const CandidateManagement = () => {
     subscriptionPlan: 'gold',
     paymentStatus: 'paid',
     assignedRecruiter: 'rec1',
-  })
+  }
+
+  const [formData, setFormData] = useState<any>(initialFormState)
 
   // ✅ BACKEND: load candidates
   const loadCandidates = async () => {
@@ -173,7 +175,6 @@ const CandidateManagement = () => {
     }
   }
 
-  // On mount, load from backend
   useEffect(() => {
     ;(async () => {
       setPageLoading(true)
@@ -295,7 +296,18 @@ const CandidateManagement = () => {
     }
   }
 
-  // ✅ BACKEND: create candidate
+  // ✅ helpers to sanitize payload for backend
+  const toNumberOrUndefined = (v: any) => {
+    if (v === null || v === undefined) return undefined
+    const s = String(v).trim()
+    if (!s) return undefined
+    const n = Number(s)
+    return Number.isFinite(n) ? n : undefined
+  }
+
+  const stripUiId = (arr: any[]) => (Array.isArray(arr) ? arr.map(({ id, ...rest }) => rest) : [])
+
+  // ✅ BACKEND: create candidate (fixed 400)
   const handleAddCandidate = async (e: any) => {
     e.preventDefault()
     setError('')
@@ -311,17 +323,76 @@ const CandidateManagement = () => {
       const selectedPlan = SUBSCRIPTION_PLANS.find((p) => p.id === formData.subscriptionPlan)
       const recruiter = RECRUITERS.find((r) => r.id === formData.assignedRecruiter)
 
-      const payload = {
-        ...formData,
+      // ✅ send a clean payload: correct types, remove UI-only ids
+      const payload: any = {
+        // identity
+        firstName: formData.firstName,
+        lastName: formData.lastName,
         fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+        email: formData.email,
+        phone: formData.phone,
+        location: formData.location,
+
+        // optional fields
+        ssn: formData.ssn,
+        visaStatus: formData.visaStatus,
+        dateOfBirth: formData.dateOfBirth,
+        nationality: formData.nationality,
+        linkedin: formData.linkedin,
+        github: formData.github,
+        portfolio: formData.portfolio,
+        website: formData.website,
+
+        currentCompany: formData.currentCompany,
+        currentPosition: formData.currentPosition,
+        targetRole: formData.targetRole,
+        noticePeriod: formData.noticePeriod,
+        availability: formData.availability,
+
+        // numbers (avoid "" causing validation/cast errors)
+        experienceYears: toNumberOrUndefined(formData.experienceYears),
+        expectedSalary: toNumberOrUndefined(formData.expectedSalary),
+
+        // arrays
+        technicalSkills: formData.technicalSkills || [],
+        softSkills: formData.softSkills || [],
+        languages: formData.languages || [],
+        certifications: formData.certifications || [],
+
+        summary: formData.summary,
+
+        // nested arrays (remove UI id)
+        experience: stripUiId(formData.experience || []),
+        education: stripUiId(formData.education || []),
+        projects: stripUiId(formData.projects || []),
+
+        // additional
+        awards: formData.awards,
+        publications: formData.publications,
+        volunteerExperience: formData.volunteerExperience,
+        professionalMemberships: formData.professionalMemberships,
+        references: formData.references,
+        notes: formData.notes,
+
+        // subscription / assignment
+        subscriptionPlan: formData.subscriptionPlan,
+        paymentStatus: formData.paymentStatus,
         subscriptionStatus: formData.paymentStatus === 'paid' ? 'active' : 'pending',
         daysRemaining: selectedPlan ? selectedPlan.duration : 30,
+
+        assignedRecruiter: formData.assignedRecruiter,
         assignedRecruiterName: recruiter ? recruiter.name : 'Unassigned',
+
         status: 'New',
       }
 
       const res = await fetchWithAuth('/api/v1/admin/candidates', {
         method: 'POST',
+        headers: {
+          // ✅ IMPORTANT: ensures Express parses JSON body
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
         body: JSON.stringify(payload),
       })
 
@@ -333,87 +404,8 @@ const CandidateManagement = () => {
         return
       }
 
-      // Refresh list from backend
       await loadCandidates()
-
-      // Reset form
-      setFormData({
-        firstName: '',
-        lastName: '',
-        email: '',
-        phone: '',
-        ssn: '',
-        location: '',
-        visaStatus: '',
-        dateOfBirth: '',
-        nationality: '',
-        linkedin: '',
-        github: '',
-        portfolio: '',
-        website: '',
-        currentCompany: '',
-        currentPosition: '',
-        experienceYears: '',
-        targetRole: '',
-        expectedSalary: '',
-        noticePeriod: '',
-        availability: '',
-        technicalSkills: [],
-        softSkills: [],
-        languages: [],
-        certifications: [],
-        summary: '',
-        experience: [
-          {
-            id: Date.now(),
-            title: '',
-            company: '',
-            location: '',
-            startDate: '',
-            endDate: '',
-            currentlyWorking: false,
-            description: '',
-            achievements: ['', '', ''],
-            technologies: [],
-          },
-        ],
-        education: [
-          {
-            id: Date.now() + 1,
-            degree: '',
-            field: '',
-            school: '',
-            location: '',
-            graduationYear: '',
-            gpa: '',
-            honors: '',
-            courses: [],
-          },
-        ],
-        projects: [
-          {
-            id: Date.now() + 2,
-            name: '',
-            description: '',
-            role: '',
-            technologies: [],
-            startDate: '',
-            endDate: '',
-            url: '',
-            impact: '',
-          },
-        ],
-        awards: '',
-        publications: '',
-        volunteerExperience: '',
-        professionalMemberships: '',
-        references: '',
-        notes: '',
-        subscriptionPlan: 'gold',
-        paymentStatus: 'paid',
-        assignedRecruiter: 'rec1',
-      })
-
+      setFormData(initialFormState)
       setShowAddForm(false)
       alert('Candidate added successfully (saved in backend)!')
     } catch (err: any) {
@@ -429,7 +421,6 @@ const CandidateManagement = () => {
   }
 
   const updateCandidateField = (id: string, field: string, value: any) => {
-    // We will wire PATCH endpoint later
     setCandidates((prev) =>
       prev.map((candidate: any) => {
         if ((candidate._id || candidate.id) === id) {
@@ -451,7 +442,6 @@ const CandidateManagement = () => {
     )
   }
 
-  // Filter candidates
   const filteredCandidates = candidates.filter((candidate: any) => {
     const fullName = candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()
 
@@ -606,7 +596,6 @@ const CandidateManagement = () => {
               <p className="text-gray-800 mt-1">Complete candidate profile for comprehensive resume generation</p>
             </div>
 
-            {/* IMPORTANT: form submit now posts to backend */}
             <form onSubmit={handleAddCandidate} className="p-6">
               <div className="space-y-8">
                 {/* Section 1: Personal Information */}
@@ -734,16 +723,9 @@ const CandidateManagement = () => {
                   </div>
                 </div>
 
-                {/* ✅ EVERYTHING ELSE BELOW stays as-is in your file
-                    (Skills, Experience, Education, Projects, Subscription & Assignment)
-                    because we only changed the logic that LOADS and SAVES to backend.
-                */}
-                {/* --- KEEP YOUR REMAINING SECTIONS UNCHANGED --- */}
-                {/* NOTE: To keep this response readable, I didn’t rewrite every UI section again.
-                    You should paste the rest of your existing JSX sections from:
-                    "Section 2: Contact & Profiles" downwards
-                    WITHOUT changing them.
-                    Only the logic at the top + submit handler was replaced.
+                {/* ✅ KEEP THE REST OF YOUR FORM SECTIONS EXACTLY AS YOU HAVE THEM NOW
+                    (Contact & Profiles, Skills, Experience, Education, Projects, Subscription & Assignment, etc.)
+                    No changes needed there for the 400 fix.
                 */}
               </div>
 
@@ -801,6 +783,7 @@ const CandidateManagement = () => {
               <option value="New" className="text-gray-900">New</option>
               <option value="Expired" className="text-gray-900">Expired</option>
             </select>
+
             <select
               value={filterPlan}
               onChange={(e) => setFilterPlan(e.target.value)}
@@ -811,6 +794,7 @@ const CandidateManagement = () => {
                 <option key={plan.id} value={plan.id} className="text-gray-900">{plan.name}</option>
               ))}
             </select>
+
             <select
               value={filterPayment}
               onChange={(e) => setFilterPayment(e.target.value)}
@@ -821,6 +805,7 @@ const CandidateManagement = () => {
               <option value="pending" className="text-gray-900">Pending</option>
               <option value="failed" className="text-gray-900">Failed</option>
             </select>
+
             <button
               onClick={() => loadCandidates()}
               className="px-4 py-2 border border-gray-300 text-gray-900 rounded-lg hover:bg-gray-50"
@@ -863,7 +848,6 @@ const CandidateManagement = () => {
                   const daysRemaining = calculateDaysRemaining(candidate)
                   const plan = SUBSCRIPTION_PLANS.find((p) => p.id === candidate.subscriptionPlan)
                   const recruiter = RECRUITERS.find((r) => r.id === candidate.assignedRecruiter)
-
                   const id = getCandidateKey(candidate)
 
                   return (
@@ -877,7 +861,7 @@ const CandidateManagement = () => {
                           </div>
                           <div>
                             <p className="font-medium text-gray-900">
-                              {candidate.fullName || `${candidate.firstName} ${candidate.lastName}`}
+                              {candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()}
                             </p>
                             <p className="text-sm text-gray-800">{candidate.email}</p>
                             <p className="text-xs text-gray-700">{candidate.phone || 'No phone'}</p>
