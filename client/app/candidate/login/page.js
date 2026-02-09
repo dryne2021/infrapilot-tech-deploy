@@ -2,17 +2,15 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 
 export default function CandidateLogin() {
-  const [username, setUsername] = useState('') // can be username OR email
+  const [identifier, setIdentifier] = useState('') // username OR email typed by user
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
-  // ✅ change this if you use env var (recommended)
   const API_BASE =
     process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
@@ -22,60 +20,56 @@ export default function CandidateLogin() {
     setError('')
 
     try {
-      // ✅ Call backend auth/login (supports emailOrUsername)
+      // ✅ IMPORTANT:
+      // Your backend typically expects { email, password } (based on your earlier code/logs)
+      // We map identifier -> email to match backend validation and avoid 400.
       const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          emailOrUsername: username,
+          email: identifier,      // ✅ send as email to satisfy backend
           password,
-          role: 'candidate',
+          role: 'candidate',      // keep if your backend uses it
         }),
       })
 
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setError(data?.error || data?.message || 'Invalid username or password')
-        setLoading(false)
+        setError(data?.error || data?.message || 'Invalid credentials')
         return
       }
 
-      // ✅ Support both response formats:
-      // 1) { success, token, user } OR
-      // 2) your generateToken util sometimes returns { success, token, data: user }
+      // ✅ Accept multiple response shapes
       const token = data?.token
       const user = data?.user || data?.data
 
       if (!token || !user) {
         console.error('Login response missing token/user:', data)
         setError('Login failed: server response invalid')
-        setLoading(false)
         return
       }
 
-      // Save session (use same keys your dashboards already use)
+      // ✅ Save session keys used across your app
       localStorage.setItem('infrapilot_token', token)
       localStorage.setItem('infrapilot_user', JSON.stringify(user))
       localStorage.setItem('candidate_authenticated', 'true')
 
-      // ✅ fetch profile using /auth/me so dashboard has the Candidate doc too
+      // ✅ Fetch profile using /auth/me so the Candidate doc exists in localStorage
       const meRes = await fetch(`${API_BASE}/api/v1/auth/me`, {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       })
 
       if (meRes.ok) {
-        const me = await meRes.json()
-        // Store profile for fast dashboard load (optional)
+        const me = await meRes.json().catch(() => ({}))
         if (me?.profile) localStorage.setItem('infrapilot_profile', JSON.stringify(me.profile))
-        // Candidate id convenience
         if (me?.profile?._id) localStorage.setItem('candidate_id', me.profile._id)
+        if (me?.user) localStorage.setItem('infrapilot_user', JSON.stringify(me.user))
       }
 
-      router.push('/candidate/dashboard')
+      // ✅ Use replace to reduce redirect “blink”
+      router.replace('/candidate/dashboard')
     } catch (err) {
       console.error('Login error:', err)
       setError('Login failed. Please try again.')
@@ -171,8 +165,8 @@ export default function CandidateLogin() {
               </label>
               <input
                 type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
                 placeholder="Enter your username or email"
                 required
@@ -249,10 +243,12 @@ export default function CandidateLogin() {
 
             <div className="text-center">
               <p className="text-sm text-gray-600">
-                Don't have credentials?{' '}
+                Don&apos;t have credentials?{' '}
                 <button
                   type="button"
-                  onClick={() => alert('Please contact your recruiter or the admin team to get login credentials.')}
+                  onClick={() =>
+                    alert('Please contact your recruiter or the admin team to get login credentials.')
+                  }
                   className="text-blue-600 hover:text-blue-800 font-medium"
                 >
                   Contact Support
