@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { fetchWithAuth } from '@/utils/fetchWithAuth'
 
@@ -8,13 +8,18 @@ type Application = any
 
 export default function CandidateDashboard() {
   const router = useRouter()
+
   const [loading, setLoading] = useState(true)
   const [appsLoading, setAppsLoading] = useState(false)
   const [error, setError] = useState('')
+
   const [applications, setApplications] = useState<Application[]>([])
   const [openId, setOpenId] = useState<string | null>(null)
   const [detail, setDetail] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+
+  // ✅ Candidate name
+  const [candidateName, setCandidateName] = useState<string>('Candidate')
 
   const clearAuthAndGoLogin = () => {
     try {
@@ -25,12 +30,37 @@ export default function CandidateDashboard() {
     router.replace('/candidate/login')
   }
 
+  const resolveCandidateName = () => {
+    try {
+      const raw =
+        localStorage.getItem('infrapilot_user') ||
+        localStorage.getItem('candidate_user') ||
+        localStorage.getItem('user')
+
+      if (!raw) return 'Candidate'
+
+      const user = JSON.parse(raw)
+
+      // Try common shapes
+      const first = user?.firstName || user?.first_name
+      const last = user?.lastName || user?.last_name
+      const full = user?.name || user?.fullName || user?.full_name
+
+      const composed =
+        (first || last) && `${first || ''} ${last || ''}`.trim()
+      return composed || full || user?.email || 'Candidate'
+    } catch {
+      return 'Candidate'
+    }
+  }
+
   const loadApplications = async () => {
     setError('')
     setAppsLoading(true)
     try {
       const res = await fetchWithAuth('/api/v1/candidate/applications')
       if (res.status === 401) return clearAuthAndGoLogin()
+
       const json = await res.json().catch(() => ({}))
       const list = json?.data ?? json
       setApplications(Array.isArray(list) ? list : [])
@@ -58,15 +88,28 @@ export default function CandidateDashboard() {
 
   // ✅ download the resume used for THIS application
   const downloadResumeUsed = (applicationId: string) => {
-    // best: backend returns the file stream
     window.open(`/api/v1/candidate/applications/${applicationId}/resume`, '_blank')
   }
+
+  const sortedApplications = useMemo(() => {
+    const copy = [...applications]
+    copy.sort((a: any, b: any) => {
+      const da = new Date(a?.appliedAt || a?.createdAt || 0).getTime()
+      const db = new Date(b?.appliedAt || b?.createdAt || 0).getTime()
+      return db - da // newest first
+    })
+    return copy
+  }, [applications])
 
   useEffect(() => {
     ;(async () => {
       try {
         const token = localStorage.getItem('infrapilot_token')
         if (!token) return clearAuthAndGoLogin()
+
+        // ✅ set candidate name from localStorage user payload
+        setCandidateName(resolveCandidateName())
+
         await loadApplications()
       } finally {
         setLoading(false)
@@ -85,12 +128,18 @@ export default function CandidateDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
+      {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Candidate Dashboard</h1>
-          <p className="text-gray-400 text-sm">Track your applications and download the resume used</p>
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold truncate">
+            Welcome, <span className="text-white">{candidateName}</span>
+          </h1>
+          <p className="text-gray-400 text-sm">
+            Track your applications and download the resume used
+          </p>
         </div>
-        <div className="flex gap-2">
+
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={loadApplications}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-semibold"
@@ -113,54 +162,77 @@ export default function CandidateDashboard() {
           </div>
         )}
 
+        {/* Applications */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-bold">My Applications</h2>
-            <p className="text-sm text-gray-400">Job ID • full job description • resume used</p>
+            <p className="text-sm text-gray-400">
+              View job details and download the resume used for each application
+            </p>
           </div>
 
-          {applications.length === 0 ? (
+          {sortedApplications.length === 0 ? (
             <div className="p-8 text-center text-gray-400">No applications found.</div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead className="bg-gray-900">
                   <tr>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200">Job</th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200">Job ID</th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200">Status</th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200">Applied</th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200">Actions</th>
+                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[34%]">
+                      Job
+                    </th>
+                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
+                      Job ID
+                    </th>
+                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
+                      Status
+                    </th>
+                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
+                      Applied
+                    </th>
+                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[18%]">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-gray-700">
-                  {applications.map((a: any) => {
+                  {sortedApplications.map((a: any) => {
                     const id = a._id || a.id
                     const job = a.job || a.jobId || a.jobDetails || {}
                     const jobTitle = job.title || a.jobTitle || 'Job'
                     const jobId = job.jobId || job.publicId || job._id || a.jobId || '-'
                     const status = a.status || 'Applied'
                     const appliedAt = a.appliedAt || a.createdAt
-
                     const expanded = openId === id
 
                     return (
                       <>
-                        <tr key={id} className="hover:bg-gray-900/40">
+                        <tr key={id} className="hover:bg-gray-900/40 align-top">
                           <td className="p-4">
-                            <p className="font-semibold">{jobTitle}</p>
+                            <p className="font-semibold truncate" title={jobTitle}>
+                              {jobTitle}
+                            </p>
                           </td>
-                          <td className="p-4 text-gray-300">{jobId}</td>
+
+                          <td className="p-4 text-gray-300">
+                            <span className="block truncate" title={String(jobId)}>
+                              {jobId}
+                            </span>
+                          </td>
+
                           <td className="p-4">
-                            <span className="px-2 py-1 rounded bg-blue-900/40 border border-blue-700 text-blue-200 text-xs">
+                            <span className="inline-flex items-center px-2 py-1 rounded bg-blue-900/40 border border-blue-700 text-blue-200 text-xs">
                               {status}
                             </span>
                           </td>
+
                           <td className="p-4 text-gray-300">
                             {appliedAt ? new Date(appliedAt).toLocaleDateString() : '-'}
                           </td>
+
                           <td className="p-4">
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
                               <button
                                 onClick={async () => {
                                   if (expanded) {
@@ -171,14 +243,14 @@ export default function CandidateDashboard() {
                                   setOpenId(id)
                                   await loadApplicationDetail(id)
                                 }}
-                                className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded"
+                                className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded whitespace-nowrap"
                               >
                                 {expanded ? 'Hide Job' : 'View Job'}
                               </button>
 
                               <button
                                 onClick={() => downloadResumeUsed(id)}
-                                className="px-3 py-1 text-sm bg-green-700 hover:bg-green-600 rounded"
+                                className="px-3 py-2 text-sm bg-green-700 hover:bg-green-600 rounded whitespace-nowrap"
                               >
                                 Download Resume Used
                               </button>
