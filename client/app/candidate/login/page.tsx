@@ -5,18 +5,17 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
 export default function CandidateLogin() {
-  const [identifier, setIdentifier] = useState('') // email typed by user (backend expects email)
+  const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
-  // ✅ Use your deployed backend URL (or use NEXT_PUBLIC_API_URL if you already have it)
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
-  const handleLogin = async (e) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
@@ -26,26 +25,25 @@ export default function CandidateLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: identifier,      // ✅ send as email to satisfy backend validation
+          email,               // ✅ candidate uses email too (recommended)
           password,
-          role: 'candidate',      // optional (backend role check may be disabled)
+          role: 'candidate',   // ✅ backend must enforce this
         }),
       })
 
       const data = await res.json().catch(() => ({}))
 
       if (!res.ok) {
-        setError(data?.message || data?.error || 'Invalid credentials')
+        setError(data?.message || 'Invalid credentials')
         return
       }
 
-      // ✅ Store session like your other pages expect
-      const token = data?.token || data?.data?.token || data?.data || data?.accessToken
+      const token = data?.token || data?.data?.token || data?.accessToken
       const user = data?.user || data?.data?.user || data?.data
 
       const candidateUser = {
         id: user?._id || user?.id,
-        name: user?.name,
+        name: user?.name || user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
         email: user?.email,
         role: user?.role || 'candidate',
         candidateAuthenticated: true,
@@ -56,10 +54,9 @@ export default function CandidateLogin() {
       localStorage.setItem('candidate_authenticated', 'true')
       if (candidateUser.id) localStorage.setItem('candidate_id', candidateUser.id)
 
-      router.push('/candidate/dashboard')
+      router.push('/candidate')
       router.refresh()
     } catch (err) {
-      console.error('Login error:', err)
       setError('Login failed. Please try again.')
     } finally {
       setLoading(false)
@@ -70,35 +67,33 @@ export default function CandidateLogin() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
       <div className="max-w-md w-full p-8 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-2xl">🧑‍💼</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Candidate Portal</h1>
-          <p className="text-gray-400">Enter your credentials to access your dashboard</p>
+          <p className="text-gray-400">Log in using credentials provided by the administrator</p>
         </div>
 
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <p className="text-red-300 text-sm">{error}</p>
-            <p className="text-gray-400 text-xs mt-2">Confirm you are using your candidate email + password</p>
+            <p className="text-gray-400 text-xs mt-2">
+              If you don’t have credentials yet, contact your administrator.
+            </p>
           </div>
         )}
 
-        <form onSubmit={handleLogin} className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-gray-300 mb-2 text-sm font-medium">Email</label>
             <input
               type="email"
-              value={identifier}
-              onChange={(e) => setIdentifier(e.target.value)}
-              className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent"
               placeholder="Enter your email"
               required
-              disabled={loading}
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Use the email provided/registered by your recruiter/admin
-            </p>
           </div>
 
           <div>
@@ -108,10 +103,9 @@ export default function CandidateLogin() {
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+                className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent pr-10"
                 placeholder="Enter your password"
                 required
-                disabled={loading}
               />
               <button
                 type="button"
@@ -121,15 +115,12 @@ export default function CandidateLogin() {
                 {showPassword ? '👁️' : '👁️‍🗨️'}
               </button>
             </div>
-            <p className="text-xs text-gray-500 mt-1">
-              Provided by your recruiter/admin
-            </p>
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 focus:ring-4 focus:ring-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full py-3 bg-gradient-to-r from-green-600 to-green-700 text-white font-semibold rounded-lg hover:from-green-700 hover:to-green-800 focus:ring-4 focus:ring-green-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {loading ? (
               <span className="flex items-center justify-center">
@@ -144,13 +135,15 @@ export default function CandidateLogin() {
 
         <div className="mt-8 pt-6 border-t border-gray-700">
           <div className="text-center">
-            <p className="text-gray-500 text-sm">Need access? Contact your recruiter or administrator</p>
-            <Link
-              href="/recruiter/login"
-              className="inline-block mt-2 text-sm text-blue-400 hover:text-blue-300"
-            >
-              Recruiter Login →
-            </Link>
+            <p className="text-gray-500 text-sm">Are you a recruiter or admin?</p>
+            <div className="flex justify-center gap-4 mt-2">
+              <Link href="/recruiter/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Recruiter Login →
+              </Link>
+              <Link href="/admin/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Admin Login →
+              </Link>
+            </div>
           </div>
         </div>
       </div>
