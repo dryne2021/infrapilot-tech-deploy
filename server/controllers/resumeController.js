@@ -304,6 +304,176 @@ function parseHosTextToParagraphs(hosText) {
   return paragraphs;
 }
 
+// ✅ NEW: format student-provided experience headers (locked)
+function formatExperienceHeaders(experience = []) {
+  return (Array.isArray(experience) ? experience : [])
+    .map((e, i) => {
+      const title = e?.title || "";
+      const company = e?.company || "";
+      const loc = e?.location || "";
+      const dates = e?.dates || "";
+      const id = e?.id || `exp${i + 1}`;
+      // Keep the HOS role header line format you already use:
+      // Title — Company, Location | Dates
+      return `${id} | ${title} — ${company}, ${loc} | ${dates}`.trim();
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+// ✅ NEW: format student-provided education lines (locked)
+function formatEducationLines(education = []) {
+  return (Array.isArray(education) ? education : [])
+    .map((ed) => {
+      const degree = ed?.degree || "";
+      const school = ed?.school || "";
+      const loc = ed?.location || "";
+      const year = ed?.year || "";
+      return `${degree}, ${school}, ${loc}, ${year}`.replace(/\s+,/g, ",").trim();
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+// ✅ NEW: Build final resume text by locking header/experience/education from student data
+function buildLockedHosResumeText({
+  fullName = "",
+  email = "",
+  phone = "",
+  location = "",
+  aiText = "",
+  experience = [],
+  education = [],
+}) {
+  const cleaned = String(aiText || "").replace(/```/g, "").trim();
+  const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
+
+  // Always correct header from provided facts
+  const headerName = (fullName || "").trim();
+  const contactParts = [];
+  if (email) contactParts.push(email);
+  if (phone) contactParts.push(phone);
+  if (location) contactParts.push(location);
+  const headerContact = contactParts.join(" | ");
+
+  // Parse AI sections (we will NOT trust AI for EXPERIENCE/EDUCATION lines)
+  const targetOrder = [
+    "PROFESSIONAL SUMMARY",
+    "SKILLS",
+    "EXPERIENCE",
+    "EDUCATION",
+    "TECHNOLOGIES",
+    "CERTIFICATIONS",
+  ];
+
+  const sections = {};
+  let current = null;
+
+  for (const line of rawLines) {
+    const upper = stripMarkdownBold(line).toUpperCase();
+    if (targetOrder.includes(upper) || upper === "SUMMARY") {
+      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+    if (!current) continue;
+    sections[current].push(line);
+  }
+
+  // Split AI "EXPERIENCE" into bullet blocks per role (ignore any AI headers)
+  const expBulletsById = {};
+  const expLines = sections["EXPERIENCE"] || [];
+  let currentId = null;
+
+  for (const l of expLines) {
+    const line = normalizeLine(l);
+    if (!line) continue;
+
+    // We expect AI to output the locked header lines we provided:
+    // "exp1 | Title — Company, Location | Dates"
+    // If it does, we use it ONLY to choose which role bullets are for.
+    if (!isBulletLine(line) && line.includes("|") && /^\s*exp\d+\s*\|/i.test(line)) {
+      const m = line.match(/^\s*(exp\d+)\s*\|/i);
+      currentId = (m?.[1] || "").toLowerCase();
+      if (currentId && !expBulletsById[currentId]) expBulletsById[currentId] = [];
+      continue;
+    }
+
+    if (isBulletLine(line)) {
+      const bullet = normalizeLine(stripBulletMarker(line));
+      if (!bullet) continue;
+      if (currentId) {
+        expBulletsById[currentId] = expBulletsById[currentId] || [];
+        expBulletsById[currentId].push(`• ${bullet}`);
+      }
+      continue;
+    }
+  }
+
+  // Build final exact formatted text (HOS order)
+  const out = [];
+  out.push(headerName);
+  out.push(headerContact);
+  out.push("");
+
+  // PROFESSIONAL SUMMARY (AI)
+  out.push("PROFESSIONAL SUMMARY");
+  (sections["PROFESSIONAL SUMMARY"] || []).forEach((l) => out.push(l));
+  out.push("");
+
+  // SKILLS (AI)
+  out.push("SKILLS");
+  (sections["SKILLS"] || []).forEach((l) => out.push(l));
+  out.push("");
+
+  // EXPERIENCE (LOCKED HEADERS + AI BULLETS)
+  out.push("EXPERIENCE");
+  const expArr = Array.isArray(experience) ? experience : [];
+  expArr.forEach((e, i) => {
+    const id = (e?.id || `exp${i + 1}`).toLowerCase();
+    const title = e?.title || "";
+    const company = e?.company || "";
+    const loc = e?.location || "";
+    const dates = e?.dates || "";
+    const header = `${title} — ${company}, ${loc} | ${dates}`.trim();
+
+    out.push(header);
+
+    // Use AI bullets for this role only
+    const bullets = expBulletsById[id] || [];
+    bullets.forEach((b) => out.push(b));
+
+    out.push("");
+  });
+
+  // EDUCATION (LOCKED)
+  out.push("EDUCATION");
+  const eduLines = formatEducationLines(education);
+  if (eduLines) {
+    eduLines.split("\n").forEach((l) => out.push(l));
+  }
+  out.push("");
+
+  // TECHNOLOGIES (AI)
+  out.push("TECHNOLOGIES");
+  (sections["TECHNOLOGIES"] || []).forEach((l) => out.push(l));
+  out.push("");
+
+  // CERTIFICATIONS (AI)
+  out.push("CERTIFICATIONS");
+  (sections["CERTIFICATIONS"] || []).forEach((l) => out.push(l));
+  out.push("");
+
+  // Ensure final normalization is still applied
+  return enforceHosFormat({
+    fullName,
+    email,
+    phone,
+    location,
+    resumeText: out.join("\n"),
+  });
+}
+
 // ---------- Helper: Call OpenAI to generate resume text ----------
 // ✅ UPDATED: uses Responses API (works with gpt-5.2-pro)
 async function generateWithOpenAI(prompt) {
@@ -339,6 +509,9 @@ exports.generateResume = async (req, res) => {
       summary,
       skills = [],
       jobDescription,
+      experience = [],
+      education = [],
+      certifications = [],
     } = req.body;
 
     if (!fullName) {
@@ -352,6 +525,20 @@ exports.generateResume = async (req, res) => {
       });
     }
 
+    if (!Array.isArray(experience) || experience.length === 0) {
+      return res.status(400).json({
+        message:
+          "Student experience is required (company/title/dates must come from the student).",
+      });
+    }
+
+    if (!Array.isArray(education) || education.length === 0) {
+      return res.status(400).json({
+        message:
+          "Student education is required (school/degree/year must come from the student).",
+      });
+    }
+
     const skillsList = Array.isArray(skills)
       ? skills
       : typeof skills === "string"
@@ -361,9 +548,20 @@ exports.generateResume = async (req, res) => {
           .filter(Boolean)
       : [];
 
-    // ✅ Force EXACT output structure (your HOS format)
+    const lockedExperienceHeaders = formatExperienceHeaders(experience);
+    const lockedEducationLines = formatEducationLines(education);
+    const lockedCerts = Array.isArray(certifications)
+      ? certifications.filter(Boolean).join(", ")
+      : String(certifications || "");
+
+    // ✅ Force EXACT output structure (your HOS format) + lock student fields
     const prompt = `
 You are writing an ATS-friendly resume. Output MUST be plain text only (no markdown, no tables, no columns).
+
+IMPORTANT LOCKED DATA RULES:
+- Name, email, phone, location, companies, titles, dates, and schools are PROVIDED.
+- You MUST NOT invent or modify any locked data.
+- You ONLY generate: PROFESSIONAL SUMMARY bullets, SKILLS bullets, EXPERIENCE bullet points under each locked role, TECHNOLOGIES bullets, and CERTIFICATIONS list.
 
 You MUST follow this EXACT format and section order, with the same headings and blank lines:
 
@@ -380,19 +578,28 @@ Example: • **Network Design**: LAN/WAN, Wireless Networks, Ubiquiti, Meraki, C
 Bold ONLY the main skill using **double asterisks** as shown.)
 
 EXPERIENCE
-(Include 1–2 roles. Each role:
-1) First line is the role header: Title — Company, Location | Dates
-2) Then EXACTLY 12 bullet points starting with "• " (measurable impact, metrics where possible).
-Ensure the role header line is not a bullet.)
+(Use the following locked role headers EXACTLY as provided. For EACH role:
+1) Output the locked header line EXACTLY (do not change it)
+2) Then output EXACTLY 12 bullet points starting with "• " with measurable impact.
+Do NOT add or remove roles. Do NOT change company/title/dates/location.)
 
 EDUCATION
-(Include degree, school, location, year.)
+(Use the following locked education lines EXACTLY as provided. Do NOT add schools or degrees.)
 
 TECHNOLOGIES
 (Place this section ONLY after EDUCATION. Exactly 3 bullet points starting with "• ".)
 
 CERTIFICATIONS
-(List certifications relevant to the job.)
+(Use the locked certifications if any. Do not invent certification providers/dates.)
+
+LOCKED EXPERIENCE HEADERS (DO NOT CHANGE):
+${lockedExperienceHeaders}
+
+LOCKED EDUCATION (DO NOT CHANGE):
+${lockedEducationLines}
+
+LOCKED CERTIFICATIONS (if any; do not invent):
+${lockedCerts}
 
 JOB DESCRIPTION:
 ${jobDescription}
@@ -421,13 +628,15 @@ Strict rules:
       return res.status(500).json({ message: "Empty response from AI" });
     }
 
-    // ✅ Enforce your format even if the model deviates
-    const hosText = enforceHosFormat({
+    // ✅ LOCK student data: build final resume where header/experience headers/education come ONLY from student
+    const hosText = buildLockedHosResumeText({
       fullName,
       email,
       phone,
       location,
-      resumeText: resumeTextRaw,
+      aiText: resumeTextRaw,
+      experience,
+      education,
     });
 
     return res.status(200).json({
@@ -537,12 +746,37 @@ exports.generateResumeAsWord = async (req, res) => {
   try {
     console.log("📄 /api/v1/resume/generate-word hit");
 
-    const { fullName, location, email, phone, targetRole, jobDescription, skills = [], summary } =
-      req.body;
+    const {
+      fullName,
+      location,
+      email,
+      phone,
+      targetRole,
+      jobDescription,
+      skills = [],
+      summary,
+      experience = [],
+      education = [],
+      certifications = [],
+    } = req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
         message: "Candidate name and job description are required",
+      });
+    }
+
+    if (!Array.isArray(experience) || experience.length === 0) {
+      return res.status(400).json({
+        message:
+          "Student experience is required (company/title/dates must come from the student).",
+      });
+    }
+
+    if (!Array.isArray(education) || education.length === 0) {
+      return res.status(400).json({
+        message:
+          "Student education is required (school/degree/year must come from the student).",
       });
     }
 
@@ -555,8 +789,19 @@ exports.generateResumeAsWord = async (req, res) => {
           .filter(Boolean)
       : [];
 
+    const lockedExperienceHeaders = formatExperienceHeaders(experience);
+    const lockedEducationLines = formatEducationLines(education);
+    const lockedCerts = Array.isArray(certifications)
+      ? certifications.filter(Boolean).join(", ")
+      : String(certifications || "");
+
     const prompt = `
 Output MUST be plain text only (no markdown, no tables).
+
+IMPORTANT LOCKED DATA RULES:
+- Name, email, phone, location, companies, titles, dates, and schools are PROVIDED.
+- You MUST NOT invent or modify any locked data.
+- You ONLY generate: PROFESSIONAL SUMMARY bullets, SKILLS bullets, EXPERIENCE bullet points under each locked role, TECHNOLOGIES bullets, and CERTIFICATIONS list.
 
 Follow this EXACT format:
 
@@ -573,18 +818,28 @@ Example: • **Network Design**: LAN/WAN, Wireless Networks, Ubiquiti, Meraki, C
 Bold ONLY the main skill using **double asterisks**.)
 
 EXPERIENCE
-(1–2 roles. Each role:
-- Role header line: Title — Company, Location | Dates
-- Then EXACTLY 12 bullet points starting with "• " with measurable outcomes.)
+(Use the following locked role headers EXACTLY as provided. For EACH role:
+1) Output the locked header line EXACTLY (do not change it)
+2) Then output EXACTLY 12 bullet points starting with "• " with measurable outcomes.
+Do NOT add or remove roles. Do NOT change company/title/dates/location.)
 
 EDUCATION
-(Degree, School, Location, Year.)
+(Use the following locked education lines EXACTLY as provided. Do NOT add schools or degrees.)
 
 TECHNOLOGIES
 (ONLY after EDUCATION. Exactly 3 bullet points starting with "• ".)
 
 CERTIFICATIONS
-(Only relevant certifications.)
+(Use the locked certifications if any. Do not invent providers/dates.)
+
+LOCKED EXPERIENCE HEADERS (DO NOT CHANGE):
+${lockedExperienceHeaders}
+
+LOCKED EDUCATION (DO NOT CHANGE):
+${lockedEducationLines}
+
+LOCKED CERTIFICATIONS (if any; do not invent):
+${lockedCerts}
 
 JOB DESCRIPTION:
 ${jobDescription}
@@ -606,12 +861,15 @@ Rules:
       return res.status(500).json({ message: "Empty response from AI" });
     }
 
-    const hosText = enforceHosFormat({
+    // ✅ LOCK student data: build final resume where header/experience headers/education come ONLY from student
+    const hosText = buildLockedHosResumeText({
       fullName,
       email,
       phone,
       location,
-      resumeText: resumeTextRaw,
+      aiText: resumeTextRaw,
+      experience,
+      education,
     });
 
     // ✅ Updated with tighter margins (0.5")
