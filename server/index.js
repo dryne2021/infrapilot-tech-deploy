@@ -62,7 +62,13 @@ const corsOptions = {
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
   optionsSuccessStatus: 204,
 };
 
@@ -76,16 +82,15 @@ app.options("*", cors(corsOptions));
 ========================================================= */
 app.use("/api/v1/auth", authRoutes);
 
-// ✅ Admin core routes
+// ✅ Admin core routes (includes /candidates endpoints in routes/admin.js)
 app.use("/api/v1/admin", adminRoutes);
 
 // ✅ Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
 app.use("/api/v1/admin/plans", planRoutes);
 
-// ✅ ✅ FIX: Mount admin candidates endpoints so this works:
-// POST /api/v1/admin/candidates/:id/credentials
-// GET  /api/v1/admin/candidates/:id
-app.use("/api/v1/admin/candidates", candidatesRoutes);
+// ✅ IMPORTANT: Option 1 => DO NOT mount candidatesRoutes under /api/v1/admin/candidates
+// Because /api/v1/admin/candidates is already defined inside routes/admin.js
+// app.use("/api/v1/admin/candidates", candidatesRoutes); // ❌ removed to prevent conflicts
 
 // Existing candidate/recruiter app routes
 app.use("/api/v1/candidate", candidateRoutes);
@@ -132,9 +137,12 @@ async function startServer() {
     }
 
     app.listen(PORT, () => {
-      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+      console.log(
+        `Server running in ${process.env.NODE_ENV} mode on port ${PORT}`
+      );
       console.log("✅ Allowed CORS origins:", allowedOrigins);
-      console.log("✅ Mounted admin candidates at /api/v1/admin/candidates");
+      console.log("✅ Admin routes mounted at /api/v1/admin");
+      console.log("✅ Admin candidates now served by routes/admin.js at /api/v1/admin/candidates");
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);
