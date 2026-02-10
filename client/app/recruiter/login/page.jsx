@@ -12,7 +12,6 @@ export default function RecruiterLogin() {
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
 
-  // ✅ Use your deployed backend URL (or use NEXT_PUBLIC_API_URL if you already have it)
   const API_URL =
     process.env.NEXT_PUBLIC_API_URL || 'https://infrapilot-tech-deploy.onrender.com'
 
@@ -26,9 +25,9 @@ export default function RecruiterLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,               // ✅ must be an email now
+          email,
           password,
-          role: 'recruiter',   // optional (backend role check currently disabled)
+          role: 'recruiter',
         }),
       })
 
@@ -39,12 +38,9 @@ export default function RecruiterLogin() {
         return
       }
 
-      // ✅ Store session like your other pages expect
-      // sendTokenResponse usually returns token + user; handle both shapes safely
       const token = data?.token || data?.data?.token || data?.data || data?.accessToken
       const user = data?.user || data?.data?.user || data?.data
 
-      // If backend returns { success, token, user }
       const recruiterUser = {
         id: user?._id || user?.id,
         name: user?.name,
@@ -81,7 +77,9 @@ export default function RecruiterLogin() {
         {error && (
           <div className="mb-6 p-4 bg-red-900/30 border border-red-700 rounded-lg">
             <p className="text-red-300 text-sm">{error}</p>
-            <p className="text-gray-400 text-xs mt-2">Confirm you are using your recruiter email + password</p>
+            <p className="text-gray-400 text-xs mt-2">
+              Confirm you are using your recruiter email + password
+            </p>
           </div>
         )}
 
@@ -135,15 +133,18 @@ export default function RecruiterLogin() {
           </button>
         </form>
 
+        {/* ✅ Updated navigation to match Candidate login */}
         <div className="mt-8 pt-6 border-t border-gray-700">
           <div className="text-center">
-            <p className="text-gray-500 text-sm">Need access? Contact your administrator</p>
-            <Link
-              href="/admin/login"
-              className="inline-block mt-2 text-sm text-blue-400 hover:text-blue-300"
-            >
-              Admin Login →
-            </Link>
+            <p className="text-gray-500 text-sm">Not a recruiter?</p>
+            <div className="flex justify-center gap-4 mt-2">
+              <Link href="/candidate/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Candidate Login →
+              </Link>
+              <Link href="/admin/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Admin Login →
+              </Link>
+            </div>
           </div>
         </div>
       </div>

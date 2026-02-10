@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext' // ✅ uses real backend login
 
 export default function AdminLogin() {
@@ -19,7 +20,6 @@ export default function AdminLogin() {
     setLoading(true)
 
     try {
-      // ✅ Real backend auth (no demo credentials, no hardcoded token)
       const result = await login(email.trim(), password)
 
       if (!result.success) {
@@ -27,8 +27,6 @@ export default function AdminLogin() {
         return
       }
 
-      // ✅ After login(), AuthContext stores token/user and redirects by role,
-      // but we enforce admin route here to be safe.
       router.push('/admin')
       router.refresh()
     } catch (err) {
@@ -98,8 +96,19 @@ export default function AdminLogin() {
           </button>
         </form>
 
+        {/* ✅ Updated navigation to match Candidate & Recruiter */}
         <div className="mt-8 pt-6 border-t border-gray-700">
-          <p className="text-gray-500 text-sm text-center">⚠️ This portal is for authorized personnel only</p>
+          <div className="text-center">
+            <p className="text-gray-500 text-sm">Not an admin?</p>
+            <div className="flex justify-center gap-4 mt-2">
+              <Link href="/candidate/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Candidate Login →
+              </Link>
+              <Link href="/recruiter/login" className="text-sm text-blue-400 hover:text-blue-300">
+                Recruiter Login →
+              </Link>
+            </div>
+          </div>
         </div>
       </div>
     </div>
