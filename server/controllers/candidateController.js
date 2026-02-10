@@ -308,6 +308,46 @@ exports.getApplication = async (req, res, next) => {
   }
 };
 
+// ✅ NEW: List candidates (Admin/Recruiter)
+// @route   GET /api/v1/admin/candidates
+// @access  Private (Admin/Recruiter)
+exports.getCandidates = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, q } = req.query;
+
+    const pageInt = parseInt(page, 10);
+    const limitInt = parseInt(limit, 10);
+    const skip = (pageInt - 1) * limitInt;
+
+    const filter = {};
+    if (q) {
+      filter.$or = [
+        { fullName: { $regex: q, $options: 'i' } },
+        { email: { $regex: q, $options: 'i' } }
+      ];
+    }
+
+    const total = await Candidate.countDocuments(filter);
+
+    const candidates = await Candidate.find(filter)
+      .populate('assignedRecruiterId', 'name email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitInt);
+
+    return res.status(200).json({
+      success: true,
+      count: candidates.length,
+      total,
+      totalPages: Math.ceil(total / limitInt),
+      currentPage: pageInt,
+      data: candidates
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Get candidate by id (for Option A resume generation)
 // @route   GET /api/v1/candidates/:id
 // @access  Private (Admin/Recruiter) or Private (Server internal)
