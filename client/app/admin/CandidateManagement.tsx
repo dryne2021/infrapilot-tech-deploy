@@ -59,7 +59,7 @@ const CandidateManagement = () => {
   const [filterPayment, setFilterPayment] = useState('all')
 
   // -----------------------------
-  // ✅ NEW: Credentials Modal state
+  // ✅ Credentials Modal state
   // -----------------------------
   const [showCredModal, setShowCredModal] = useState(false)
   const [credCandidate, setCredCandidate] = useState<any>(null)
@@ -163,7 +163,7 @@ const CandidateManagement = () => {
     subscriptionPlan: 'gold',
     paymentStatus: 'paid',
 
-    // ✅ IMPORTANT: must be Mongo Recruiter _id (ObjectId string) or '' for unassigned
+    // must be Mongo Recruiter _id (ObjectId string) or '' for unassigned
     assignedRecruiter: '',
   }
 
@@ -189,7 +189,7 @@ const CandidateManagement = () => {
     }
   }
 
-  // ✅ BACKEND: load recruiters (Mongo _id)
+  // ✅ BACKEND: load recruiters
   const loadRecruiters = async () => {
     try {
       const res = await fetchWithAuth('/api/v1/admin/recruiters')
@@ -199,7 +199,6 @@ const CandidateManagement = () => {
       const list = json?.data ?? json
 
       const arr = Array.isArray(list) ? list : []
-      // optional: show active first
       arr.sort((a: any, b: any) => {
         const aActive = a?.status === 'active' || a?.isActive === true
         const bActive = b?.status === 'active' || b?.isActive === true
@@ -342,7 +341,7 @@ const CandidateManagement = () => {
     }
   }
 
-  // ✅ helpers to sanitize payload for backend
+  // ✅ helpers
   const toNumberOrUndefined = (v: any) => {
     if (v === null || v === undefined) return undefined
     const s = String(v).trim()
@@ -352,6 +351,37 @@ const CandidateManagement = () => {
   }
 
   const stripUiId = (arr: any[]) => (Array.isArray(arr) ? arr.map(({ id, ...rest }) => rest) : [])
+
+  // ✅ comma-separated helpers for array fields
+  const toArrayFromCSV = (txt: string) =>
+    txt
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+
+  const setRootArrayFromCSV = (field: string, txt: string) => {
+    setFormData((prev: any) => ({
+      ...prev,
+      [field]: toArrayFromCSV(txt),
+    }))
+  }
+
+  const setNestedArrayFromCSV = (arrayName: string, index: number, field: string, txt: string) => {
+    const arr = toArrayFromCSV(txt)
+    handleArrayInputChange(arrayName, index, field, arr)
+  }
+
+  const setAchievement = (expIndex: number, achIndex: number, value: string) => {
+    setFormData((prev: any) => {
+      const experience = prev.experience.map((exp: any, i: number) => {
+        if (i !== expIndex) return exp
+        const achievements = Array.isArray(exp.achievements) ? [...exp.achievements] : ['', '', '']
+        achievements[achIndex] = value
+        return { ...exp, achievements }
+      })
+      return { ...prev, experience }
+    })
+  }
 
   // ✅ BACKEND: create candidate
   const handleAddCandidate = async (e: any) => {
@@ -369,7 +399,6 @@ const CandidateManagement = () => {
       const selectedPlan = SUBSCRIPTION_PLANS.find((p) => p.id === formData.subscriptionPlan)
 
       const payload: any = {
-        // identity
         firstName: formData.firstName,
         lastName: formData.lastName,
         fullName: `${formData.firstName} ${formData.lastName}`.trim(),
@@ -377,7 +406,6 @@ const CandidateManagement = () => {
         phone: formData.phone,
         location: formData.location,
 
-        // optional fields
         ssn: formData.ssn,
         visaStatus: formData.visaStatus,
         dateOfBirth: formData.dateOfBirth,
@@ -393,11 +421,9 @@ const CandidateManagement = () => {
         noticePeriod: formData.noticePeriod,
         availability: formData.availability,
 
-        // numbers
         experienceYears: toNumberOrUndefined(formData.experienceYears),
         expectedSalary: toNumberOrUndefined(formData.expectedSalary),
 
-        // arrays
         technicalSkills: formData.technicalSkills || [],
         softSkills: formData.softSkills || [],
         languages: formData.languages || [],
@@ -405,12 +431,10 @@ const CandidateManagement = () => {
 
         summary: formData.summary,
 
-        // nested arrays
         experience: stripUiId(formData.experience || []),
         education: stripUiId(formData.education || []),
         projects: stripUiId(formData.projects || []),
 
-        // additional
         awards: formData.awards,
         publications: formData.publications,
         volunteerExperience: formData.volunteerExperience,
@@ -418,7 +442,6 @@ const CandidateManagement = () => {
         references: formData.references,
         notes: formData.notes,
 
-        // subscription
         subscriptionPlan: formData.subscriptionPlan,
         paymentStatus: formData.paymentStatus,
         subscriptionStatus: formData.paymentStatus === 'paid' ? 'active' : 'pending',
@@ -431,10 +454,7 @@ const CandidateManagement = () => {
 
       const res = await fetchWithAuth('/api/v1/admin/candidates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify(payload),
       })
 
@@ -457,9 +477,9 @@ const CandidateManagement = () => {
     }
   }
 
-  // ⚠️ For now, keep delete/update local only? We will wire backend later.
-  const handleDeleteCandidate = async (id: string) => {
-    alert('Next step: we will connect Delete to backend (DELETE endpoint). For now, backend create/load is working.')
+  // placeholder delete
+  const handleDeleteCandidate = async (_id: string) => {
+    alert('Next step: connect Delete to backend (DELETE endpoint).')
   }
 
   const updateCandidateField = (id: string, field: string, value: any) => {
@@ -467,11 +487,7 @@ const CandidateManagement = () => {
       prev.map((candidate: any) => {
         if ((candidate._id || candidate.id) === id) {
           const updated: any = { ...candidate, [field]: value }
-
-          if (field === 'paymentStatus') {
-            updated.subscriptionStatus = value === 'paid' ? 'active' : 'pending'
-          }
-
+          if (field === 'paymentStatus') updated.subscriptionStatus = value === 'paid' ? 'active' : 'pending'
           return updated
         }
         return candidate
@@ -529,17 +545,11 @@ const CandidateManagement = () => {
 
   const getCandidateKey = (c: any) => c._id || c.id
 
-  // -----------------------------
-  // ✅ NEW: Credentials helpers
-  // -----------------------------
+  // Credentials helpers
   const generatePassword = (length = 12) => {
-    // simple strong-ish generator: letters + digits + symbols
-    const chars =
-      'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-='
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()_+-='
     let out = ''
-    for (let i = 0; i < length; i++) {
-      out += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
+    for (let i = 0; i < length; i++) out += chars.charAt(Math.floor(Math.random() * chars.length))
     return out
   }
 
@@ -586,13 +596,10 @@ const CandidateManagement = () => {
     try {
       const res = await fetchWithAuth(`/api/v1/admin/candidates/${candidateId}/credentials`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
           username: credUsername.trim(),
-          password: credPassword.trim(), // backend may accept OR auto-generate if omitted
+          password: credPassword.trim(),
         }),
       })
 
@@ -605,8 +612,7 @@ const CandidateManagement = () => {
       }
 
       setCredSuccess('Credentials saved successfully ✅')
-      await loadCandidates() // refresh list so UI reflects candidate.credentialsGenerated etc.
-      // keep modal open briefly so they can copy username/password, but we don't store/display hash
+      await loadCandidates()
     } catch (err: any) {
       setCredError(err?.message || 'Network error creating credentials.')
     } finally {
@@ -701,7 +707,7 @@ const CandidateManagement = () => {
         </div>
       </div>
 
-      {/* ✅ NEW: Create Credentials Modal */}
+      {/* ✅ Create Credentials Modal */}
       {showCredModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
@@ -710,8 +716,11 @@ const CandidateManagement = () => {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">🔐 Create Login Credentials</h3>
                   <p className="text-sm text-gray-700 mt-1">
-                    Candidate: <span className="font-semibold text-gray-900">
-                      {credCandidate?.fullName || `${credCandidate?.firstName || ''} ${credCandidate?.lastName || ''}`.trim() || credCandidate?.email}
+                    Candidate:{' '}
+                    <span className="font-semibold text-gray-900">
+                      {credCandidate?.fullName ||
+                        `${credCandidate?.firstName || ''} ${credCandidate?.lastName || ''}`.trim() ||
+                        credCandidate?.email}
                     </span>
                   </p>
                 </div>
@@ -742,7 +751,6 @@ const CandidateManagement = () => {
                   className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
                   placeholder="default = candidate email"
                 />
-                <p className="text-xs text-gray-600 mt-1">Tip: Use email as username (recommended).</p>
               </div>
 
               <div>
@@ -779,14 +787,7 @@ const CandidateManagement = () => {
                   disabled={credLoading}
                   className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center gap-2"
                 >
-                  {credLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Saving...
-                    </>
-                  ) : (
-                    'Save Credentials'
-                  )}
+                  {credLoading ? 'Saving...' : 'Save Credentials'}
                 </button>
               </div>
 
@@ -798,7 +799,7 @@ const CandidateManagement = () => {
         </div>
       )}
 
-      {/* Add Candidate Form Modal */}
+      {/* ✅ Add Candidate Form Modal (FULL FORM) */}
       {showAddForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
@@ -817,7 +818,7 @@ const CandidateManagement = () => {
 
             <form onSubmit={handleAddCandidate} className="p-6">
               <div className="space-y-8">
-                {/* Section 1: Personal Information */}
+                {/* 1) Personal Information */}
                 <div className="bg-gray-50 p-6 rounded-xl">
                   <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
                     <span className="bg-blue-100 text-blue-600 p-2 rounded-lg">👤</span>
@@ -883,7 +884,7 @@ const CandidateManagement = () => {
                         value={formData.location}
                         onChange={handleInputChange}
                         className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
-                        placeholder="San Francisco, CA, USA"
+                        placeholder="Illinois, United States"
                       />
                     </div>
 
@@ -942,7 +943,801 @@ const CandidateManagement = () => {
                   </div>
                 </div>
 
-                {/* ✅ KEEP THE REST OF YOUR FORM SECTIONS EXACTLY AS YOU HAVE THEM NOW */}
+                {/* 2) Contact & Profiles */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-indigo-100 text-indigo-700 p-2 rounded-lg">🔗</span>
+                    Contact & Profiles
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">LinkedIn</label>
+                      <input
+                        type="text"
+                        name="linkedin"
+                        value={formData.linkedin}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="https://linkedin.com/in/username"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">GitHub</label>
+                      <input
+                        type="text"
+                        name="github"
+                        value={formData.github}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="https://github.com/username"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Portfolio</label>
+                      <input
+                        type="text"
+                        name="portfolio"
+                        value={formData.portfolio}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="https://portfolio.com"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Website</label>
+                      <input
+                        type="text"
+                        name="website"
+                        value={formData.website}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="https://website.com"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3) Professional Information */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-emerald-100 text-emerald-700 p-2 rounded-lg">💼</span>
+                    Professional Information
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Current Company</label>
+                      <input
+                        type="text"
+                        name="currentCompany"
+                        value={formData.currentCompany}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Boingo Wireless"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Current Position</label>
+                      <input
+                        type="text"
+                        name="currentPosition"
+                        value={formData.currentPosition}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Senior Network Engineer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Years of Experience</label>
+                      <input
+                        type="number"
+                        name="experienceYears"
+                        value={formData.experienceYears}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="5"
+                        min={0}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Target Role</label>
+                      <input
+                        type="text"
+                        name="targetRole"
+                        value={formData.targetRole}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Network Engineer / Full Stack Developer"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Expected Salary</label>
+                      <input
+                        type="number"
+                        name="expectedSalary"
+                        value={formData.expectedSalary}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="90000"
+                        min={0}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Notice Period</label>
+                      <input
+                        type="text"
+                        name="noticePeriod"
+                        value={formData.noticePeriod}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="2 weeks / 30 days"
+                      />
+                    </div>
+
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Availability</label>
+                      <input
+                        type="text"
+                        name="availability"
+                        value={formData.availability}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Immediate / After 2 weeks / Weekends only"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4) Professional Summary */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-yellow-100 text-yellow-700 p-2 rounded-lg">📝</span>
+                    Professional Summary
+                  </h4>
+
+                  <textarea
+                    name="summary"
+                    value={formData.summary}
+                    onChange={handleInputChange}
+                    className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                    rows={5}
+                    placeholder="Write a strong summary (like resume professional summary)..."
+                  />
+                </div>
+
+                {/* 5) Skills */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-purple-100 text-purple-700 p-2 rounded-lg">🧠</span>
+                    Skills
+                  </h4>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Technical */}
+                    <div>
+                      <p className="font-semibold text-gray-900 mb-2">Technical Skills</p>
+                      <div className="max-h-56 overflow-auto bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                        {SKILLS_OPTIONS.technical.map((s: string) => (
+                          <label key={s} className="flex items-center gap-2 text-sm text-gray-900">
+                            <input
+                              type="checkbox"
+                              checked={(formData.technicalSkills || []).includes(s)}
+                              onChange={() => handleSkillsChange('technicalSkills', s)}
+                            />
+                            {s}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">
+                        Selected: {(formData.technicalSkills || []).length}
+                      </p>
+                    </div>
+
+                    {/* Soft */}
+                    <div>
+                      <p className="font-semibold text-gray-900 mb-2">Soft Skills</p>
+                      <div className="max-h-56 overflow-auto bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                        {SKILLS_OPTIONS.soft.map((s: string) => (
+                          <label key={s} className="flex items-center gap-2 text-sm text-gray-900">
+                            <input
+                              type="checkbox"
+                              checked={(formData.softSkills || []).includes(s)}
+                              onChange={() => handleSkillsChange('softSkills', s)}
+                            />
+                            {s}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">Selected: {(formData.softSkills || []).length}</p>
+                    </div>
+
+                    {/* Languages */}
+                    <div>
+                      <p className="font-semibold text-gray-900 mb-2">Languages</p>
+                      <div className="max-h-56 overflow-auto bg-white border border-gray-200 rounded-lg p-3 space-y-2">
+                        {SKILLS_OPTIONS.languages.map((s: string) => (
+                          <label key={s} className="flex items-center gap-2 text-sm text-gray-900">
+                            <input
+                              type="checkbox"
+                              checked={(formData.languages || []).includes(s)}
+                              onChange={() => handleSkillsChange('languages', s)}
+                            />
+                            {s}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-600 mt-2">Selected: {(formData.languages || []).length}</p>
+                    </div>
+
+                    {/* Certifications (CSV input to array) */}
+                    <div className="lg:col-span-3">
+                      <p className="font-semibold text-gray-900 mb-2">Certifications (comma separated)</p>
+                      <input
+                        type="text"
+                        defaultValue={(formData.certifications || []).join(', ')}
+                        onChange={(e) => setRootArrayFromCSV('certifications', e.target.value)}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="CCNA, CCNP, CompTIA Network+, Security+"
+                      />
+                      <p className="text-xs text-gray-600 mt-2">
+                        Stored as array: {(formData.certifications || []).length} items
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6) Work Experience (repeatable) */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h4 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                      <span className="bg-rose-100 text-rose-700 p-2 rounded-lg">🏢</span>
+                      Work Experience
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={addExperience}
+                      className="px-4 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700"
+                    >
+                      + Add Experience
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {(formData.experience || []).map((exp: any, idx: number) => (
+                      <div key={exp.id || idx} className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <p className="font-semibold text-gray-900">Experience #{idx + 1}</p>
+                            <p className="text-xs text-gray-600">Capture title, company, dates, responsibilities, tech</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeExperience(idx)}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            disabled={(formData.experience || []).length <= 1}
+                            title={(formData.experience || []).length <= 1 ? 'At least one experience is required' : 'Remove'}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Title</label>
+                            <input
+                              type="text"
+                              value={exp.title}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'title', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Senior Network Engineer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Company</label>
+                            <input
+                              type="text"
+                              value={exp.company}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'company', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Boingo Wireless"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Location</label>
+                            <input
+                              type="text"
+                              value={exp.location}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'location', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Illinois / Remote"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Start Date</label>
+                            <input
+                              type="month"
+                              value={exp.startDate}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'startDate', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">End Date</label>
+                            <input
+                              type="month"
+                              value={exp.endDate}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'endDate', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              disabled={!!exp.currentlyWorking}
+                            />
+                            <label className="mt-2 flex items-center gap-2 text-sm text-gray-900">
+                              <input
+                                type="checkbox"
+                                checked={!!exp.currentlyWorking}
+                                onChange={(e) =>
+                                  handleArrayInputChange('experience', idx, 'currentlyWorking', e.target.checked)
+                                }
+                              />
+                              Currently Working
+                            </label>
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Technologies (comma separated)
+                            </label>
+                            <input
+                              type="text"
+                              defaultValue={(exp.technologies || []).join(', ')}
+                              onChange={(e) => setNestedArrayFromCSV('experience', idx, 'technologies', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Cisco, Fortinet, Palo Alto, NetFlow..."
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Description</label>
+                            <textarea
+                              value={exp.description}
+                              onChange={(e) => handleArrayInputChange('experience', idx, 'description', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              rows={4}
+                              placeholder="Write responsibilities / scope / impact..."
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <p className="text-sm font-medium text-gray-900 mb-2">Key Achievements (3 bullets)</p>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              {[0, 1, 2].map((aIdx) => (
+                                <input
+                                  key={aIdx}
+                                  type="text"
+                                  value={(exp.achievements || ['', '', ''])[aIdx] || ''}
+                                  onChange={(e) => setAchievement(idx, aIdx, e.target.value)}
+                                  className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                                  placeholder={`Achievement ${aIdx + 1}`}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 7) Education (repeatable) */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h4 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                      <span className="bg-sky-100 text-sky-700 p-2 rounded-lg">🎓</span>
+                      Education
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={addEducation}
+                      className="px-4 py-2 bg-sky-600 text-white rounded-lg hover:bg-sky-700"
+                    >
+                      + Add Education
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {(formData.education || []).map((ed: any, idx: number) => (
+                      <div key={ed.id || idx} className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <p className="font-semibold text-gray-900">Education #{idx + 1}</p>
+                            <p className="text-xs text-gray-600">Degree, school, year, GPA, courses</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEducation(idx)}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            disabled={(formData.education || []).length <= 1}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Degree</label>
+                            <input
+                              type="text"
+                              value={ed.degree}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'degree', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Master’s"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Field</label>
+                            <input
+                              type="text"
+                              value={ed.field}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'field', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Computer Systems"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">School</label>
+                            <input
+                              type="text"
+                              value={ed.school}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'school', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Eastern Illinois University"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Location</label>
+                            <input
+                              type="text"
+                              value={ed.location}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'location', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Illinois, USA"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Graduation Year</label>
+                            <input
+                              type="text"
+                              value={ed.graduationYear}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'graduationYear', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="2023"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">GPA</label>
+                            <input
+                              type="text"
+                              value={ed.gpa}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'gpa', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="3.5"
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Honors</label>
+                            <input
+                              type="text"
+                              value={ed.honors}
+                              onChange={(e) => handleArrayInputChange('education', idx, 'honors', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Dean’s list, Scholarships..."
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Courses (comma separated)
+                            </label>
+                            <input
+                              type="text"
+                              defaultValue={(ed.courses || []).join(', ')}
+                              onChange={(e) => setNestedArrayFromCSV('education', idx, 'courses', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Networks, Security, Cloud..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 8) Projects (repeatable) */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <h4 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                      <span className="bg-lime-100 text-lime-700 p-2 rounded-lg">🧩</span>
+                      Projects
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={addProject}
+                      className="px-4 py-2 bg-lime-600 text-white rounded-lg hover:bg-lime-700"
+                    >
+                      + Add Project
+                    </button>
+                  </div>
+
+                  <div className="space-y-6">
+                    {(formData.projects || []).map((p: any, idx: number) => (
+                      <div key={p.id || idx} className="bg-white border border-gray-200 rounded-xl p-4">
+                        <div className="flex justify-between items-start gap-4">
+                          <div>
+                            <p className="font-semibold text-gray-900">Project #{idx + 1}</p>
+                            <p className="text-xs text-gray-600">Name, role, tech stack, impact, links</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeProject(idx)}
+                            className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+                            disabled={(formData.projects || []).length <= 1}
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Name</label>
+                            <input
+                              type="text"
+                              value={p.name}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'name', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Network Monitoring Dashboard"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Role</label>
+                            <input
+                              type="text"
+                              value={p.role}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'role', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Lead Engineer"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">URL</label>
+                            <input
+                              type="text"
+                              value={p.url}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'url', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="https://github.com/..."
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Start Date</label>
+                            <input
+                              type="month"
+                              value={p.startDate}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'startDate', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">End Date</label>
+                            <input
+                              type="month"
+                              value={p.endDate}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'endDate', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">
+                              Technologies (comma separated)
+                            </label>
+                            <input
+                              type="text"
+                              defaultValue={(p.technologies || []).join(', ')}
+                              onChange={(e) => setNestedArrayFromCSV('projects', idx, 'technologies', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="React, Node, MongoDB..."
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Description</label>
+                            <textarea
+                              value={p.description}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'description', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              rows={3}
+                              placeholder="What the project does..."
+                            />
+                          </div>
+
+                          <div className="md:col-span-3">
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Impact</label>
+                            <input
+                              type="text"
+                              value={p.impact}
+                              onChange={(e) => handleArrayInputChange('projects', idx, 'impact', e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                              placeholder="Reduced downtime by 30%, improved performance..."
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 9) Additional Information */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-gray-200 text-gray-800 p-2 rounded-lg">📌</span>
+                    Additional Information
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Awards</label>
+                      <textarea
+                        name="awards"
+                        value={formData.awards}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Awards, recognitions..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Publications</label>
+                      <textarea
+                        name="publications"
+                        value={formData.publications}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Publications, papers..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Volunteer Experience</label>
+                      <textarea
+                        name="volunteerExperience"
+                        value={formData.volunteerExperience}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Volunteering..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Professional Memberships</label>
+                      <textarea
+                        name="professionalMemberships"
+                        value={formData.professionalMemberships}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Associations, memberships..."
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-900 mb-1">References</label>
+                      <textarea
+                        name="references"
+                        value={formData.references}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Reference names/contacts or 'Available on request'"
+                      />
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Notes (internal)</label>
+                      <textarea
+                        name="notes"
+                        value={formData.notes}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        rows={3}
+                        placeholder="Internal notes about this candidate..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 10) Subscription & Assignment */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-teal-100 text-teal-700 p-2 rounded-lg">💳</span>
+                    Subscription & Assignment
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Subscription Plan</label>
+                      <select
+                        name="subscriptionPlan"
+                        value={formData.subscriptionPlan}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        {SUBSCRIPTION_PLANS.map((p) => (
+                          <option key={p.id} value={p.id} className="text-gray-900">
+                            {p.name} (${p.price}) - {p.duration} days
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Payment Status</label>
+                      <select
+                        name="paymentStatus"
+                        value={formData.paymentStatus}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        <option value="paid" className="text-gray-900">Paid ✅</option>
+                        <option value="pending" className="text-gray-900">Pending ⏳</option>
+                        <option value="failed" className="text-gray-900">Failed ❌</option>
+                        <option value="refunded" className="text-gray-900">Refunded ↩️</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Assign Recruiter</label>
+                      <select
+                        name="assignedRecruiter"
+                        value={formData.assignedRecruiter}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        <option value="" className="text-gray-900">Unassigned</option>
+                        {recruiters.map((r) => (
+                          <option key={r._id} value={r._id} className="text-gray-900">
+                            {r.name || r.email || r._id}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-600 mt-1">Uses recruiter Mongo _id</p>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-8 flex justify-end gap-3">
@@ -958,14 +1753,7 @@ const CandidateManagement = () => {
                   disabled={loading}
                   className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 flex items-center gap-2"
                 >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Adding Candidate...
-                    </>
-                  ) : (
-                    'Add Complete Candidate Profile'
-                  )}
+                  {loading ? 'Adding Candidate...' : 'Add Complete Candidate Profile'}
                 </button>
               </div>
             </form>
@@ -1076,7 +1864,6 @@ const CandidateManagement = () => {
                   const recruiterName = recruiter?.name || candidate.recruiterName || 'Unassigned'
                   const recruiterLoad = recruiter?.assignedCandidatesCount ?? ''
 
-                  // ✅ Detect if credentials already exist (field names may vary)
                   const hasCreds =
                     candidate?.credentialsGenerated === true ||
                     candidate?.hasCredentials === true ||
@@ -1094,7 +1881,8 @@ const CandidateManagement = () => {
                           </div>
                           <div>
                             <p className="font-medium text-gray-900">
-                              {candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()}
+                              {candidate.fullName ||
+                                `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()}
                             </p>
                             <p className="text-sm text-gray-800">{candidate.email}</p>
                             <p className="text-xs text-gray-700">{candidate.phone || 'No phone'}</p>
@@ -1159,9 +1947,7 @@ const CandidateManagement = () => {
 
                       <td className="p-4">
                         <p className="text-sm text-gray-900 font-medium">{recruiterName}</p>
-                        <p className="text-xs text-gray-700">
-                          {recruiterLoad !== '' ? `Workload: ${recruiterLoad}` : ''}
-                        </p>
+                        <p className="text-xs text-gray-700">{recruiterLoad !== '' ? `Workload: ${recruiterLoad}` : ''}</p>
                       </td>
 
                       <td className="p-4">
@@ -1181,7 +1967,6 @@ const CandidateManagement = () => {
                             View Full
                           </button>
 
-                          {/* ✅ NEW: Create Login Credentials */}
                           <button
                             onClick={() => openCredentialsModal(candidate)}
                             className={`px-3 py-1 text-sm rounded ${
