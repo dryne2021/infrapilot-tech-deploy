@@ -48,6 +48,48 @@ export default function RecruiterPage() {
   
   const router = useRouter()
 
+  // ✅ ADDED: Experience normalization helper
+  type NormalizedExperience = {
+    company: string;
+    title: string;
+    startDate: string;   // ISO or yyyy-mm
+    endDate?: string;    // optional if present/current
+    isCurrent?: boolean;
+    description?: string;
+  };
+
+  const normalizeExperience = (expList: any[]): NormalizedExperience[] => {
+    if (!Array.isArray(expList)) return [];
+
+    return expList
+      .map((e) => {
+        const company = (e.company || e.employer || e.organization || '').trim();
+        const title = (e.title || e.role || e.position || '').trim();
+
+        // allow different date keys
+        const startDate = (e.startDate || e.from || e.start || e.start_time || '').trim();
+        const endDateRaw = (e.endDate || e.to || e.end || e.end_time || '').trim();
+
+        const isCurrent =
+          e.isCurrent === true ||
+          e.current === true ||
+          e.present === true ||
+          (typeof endDateRaw === 'string' && endDateRaw.toLowerCase() === 'present');
+
+        const endDate = isCurrent ? '' : endDateRaw;
+
+        return {
+          company,
+          title,
+          startDate,
+          endDate,
+          isCurrent,
+          description: (e.description || e.summary || '').trim(),
+        };
+      })
+      .filter((e) => e.company && e.title && e.startDate); // REQUIRED fields
+  };
+
   // ✅ FIXED: API HELPER FUNCTION with Bearer Token
   const api = async (
     path: string,
@@ -274,6 +316,19 @@ export default function RecruiterPage() {
 
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
+      
+      // ✅ ADDED: Normalize and validate experience
+      const normalizedExp = normalizeExperience(candidate.experience);
+
+      if (normalizedExp.length === 0) {
+        const msg =
+          'Student experience is required. Please add at least one experience with Company, Title, and Start Date in the student profile.';
+        setResumeError(msg);
+        alert(msg);
+        setIsGeneratingResume(false);
+        return;
+      }
+
       const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
@@ -284,7 +339,7 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills,
-        experience: candidate.experience,
+        experience: normalizedExp,          // ✅ normalized + valid
         education: candidate.education,
         certifications: candidate.certifications,
         projects: candidate.projects,
@@ -352,6 +407,19 @@ export default function RecruiterPage() {
 
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
+      
+      // ✅ ADDED: Normalize and validate experience
+      const normalizedExp = normalizeExperience(candidate.experience);
+
+      if (normalizedExp.length === 0) {
+        const msg =
+          'Student experience is required. Please add at least one experience with Company, Title, and Start Date in the student profile.';
+        setResumeError(msg);
+        alert(msg);
+        setIsGeneratingResume(false);
+        return;
+      }
+
       const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
@@ -362,7 +430,7 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills,
-        experience: candidate.experience,
+        experience: normalizedExp,          // ✅ normalized + valid
         education: candidate.education,
         certifications: candidate.certifications,
         projects: candidate.projects,
@@ -2029,4 +2097,4 @@ export default function RecruiterPage() {
       </div>
     </div>
   )
-}      
+}
