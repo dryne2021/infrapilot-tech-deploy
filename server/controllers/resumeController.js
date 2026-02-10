@@ -45,9 +45,13 @@ function safeDecodeURIComponent(encodedURI) {
 // ---------- Text helpers ----------
 function normalizeLine(line) {
   let s = String(line || "");
-  s = s.replace(/\*\*(.*?)\*\*/g, "$1"); // remove markdown bold
+  // ✅ keep **bold** markers (we render them into DOCX runs)
   s = s.replace(/```/g, ""); // remove code fences
   return s.trim();
+}
+
+function stripMarkdownBold(text) {
+  return String(text || "").replace(/\*\*(.*?)\*\*/g, "$1");
 }
 
 function isBulletLine(line) {
@@ -64,13 +68,14 @@ function stripBulletMarker(line) {
 }
 
 function isSectionHeader(line) {
-  const upper = normalizeLine(line).toUpperCase();
+  const upper = stripMarkdownBold(normalizeLine(line)).toUpperCase();
   const headers = new Set([
     "PROFESSIONAL SUMMARY",
     "SUMMARY",
     "SKILLS",
     "EXPERIENCE",
     "EDUCATION",
+    "TECHNOLOGIES",
     "CERTIFICATIONS",
   ]);
   return headers.has(upper);
@@ -85,11 +90,40 @@ function makeRun(text, opts = {}) {
   });
 }
 
+// ✅ Render **bold** segments into DOCX runs
+function runsFromBoldMarkup(text, opts = {}) {
+  const s = String(text ?? "");
+  const runs = [];
+  const re = /\*\*(.+?)\*\*/g;
+
+  let last = 0;
+  let m;
+  while ((m = re.exec(s)) !== null) {
+    if (m.index > last) {
+      runs.push(makeRun(s.slice(last, m.index), { size: opts.size }));
+    }
+    runs.push(makeRun(m[1], { bold: true, size: opts.size }));
+    last = m.index + m[0].length;
+  }
+
+  if (last < s.length) {
+    runs.push(makeRun(s.slice(last), { size: opts.size }));
+  }
+
+  // If no markup found, ensure at least one run
+  if (runs.length === 0) runs.push(makeRun(s, { size: opts.size }));
+
+  return runs;
+}
+
 // ✅ Updated heading with line under it
 function makeHeadingParagraph(text) {
   return new Paragraph({
     children: [
-      makeRun(String(text).toUpperCase(), { bold: true, size: HEADING_SIZE }),
+      makeRun(String(stripMarkdownBold(text)).toUpperCase(), {
+        bold: true,
+        size: HEADING_SIZE,
+      }),
     ],
     spacing: { before: 160, after: 80 },
     border: {
@@ -103,9 +137,11 @@ function makeHeadingParagraph(text) {
   });
 }
 
-function makeBodyParagraph(text, spacingAfter = 80) {
+function makeBodyParagraph(text, spacingAfter = 80, boldAll = false) {
   return new Paragraph({
-    children: [makeRun(text, { size: BODY_SIZE })],
+    children: boldAll
+      ? [makeRun(stripMarkdownBold(text), { bold: true, size: BODY_SIZE })]
+      : runsFromBoldMarkup(text, { size: BODY_SIZE }),
     spacing: { after: spacingAfter },
   });
 }
@@ -113,7 +149,7 @@ function makeBodyParagraph(text, spacingAfter = 80) {
 // ✅ Improved bullet indent
 function makeBulletParagraph(text) {
   return new Paragraph({
-    children: [makeRun(text, { size: BODY_SIZE })],
+    children: runsFromBoldMarkup(text, { size: BODY_SIZE }),
     bullet: { level: 0 },
     spacing: { after: 60 },
     indent: { left: 360, hanging: 180 }, // clean bullet alignment
@@ -158,6 +194,7 @@ function enforceHosFormat({
     "SKILLS",
     "EXPERIENCE",
     "EDUCATION",
+    "TECHNOLOGIES",
     "CERTIFICATIONS",
   ];
 
@@ -166,7 +203,7 @@ function enforceHosFormat({
   let current = null;
 
   for (const line of bodyLines) {
-    const upper = line.toUpperCase();
+    const upper = stripMarkdownBold(line).toUpperCase();
     if (targetOrder.includes(upper) || upper === "SUMMARY") {
       current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
       if (!sections[current]) sections[current] = [];
@@ -192,7 +229,7 @@ function enforceHosFormat({
     }
 
     for (const c of content) {
-      const cu = c.toUpperCase();
+      const cu = stripMarkdownBold(c).toUpperCase();
       if (targetOrder.includes(cu) || cu === "SUMMARY") continue;
       out.push(c);
     }
@@ -216,7 +253,7 @@ function parseHosTextToParagraphs(hosText) {
   if (nameLine) {
     paragraphs.push(
       new Paragraph({
-        children: [makeRun(nameLine, { bold: true, size: NAME_SIZE })],
+        children: [makeRun(stripMarkdownBold(nameLine), { bold: true, size: NAME_SIZE })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 40 },
       })
@@ -226,12 +263,14 @@ function parseHosTextToParagraphs(hosText) {
   if (contactLine) {
     paragraphs.push(
       new Paragraph({
-        children: [makeRun(contactLine, { size: BODY_SIZE })],
+        children: [makeRun(stripMarkdownBold(contactLine), { size: BODY_SIZE })],
         alignment: AlignmentType.CENTER,
         spacing: { after: 140 },
       })
     );
   }
+
+  let currentSection = null;
 
   for (; idx < lines.length; idx++) {
     const raw = lines[idx];
@@ -241,6 +280,7 @@ function parseHosTextToParagraphs(hosText) {
     if (!line) continue;
 
     if (isSectionHeader(line)) {
+      currentSection = stripMarkdownBold(line).toUpperCase();
       paragraphs.push(makeHeadingParagraph(line));
       continue;
     }
@@ -251,7 +291,14 @@ function parseHosTextToParagraphs(hosText) {
       continue;
     }
 
-    paragraphs.push(makeBodyParagraph(line));
+    // ✅ Bold the heading line of each experience entry (role header line)
+    const isExperienceRoleHeader =
+      currentSection === "EXPERIENCE" &&
+      line.includes("|") &&
+      !isSectionHeader(line) &&
+      !isBulletLine(raw);
+
+    paragraphs.push(makeBodyParagraph(line, 80, isExperienceRoleHeader));
   }
 
   return paragraphs;
@@ -275,11 +322,7 @@ async function generateWithOpenAI(prompt) {
     // ✅ NOTE: temperature is not supported for gpt-5.2-pro, so it's removed
   });
 
-  return (
-    response.output_text ||
-    response.output?.[0]?.content?.[0]?.text ||
-    ""
-  );
+  return response.output_text || response.output?.[0]?.content?.[0]?.text || "";
 }
 
 // ---------- Resume generation (OpenAI) ----------
@@ -312,7 +355,10 @@ exports.generateResume = async (req, res) => {
     const skillsList = Array.isArray(skills)
       ? skills
       : typeof skills === "string"
-      ? skills.split(",").map((s) => s.trim()).filter(Boolean)
+      ? skills
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
 
     // ✅ Force EXACT output structure (your HOS format)
@@ -325,16 +371,25 @@ ${fullName}
 ${email || ""} | ${phone || ""} | ${location || ""}
 
 PROFESSIONAL SUMMARY
-(2–4 lines. Mention total years of experience. Tailor to the job description.)
+(Exactly 8 bullet points. Use leading bullet markers like "• ". Keep each point concise and tailored to the job description.)
 
 SKILLS
-(One clean list, comma-separated, aligned with the job description.)
+(Exactly 12 bullet points. Use leading bullet markers like "• ".
+Each bullet MUST be in this exact pattern: **Main Skill**: detail1, detail2, detail3
+Example: • **Network Design**: LAN/WAN, Wireless Networks, Ubiquiti, Meraki, Cambium, Aruba, Cisco, Ruckus
+Bold ONLY the main skill using **double asterisks** as shown.)
 
 EXPERIENCE
-(Include 1–2 roles. Each role: Title — Company, Location | Dates, then 6–10 bullet points with measurable impact.)
+(Include 1–2 roles. Each role:
+1) First line is the role header: Title — Company, Location | Dates
+2) Then EXACTLY 12 bullet points starting with "• " (measurable impact, metrics where possible).
+Ensure the role header line is not a bullet.)
 
 EDUCATION
 (Include degree, school, location, year.)
+
+TECHNOLOGIES
+(Place this section ONLY after EDUCATION. Exactly 3 bullet points starting with "• ".)
 
 CERTIFICATIONS
 (List certifications relevant to the job.)
@@ -354,9 +409,9 @@ Skills provided (use and expand with job keywords as appropriate):
 ${skillsList.join(", ")}
 
 Strict rules:
-- Headings must match exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS
+- Headings must match exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, TECHNOLOGIES, CERTIFICATIONS
 - Do not add extra sections (no Projects, no Links, no References).
-- Use bullets only under EXPERIENCE.
+- Use bullets under PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, and TECHNOLOGIES only.
 - Output ONLY the resume text in the required format.
 `.trim();
 
@@ -396,7 +451,7 @@ exports.downloadResumeAsWord = async (req, res) => {
     console.log("📥 /api/v1/resume/download hit", req.method);
 
     // Prefer POST body; fallback to GET query
-    const source = req.method === "POST" ? (req.body || {}) : (req.query || {});
+    const source = req.method === "POST" ? req.body || {} : req.query || {};
 
     const name = source.name;
     const text = source.text;
@@ -494,7 +549,10 @@ exports.generateResumeAsWord = async (req, res) => {
     const skillsList = Array.isArray(skills)
       ? skills
       : typeof skills === "string"
-      ? skills.split(",").map((s) => s.trim()).filter(Boolean)
+      ? skills
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
       : [];
 
     const prompt = `
@@ -506,16 +564,24 @@ ${fullName}
 ${email || ""} | ${phone || ""} | ${location || ""}
 
 PROFESSIONAL SUMMARY
-(2–4 lines tailored to the job; include total years of experience.)
+(Exactly 8 bullet points. Use leading bullet markers like "• ".)
 
 SKILLS
-(Comma-separated list aligned to the job.)
+(Exactly 12 bullet points. Use leading bullet markers like "• ".
+Each bullet MUST be: **Main Skill**: detail1, detail2, detail3
+Example: • **Network Design**: LAN/WAN, Wireless Networks, Ubiquiti, Meraki, Cambium, Aruba, Cisco, Ruckus
+Bold ONLY the main skill using **double asterisks**.)
 
 EXPERIENCE
-(1–2 roles; each role has bullets with measurable outcomes.)
+(1–2 roles. Each role:
+- Role header line: Title — Company, Location | Dates
+- Then EXACTLY 12 bullet points starting with "• " with measurable outcomes.)
 
 EDUCATION
 (Degree, School, Location, Year.)
+
+TECHNOLOGIES
+(ONLY after EDUCATION. Exactly 3 bullet points starting with "• ".)
 
 CERTIFICATIONS
 (Only relevant certifications.)
@@ -528,9 +594,9 @@ Existing Summary (optional): ${summary || ""}
 Skills provided: ${skillsList.join(", ")}
 
 Rules:
-- Headings must be exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, CERTIFICATIONS
+- Headings must be exactly: PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, EDUCATION, TECHNOLOGIES, CERTIFICATIONS
 - No extra sections.
-- Bullets only under EXPERIENCE.
+- Use bullets under PROFESSIONAL SUMMARY, SKILLS, EXPERIENCE, and TECHNOLOGIES only.
 - Output ONLY the resume text.
 `.trim();
 
