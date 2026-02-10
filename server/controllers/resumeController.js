@@ -1,6 +1,6 @@
 // server/controllers/resumeController.js
 
-const { GoogleGenerativeAI } = require("@google/generative-ai");
+const OpenAI = require("openai");
 
 // ✅ DOCX imports (updated with BorderStyle)
 const {
@@ -17,6 +17,11 @@ const FONT_FAMILY = "Times New Roman";
 const BODY_SIZE = 18; // 9pt (docx uses half-points)
 const HEADING_SIZE = 24; // 12pt
 const NAME_SIZE = 24; // 12pt
+
+// ---------- OpenAI client ----------
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // ---------- Safe decoding (for legacy GET query support) ----------
 function safeDecodeURIComponent(encodedURI) {
@@ -116,7 +121,13 @@ function makeBulletParagraph(text) {
 }
 
 // ---------- Enforce your exact HOS format ----------
-function enforceHosFormat({ fullName = "", email = "", phone = "", location = "", resumeText = "" }) {
+function enforceHosFormat({
+  fullName = "",
+  email = "",
+  phone = "",
+  location = "",
+  resumeText = "",
+}) {
   const cleaned = String(resumeText || "").replace(/```/g, "").trim();
   const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
 
@@ -246,7 +257,30 @@ function parseHosTextToParagraphs(hosText) {
   return paragraphs;
 }
 
-// ---------- Resume generation (Gemini) ----------
+// ---------- Helper: Call OpenAI to generate resume text ----------
+async function generateWithOpenAI(prompt) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is missing");
+  }
+
+  const model = process.env.OPENAI_MODEL || "gpt-5.2-pro";
+  const maxTokens = Number(process.env.OPENAI_MAX_TOKENS || 4096);
+
+  const completion = await openai.chat.completions.create({
+    model,
+    messages: [
+      { role: "system", content: "You generate ATS-friendly resumes in plain text only." },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.3,
+    max_tokens: maxTokens,
+  });
+
+  return completion?.choices?.[0]?.message?.content || "";
+}
+
+// ---------- Resume generation (OpenAI) ----------
 exports.generateResume = async (req, res) => {
   try {
     console.log("✅ /api/v1/resume/generate hit");
@@ -271,11 +305,6 @@ exports.generateResume = async (req, res) => {
         message:
           "Job description is required. Please paste the job description you want to tailor the resume for.",
       });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ message: "GEMINI_API_KEY is missing" });
     }
 
     const skillsList = Array.isArray(skills)
@@ -329,14 +358,7 @@ Strict rules:
 - Output ONLY the resume text in the required format.
 `.trim();
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
-    });
-
-    const result = await model.generateContent(prompt);
-    const resumeTextRaw = result?.response?.text?.() || "";
+    const resumeTextRaw = await generateWithOpenAI(prompt);
 
     if (!resumeTextRaw.trim()) {
       return res.status(500).json({ message: "Empty response from AI" });
@@ -367,9 +389,6 @@ Strict rules:
 };
 
 // ---------- Download resume as Word (DOCX ONLY; no .txt fallback) ----------
-// ✅ Supports BOTH:
-// 1) POST /api/v1/resume/download  (recommended for long resumes)
-// 2) GET  /api/v1/resume/download?name=...&text=... (legacy)
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     console.log("📥 /api/v1/resume/download hit", req.method);
@@ -447,7 +466,6 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     console.log(`✅ Word document generated: ${fileName}`);
   } catch (error) {
-    // ✅ IMPORTANT: no TXT fallback — return real error
     console.error("❌ Word generation failed:", error);
     return res.status(500).json({
       success: false,
@@ -469,11 +487,6 @@ exports.generateResumeAsWord = async (req, res) => {
       return res.status(400).json({
         message: "Candidate name and job description are required",
       });
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return res.status(500).json({ message: "GEMINI_API_KEY is missing" });
     }
 
     const skillsList = Array.isArray(skills)
@@ -519,14 +532,7 @@ Rules:
 - Output ONLY the resume text.
 `.trim();
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
-      generationConfig: { maxOutputTokens: 4096, temperature: 0.3 },
-    });
-
-    const result = await model.generateContent(prompt);
-    const resumeTextRaw = result?.response?.text?.() || "";
+    const resumeTextRaw = await generateWithOpenAI(prompt);
 
     if (!resumeTextRaw.trim()) {
       return res.status(500).json({ message: "Empty response from AI" });
