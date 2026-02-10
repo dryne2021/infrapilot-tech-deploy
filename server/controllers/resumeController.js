@@ -258,6 +258,7 @@ function parseHosTextToParagraphs(hosText) {
 }
 
 // ---------- Helper: Call OpenAI to generate resume text ----------
+// ✅ UPDATED: uses Responses API (works with gpt-5.2-pro)
 async function generateWithOpenAI(prompt) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -267,17 +268,18 @@ async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-5.2-pro";
   const maxTokens = Number(process.env.OPENAI_MAX_TOKENS || 4096);
 
-  const completion = await openai.chat.completions.create({
+  const response = await openai.responses.create({
     model,
-    messages: [
-      { role: "system", content: "You generate ATS-friendly resumes in plain text only." },
-      { role: "user", content: prompt },
-    ],
+    input: prompt,
+    max_output_tokens: maxTokens,
     temperature: 0.3,
-    max_tokens: maxTokens,
   });
 
-  return completion?.choices?.[0]?.message?.content || "";
+  return (
+    response.output_text ||
+    response.output?.[0]?.content?.[0]?.text ||
+    ""
+  );
 }
 
 // ---------- Resume generation (OpenAI) ----------
