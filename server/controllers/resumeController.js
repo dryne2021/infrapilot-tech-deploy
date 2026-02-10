@@ -272,7 +272,7 @@ async function generateWithOpenAI(prompt) {
     model,
     input: prompt,
     max_output_tokens: maxTokens,
-    temperature: 0.3,
+    // ✅ NOTE: temperature is not supported for gpt-5.2-pro, so it's removed
   });
 
   return (
