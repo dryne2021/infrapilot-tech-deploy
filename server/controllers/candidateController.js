@@ -31,14 +31,37 @@ exports.getProfile = async (req, res, next) => {
 // @access  Private/Candidate
 exports.updateProfile = async (req, res, next) => {
   try {
-    const { skills, experience } = req.body;
+    const { skills, workHistory, experience } = req.body;
+
+    // Parse skills (can arrive as JSON string or array)
+    const parsedSkills =
+      skills !== undefined
+        ? (typeof skills === 'string' ? JSON.parse(skills) : skills)
+        : undefined;
+
+    /**
+     * IMPORTANT:
+     * Schema field is `workHistory`, not `experience`.
+     * Some clients may still send `experience`, so accept both.
+     */
+    const incomingWorkHistory = workHistory ?? experience;
+
+    // Parse work history (can arrive as JSON string or array)
+    const parsedWorkHistory =
+      incomingWorkHistory !== undefined
+        ? (typeof incomingWorkHistory === 'string'
+            ? JSON.parse(incomingWorkHistory)
+            : incomingWorkHistory)
+        : undefined;
+
+    // Only set fields provided (prevents overwriting with undefined)
+    const update = {};
+    if (parsedSkills !== undefined) update.skills = parsedSkills;
+    if (parsedWorkHistory !== undefined) update.workHistory = parsedWorkHistory;
 
     const candidate = await Candidate.findOneAndUpdate(
       { userId: req.user.id },
-      { 
-        skills: skills ? JSON.parse(skills) : undefined,
-        experience
-      },
+      update,
       {
         new: true,
         runValidators: true
@@ -61,8 +84,8 @@ exports.uploadResume = async (req, res, next) => {
   try {
     // Use multer upload middleware
     const uploadSingle = upload.single('resume');
-    
-    uploadSingle(req, res, async function(err) {
+
+    uploadSingle(req, res, async function (err) {
       if (err) {
         return next(new ErrorResponse(err.message, 400));
       }
@@ -236,7 +259,7 @@ exports.getApplications = async (req, res, next) => {
     if (status) query.status = status;
 
     const total = await JobApplication.countDocuments(query);
-    
+
     const applications = await JobApplication.find(query)
       .populate('recruiterId', 'name email')
       .sort({ createdAt: -1 })
