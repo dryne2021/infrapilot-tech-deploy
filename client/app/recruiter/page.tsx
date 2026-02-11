@@ -1500,6 +1500,84 @@ export default function RecruiterPage() {
                   </div>
                 </div>
 
+                {/* 🔥 FULL CANDIDATE PROFILE DETAILS */}
+                <div className="mb-8 space-y-6">
+
+                  {/* Summary */}
+                  {selectedCandidate.summary && (
+                    <div className="bg-white p-5 rounded-lg border">
+                      <h4 className="text-lg font-bold text-gray-800 mb-2">📝 Professional Summary</h4>
+                      <p className="text-gray-700 text-sm leading-relaxed">
+                        {selectedCandidate.summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Skills */}
+                  {selectedCandidate.skills?.length > 0 && (
+                    <div className="bg-white p-5 rounded-lg border">
+                      <h4 className="text-lg font-bold text-gray-800 mb-3">🛠 Skills</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCandidate.skills.map((skill: string, index: number) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-blue-100 text-gray-900 rounded-full text-xs font-medium"
+                          >
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Experience */}
+                  <div className="bg-white p-5 rounded-lg border">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4">💼 Work Experience</h4>
+
+                    {selectedCandidate.experience?.length > 0 ? (
+                      selectedCandidate.experience.map((exp: any, index: number) => (
+                        <div key={index} className="mb-4 pb-4 border-b last:border-none">
+                          <p className="font-semibold text-gray-900">
+                            {exp.title}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {exp.company} {exp.location ? `• ${exp.location}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {exp.startDate} – {exp.endDate || 'Present'}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">No work experience provided.</p>
+                    )}
+                  </div>
+
+                  {/* Education */}
+                  <div className="bg-white p-5 rounded-lg border">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4">🎓 Education</h4>
+
+                    {selectedCandidate.education?.length > 0 ? (
+                      selectedCandidate.education.map((edu: any, index: number) => (
+                        <div key={index} className="mb-4 pb-4 border-b last:border-none">
+                          <p className="font-semibold text-gray-900">
+                            {edu.school}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {edu.degree} {edu.field ? `– ${edu.field}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {edu.startYear} – {edu.endYear}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">No education provided.</p>
+                    )}
+                  </div>
+
+                </div>
+
                 {/* Resume Generator Section */}
                 <div id="resume-generator" className="mb-8">
                   <div className="flex justify-between items-center mb-4">
