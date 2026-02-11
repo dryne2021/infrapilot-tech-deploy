@@ -39,10 +39,8 @@ async function generateWithOpenAI(prompt) {
 // ==========================================================
 function formatMonthYear(dateString) {
   if (!dateString) return "";
-
   const date = new Date(dateString);
   if (isNaN(date)) return "";
-
   return date.toLocaleString("en-US", {
     month: "short",
     year: "numeric",
@@ -218,15 +216,11 @@ exports.generateResume = async (req, res) => {
   try {
     const {
       fullName,
-      targetRole,
       location,
       email,
       phone,
-      summary,
-      skills = [],
       experience = [],
       education = [],
-      certifications = [],
       jobDescription,
     } = req.body;
 
@@ -236,7 +230,7 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    // ✅ EXPERIENCE STRUCTURE
+    // EXPERIENCE INPUT (AI WILL ADD BULLETS + TECHNOLOGIES)
     const experienceText = Array.isArray(experience)
       ? experience
           .map((exp) => {
@@ -254,14 +248,13 @@ Dates: ${start} to ${end}
           .join("\n")
       : "";
 
-    // ✅ UPDATED EDUCATION STRUCTURE (NO YEARS)
+    // EDUCATION (NO YEARS)
     const educationText = Array.isArray(education)
       ? education
           .map((edu) => {
             const degree = edu.degree || "";
             const field = edu.field ? ` in ${edu.field}` : "";
             const school = edu.school || "";
-
             return `${degree}${field} | ${school}`;
           })
           .join("\n")
@@ -273,13 +266,27 @@ You are a senior professional resume writer.
 STRICT RULES:
 - DO NOT invent companies.
 - DO NOT invent schools.
-- DO NOT change the dates.
-- Use EXACT company names and titles provided.
-- Format education EXACTLY as:
+- DO NOT change experience dates.
+- For EACH company:
+    • Write 4-6 strong bullet points aligned to the job description.
+    • AFTER bullet points, add:
+      Technologies Used: comma separated tools relevant to that role.
+- Generate a TECHNOLOGIES section summarizing all technical skills.
+- Generate a CERTIFICATIONS section relevant to the job description.
+- Education format must be:
   Degree in Field | University Name
-- DO NOT include education years.
+- Do NOT include education years.
 
-FORMAT EXACTLY:
+EXPERIENCE FORMAT REQUIRED:
+
+Company Name
+Job Title — Date to Date
+• Bullet
+• Bullet
+• Bullet
+Technologies Used: Tool1, Tool2, Tool3
+
+SECTION ORDER MUST BE EXACT:
 
 PROFESSIONAL SUMMARY
 SKILLS
@@ -291,13 +298,13 @@ CERTIFICATIONS
 WORK HISTORY:
 ${experienceText}
 
-EDUCATION HISTORY:
+EDUCATION:
 ${educationText}
 
 JOB DESCRIPTION:
 ${jobDescription}
 
-Generate a complete professional resume.
+Generate a complete ATS-optimized professional resume.
 `;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
@@ -350,7 +357,7 @@ exports.downloadResumeAsWord = async (req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="Resume_${name.replace(/\s+/g, "_")}.docx"`
+      \`attachment; filename="Resume_\${name.replace(/\\s+/g, "_")}.docx"\`
     );
 
     res.send(buffer);
