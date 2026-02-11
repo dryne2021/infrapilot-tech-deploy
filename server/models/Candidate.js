@@ -15,7 +15,7 @@ const EducationSchema = new mongoose.Schema(
 );
 
 /* =========================
-   Experience (Work History)
+   Experience
 ========================= */
 const ExperienceSchema = new mongoose.Schema(
   {
@@ -116,8 +116,8 @@ const CandidateSchema = new mongoose.Schema(
     ========================= */
     education: [EducationSchema],
 
-    // ✅ CANONICAL FIELD
-    workHistory: [ExperienceSchema],
+    // ✅ CANONICAL FIELD (RENAMED)
+    experience: [ExperienceSchema],
 
     resumes: [ResumeSchema],
 
@@ -170,25 +170,12 @@ CandidateSchema.virtual("hasCredentials").get(function () {
 });
 
 /* =========================
-   🔥 CRITICAL FIX: Normalize experience
-   Accept BOTH:
-   - experience (frontend)
-   - workHistory (backend)
+   🔥 Experience Validation
 ========================= */
 CandidateSchema.pre("validate", function (next) {
-  // if frontend sent `experience`, map it
-  if (
-    Array.isArray(this.experience) &&
-    this.experience.length > 0 &&
-    (!this.workHistory || this.workHistory.length === 0)
-  ) {
-    this.workHistory = this.experience;
-  }
-
-  // enforce at least one valid experience
   const hasValidExperience =
-    Array.isArray(this.workHistory) &&
-    this.workHistory.some(
+    Array.isArray(this.experience) &&
+    this.experience.some(
       (e) =>
         e &&
         String(e.company || "").trim() &&
