@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 REQUIRED FUNCTION
+// 🔥 OPENAI GENERATOR
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -34,7 +34,24 @@ async function generateWithOpenAI(prompt) {
   return response.output_text || "";
 }
 
-// ---------- Text helpers ----------
+// ==========================================================
+// 🔥 DATE FORMATTER
+// ==========================================================
+function formatMonthYear(dateString) {
+  if (!dateString) return "";
+
+  const date = new Date(dateString);
+  if (isNaN(date)) return "";
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
+}
+
+// ==========================================================
+// 🔥 TEXT HELPERS
+// ==========================================================
 function normalizeLine(line) {
   return String(line || "").replace(/```/g, "").trim();
 }
@@ -70,19 +87,9 @@ function isSectionHeader(line) {
   return headers.has(upper);
 }
 
-// 🔥 NEW: Safe Date Formatter
-function formatMonthYear(dateString) {
-  if (!dateString) return "";
-
-  const date = new Date(dateString);
-  if (isNaN(date)) return "";
-
-  return date.toLocaleString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
-}
-
+// ==========================================================
+// 🔥 DOCX HELPERS
+// ==========================================================
 function makeRun(text, opts = {}) {
   return new TextRun({
     text: String(text ?? ""),
@@ -152,7 +159,9 @@ function parseHosTextToParagraphs(text) {
   return paragraphs;
 }
 
-// ---------- Format enforcement ----------
+// ==========================================================
+// 🔥 FORMAT ENFORCER
+// ==========================================================
 function enforceHosFormat({
   fullName = "",
   email = "",
@@ -203,9 +212,8 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 UPDATED RESUME GENERATION — FIXED DATE FORMATTING
+// 🚀 GENERATE RESUME
 // ==========================================================
-
 exports.generateResume = async (req, res) => {
   try {
     const {
@@ -228,7 +236,7 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    // 🔥 FIXED EXPERIENCE FORMATTING
+    // ✅ CORRECT EXPERIENCE STRUCTURE (WITH TITLE)
     const experienceText = Array.isArray(experience)
       ? experience
           .map((exp) => {
@@ -239,7 +247,8 @@ exports.generateResume = async (req, res) => {
 
             return `
 Company: ${exp.company || ""}
-Dates Worked: ${start} - ${end}
+Title: ${exp.title || ""}
+Dates: ${start} to ${end}
 `;
           })
           .join("\n")
@@ -251,28 +260,28 @@ Dates Worked: ${start} - ${end}
             (edu) => `
 School: ${edu.school || ""}
 Degree: ${edu.degree || ""}
-Years Attended: ${edu.startYear || ""} - ${edu.endYear || ""}
+Years: ${edu.startYear || ""} - ${edu.endYear || ""}
 `
           )
           .join("\n")
       : "";
 
-    const certificationsText = Array.isArray(certifications)
-      ? certifications.join(", ")
-      : certifications;
-
     const prompt = `
 You are a senior professional resume writer.
 
 STRICT RULES:
-- Use ONLY the company names and dates provided.
-- Use ONLY the school names and education years provided.
-- Do NOT invent fake companies.
-- Do NOT invent fake schools.
-- For each company listed, generate 3-5 strong professional bullet achievements.
-- Bullet points must align to the job description.
-- ATS optimized.
-- Clean formatting.
+- DO NOT invent companies.
+- DO NOT invent schools.
+- DO NOT change the dates.
+- Use EXACT company names and titles provided.
+- Use EXACT dates provided.
+- Format experience as:
+
+Company Name
+Job Title — Date to Date
+• Bullet
+• Bullet
+• Bullet
 
 FORMAT EXACTLY:
 
@@ -283,34 +292,17 @@ EDUCATION
 TECHNOLOGIES
 CERTIFICATIONS
 
-CANDIDATE INFORMATION:
-
-Name: ${fullName}
-Email: ${email || ""}
-Phone: ${phone || ""}
-Location: ${location || ""}
-Target Role: ${targetRole || "Professional"}
-
-SUMMARY:
-${summary || ""}
-
-SKILLS:
-${Array.isArray(skills) ? skills.join(", ") : skills}
-
 WORK HISTORY:
 ${experienceText}
 
 EDUCATION HISTORY:
 ${educationText}
 
-CERTIFICATIONS:
-${certificationsText || ""}
-
 JOB DESCRIPTION:
 ${jobDescription}
 
 Generate a complete professional resume.
-`.trim();
+`;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
@@ -335,7 +327,9 @@ Generate a complete professional resume.
   }
 };
 
-// ---------- Word Download ----------
+// ==========================================================
+// WORD DOWNLOAD
+// ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
