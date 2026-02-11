@@ -7,7 +7,6 @@ const {
   Packer,
   Paragraph,
   TextRun,
-  AlignmentType,
   BorderStyle,
 } = require("docx");
 
@@ -15,27 +14,15 @@ const {
 const FONT_FAMILY = "Times New Roman";
 const BODY_SIZE = 18;
 const HEADING_SIZE = 24;
-const NAME_SIZE = 24;
 
 // ---------- OpenAI client ----------
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// ---------- Safe decoding ----------
-function safeDecodeURIComponent(encodedURI) {
-  try {
-    return decodeURIComponent(encodedURI);
-  } catch {
-    return String(encodedURI);
-  }
-}
-
 // ---------- Text helpers ----------
 function normalizeLine(line) {
-  let s = String(line || "");
-  s = s.replace(/```/g, "");
-  return s.trim();
+  return String(line || "").replace(/```/g, "").trim();
 }
 
 function stripMarkdownBold(text) {
@@ -49,9 +36,9 @@ function isBulletLine(line) {
 
 function stripBulletMarker(line) {
   const t = String(line || "").trim();
-  if (t.startsWith("•")) return t.slice(1).trim();
-  if (t.startsWith("-")) return t.slice(1).trim();
-  if (t.startsWith("*")) return t.slice(1).trim();
+  if (t.startsWith("•") || t.startsWith("-") || t.startsWith("*")) {
+    return t.slice(1).trim();
+  }
   return t;
 }
 
@@ -138,7 +125,32 @@ function makeBulletParagraph(text) {
   });
 }
 
-// ---------- FORMAT ENFORCEMENT (KEPT) ----------
+function parseHosTextToParagraphs(text) {
+  const lines = String(text || "").split("\n");
+  const paragraphs = [];
+
+  for (const raw of lines) {
+    if (!raw || !raw.trim()) continue;
+
+    const line = normalizeLine(raw);
+
+    if (isSectionHeader(line)) {
+      paragraphs.push(makeHeadingParagraph(line));
+      continue;
+    }
+
+    if (isBulletLine(line)) {
+      paragraphs.push(makeBulletParagraph(stripBulletMarker(line)));
+      continue;
+    }
+
+    paragraphs.push(makeBodyParagraph(line));
+  }
+
+  return paragraphs;
+}
+
+// ---------- FORMAT ENFORCEMENT ----------
 function enforceHosFormat({
   fullName = "",
   email = "",
@@ -202,7 +214,10 @@ async function generateWithOpenAI(prompt) {
   return response.output_text || "";
 }
 
-// ---------- Resume generation ----------
+// ==========================================================
+// 🚀 UPDATED RESUME GENERATION — EXPERIENCE + EDUCATION INCLUDED
+// ==========================================================
+
 exports.generateResume = async (req, res) => {
   try {
     const {
@@ -213,6 +228,9 @@ exports.generateResume = async (req, res) => {
       phone,
       summary,
       skills = [],
+      experience = [],
+      education = [],
+      certifications = [],
       jobDescription,
     } = req.body;
 
@@ -222,8 +240,52 @@ exports.generateResume = async (req, res) => {
       });
     }
 
+    // 🔥 FORMAT EXPERIENCE PROPERLY
+    const experienceText = Array.isArray(experience)
+      ? experience
+          .map((exp) => {
+            return `
+Company: ${exp.company || ""}
+Role: ${exp.title || ""}
+Location: ${exp.location || ""}
+Dates: ${exp.startDate || ""} - ${exp.endDate || "Present"}
+`;
+          })
+          .join("\n")
+      : "";
+
+    // 🔥 FORMAT EDUCATION PROPERLY
+    const educationText = Array.isArray(education)
+      ? education
+          .map((edu) => {
+            return `
+School: ${edu.school || ""}
+Degree: ${edu.degree || ""}
+Field: ${edu.field || ""}
+Years: ${edu.startYear || ""} - ${edu.endYear || ""}
+`;
+          })
+          .join("\n")
+      : "";
+
+    const certificationsText = Array.isArray(certifications)
+      ? certifications.join(", ")
+      : certifications;
+
     const prompt = `
-Write an ATS-friendly resume in plain text using sections:
+You are a professional resume writer.
+
+STRICT REQUIREMENTS:
+- You MUST include ALL work experience entries provided.
+- You MUST include ALL education entries provided.
+- Do NOT invent fake companies or schools.
+- Use exact company names and exact school names provided.
+- Preserve dates.
+- Write in strong professional bullet points.
+- ATS optimized.
+
+Format exactly in this order:
+
 PROFESSIONAL SUMMARY
 SKILLS
 EXPERIENCE
@@ -231,18 +293,33 @@ EDUCATION
 TECHNOLOGIES
 CERTIFICATIONS
 
-Candidate:
+CANDIDATE DETAILS:
+
 Name: ${fullName}
 Email: ${email || ""}
 Phone: ${phone || ""}
 Location: ${location || ""}
 Target Role: ${targetRole || "Professional"}
 
-Summary: ${summary || ""}
-Skills: ${Array.isArray(skills) ? skills.join(", ") : skills}
+SUMMARY:
+${summary || ""}
 
-Job Description:
+SKILLS:
+${Array.isArray(skills) ? skills.join(", ") : skills}
+
+WORK EXPERIENCE DATA:
+${experienceText}
+
+EDUCATION DATA:
+${educationText}
+
+CERTIFICATIONS:
+${certificationsText || ""}
+
+JOB DESCRIPTION:
 ${jobDescription}
+
+Generate a complete professional resume using ALL provided experience and education information.
 `.trim();
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
@@ -261,14 +338,14 @@ ${jobDescription}
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("❌ Error:", error);
+    console.error("❌ Resume Generation Error:", error);
     return res.status(500).json({
       message: error.message || "Generation failed",
     });
   }
 };
 
-// ---------- Word Download ----------
+// ---------- Word Download (UNCHANGED) ----------
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
@@ -289,11 +366,7 @@ exports.downloadResumeAsWord = async (req, res) => {
     });
 
     const doc = new Document({
-      sections: [
-        {
-          children: parseHosTextToParagraphs(hosText),
-        },
-      ],
+      sections: [{ children: parseHosTextToParagraphs(hosText) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
