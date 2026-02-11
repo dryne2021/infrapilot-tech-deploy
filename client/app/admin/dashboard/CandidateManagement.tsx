@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
-import fetchWithAuth from '@/utils/fetchWithAuth'
+import { fetchWithAuth } from '@/utils/fetchWithAuth'
+
 
 // Subscription Plans Configuration
 const SUBSCRIPTION_PLANS = [

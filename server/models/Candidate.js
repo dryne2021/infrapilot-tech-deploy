@@ -1,5 +1,8 @@
 const mongoose = require("mongoose");
 
+/* =========================
+   Education
+========================= */
 const EducationSchema = new mongoose.Schema(
   {
     school: { type: String, required: true, trim: true },
@@ -11,6 +14,9 @@ const EducationSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/* =========================
+   Experience (Work History)
+========================= */
 const ExperienceSchema = new mongoose.Schema(
   {
     company: { type: String, required: true, trim: true },
@@ -23,6 +29,9 @@ const ExperienceSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/* =========================
+   Resume
+========================= */
 const ResumeSchema = new mongoose.Schema(
   {
     fileName: { type: String, trim: true },
@@ -33,9 +42,12 @@ const ResumeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/* =========================
+   Candidate
+========================= */
 const CandidateSchema = new mongoose.Schema(
   {
-    // link to user account (keep this)
+    // link to user account
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -44,7 +56,7 @@ const CandidateSchema = new mongoose.Schema(
       index: true,
     },
 
-    // candidate profile fields
+    // profile
     fullName: { type: String, trim: true, index: true },
     email: { type: String, trim: true, lowercase: true, index: true },
     phone: { type: String, trim: true },
@@ -61,6 +73,7 @@ const CandidateSchema = new mongoose.Schema(
       default: "entry",
     },
 
+    // subscription
     subscriptionPlan: {
       type: String,
       enum: ["free", "silver", "gold", "platinum", "enterprise"],
@@ -80,12 +93,9 @@ const CandidateSchema = new mongoose.Schema(
       index: true,
     },
 
-    /* =========================================================
-       ✅ Admin-created Candidate Credentials
-       - DO NOT store plaintext password
-       - username must be unique when set
-       - allow many candidates with empty username (sparse index)
-    ========================================================= */
+    /* =========================
+       Credentials
+    ========================= */
     username: {
       type: String,
       trim: true,
@@ -96,18 +106,24 @@ const CandidateSchema = new mongoose.Schema(
     passwordHash: {
       type: String,
       default: "",
-      select: false, // IMPORTANT: do not return passwordHash by default
+      select: false,
     },
     credentialsGenerated: { type: Date, default: null },
-    credentialsUpdatedBy: { type: String, default: "" }, // "admin" or admin userId
+    credentialsUpdatedBy: { type: String, default: "" },
 
-    // real education + work history data
+    /* =========================
+       Education & Experience
+    ========================= */
     education: [EducationSchema],
+
+    // ✅ CANONICAL FIELD
     workHistory: [ExperienceSchema],
 
     resumes: [ResumeSchema],
 
-    // recruiter assignment
+    /* =========================
+       Recruiter Assignment
+    ========================= */
     assignedRecruiterId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -131,41 +147,76 @@ const CandidateSchema = new mongoose.Schema(
   }
 );
 
-/* =========================================================
+/* =========================
    Indexes
-========================================================= */
-
-// Helpful compound index for admin searching/filtering
+========================= */
 CandidateSchema.index({ assignedRecruiterId: 1, subscriptionStatus: 1 });
 CandidateSchema.index({ subscriptionPlan: 1, paymentStatus: 1 });
 
-// ✅ Ensure username is unique ONLY when it exists (sparse)
 CandidateSchema.index(
   { username: 1 },
   {
     unique: true,
-    sparse: true, // allows multiple docs with "" or missing username
-    collation: { locale: "en", strength: 2 }, // case-insensitive uniqueness
+    sparse: true,
+    collation: { locale: "en", strength: 2 },
   }
 );
 
-// Optional: prevent duplicate emails (only if you want it unique when set)
-// CandidateSchema.index({ email: 1 }, { unique: true, sparse: true });
-
-/* =========================================================
+/* =========================
    Virtuals
-========================================================= */
-
+========================= */
 CandidateSchema.virtual("hasCredentials").get(function () {
   return Boolean(this.username && this.username.trim() && this.passwordHash);
 });
 
-/* =========================================================
-   Normalization guard (extra safety)
-========================================================= */
+/* =========================
+   🔥 CRITICAL FIX: Normalize experience
+   Accept BOTH:
+   - experience (frontend)
+   - workHistory (backend)
+========================= */
+CandidateSchema.pre("validate", function (next) {
+  // if frontend sent `experience`, map it
+  if (
+    Array.isArray(this.experience) &&
+    this.experience.length > 0 &&
+    (!this.workHistory || this.workHistory.length === 0)
+  ) {
+    this.workHistory = this.experience;
+  }
+
+  // enforce at least one valid experience
+  const hasValidExperience =
+    Array.isArray(this.workHistory) &&
+    this.workHistory.some(
+      (e) =>
+        e &&
+        String(e.company || "").trim() &&
+        String(e.title || "").trim() &&
+        String(e.startDate || "").trim()
+    );
+
+  if (!hasValidExperience) {
+    return next(
+      new Error(
+        "Student experience is required. Please add at least one experience with Company, Title, and Start Date."
+      )
+    );
+  }
+
+  next();
+});
+
+/* =========================
+   Normalization guard
+========================= */
 CandidateSchema.pre("save", function (next) {
-  if (typeof this.username === "string") this.username = this.username.trim().toLowerCase();
-  if (typeof this.email === "string") this.email = this.email.trim().toLowerCase();
+  if (typeof this.username === "string") {
+    this.username = this.username.trim().toLowerCase();
+  }
+  if (typeof this.email === "string") {
+    this.email = this.email.trim().toLowerCase();
+  }
   next();
 });
 
