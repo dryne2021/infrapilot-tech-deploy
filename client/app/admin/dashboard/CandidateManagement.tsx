@@ -59,7 +59,7 @@ const CandidateManagement = () => {
   const [filterPayment, setFilterPayment] = useState('all')
 
   // -----------------------------
-  // ✅ NEW: Credentials Modal state
+  // ✅ Credentials Modal state
   // -----------------------------
   const [showCredModal, setShowCredModal] = useState(false)
   const [credCandidate, setCredCandidate] = useState<any>(null)
@@ -578,7 +578,7 @@ const CandidateManagement = () => {
   const getCandidateKey = (c: any) => c._id || c.id
 
   // -----------------------------
-  // ✅ NEW: Credentials helpers
+  // ✅ Credentials helpers
   // -----------------------------
   const generatePassword = (length = 12) => {
     // simple strong-ish generator: letters + digits + symbols
@@ -640,7 +640,8 @@ const CandidateManagement = () => {
         },
         body: JSON.stringify({
           username: credUsername.trim(),
-          password: credPassword.trim(), // backend may accept OR auto-generate if omitted
+          password: credPassword.trim(),
+          email: credCandidate.email || credUsername.trim(),
         }),
       })
 
@@ -652,14 +653,68 @@ const CandidateManagement = () => {
         return
       }
 
-      setCredSuccess('Credentials saved successfully ✅')
-      await loadCandidates() // refresh list so UI reflects candidate.credentialsGenerated etc.
-      // keep modal open briefly so they can copy username/password, but we don't store/display hash
+      setCredSuccess('✅ Credentials saved successfully! Candidate can now log in using these credentials.')
+      
+      // Refresh candidate list to update the credentials status
+      await loadCandidates()
+      
+      // Keep modal open for 3 seconds so admin can copy the credentials
+      setTimeout(() => {
+        if (credSuccess) {
+          closeCredentialsModal()
+        }
+      }, 3000)
+
     } catch (err: any) {
       setCredError(err?.message || 'Network error creating credentials.')
     } finally {
       setCredLoading(false)
     }
+  }
+
+  // ✅ Helper to detect if candidate has credentials
+  const hasCredentials = (candidate: any) => {
+    return (
+      candidate?.credentialsGenerated === true ||
+      candidate?.hasCredentials === true ||
+      candidate?.username !== undefined ||
+      candidate?.passwordHash !== undefined ||
+      candidate?.loginEnabled === true ||
+      candidate?.canLogin === true
+    )
+  }
+
+  // ✅ Helper to get candidate login status
+  const getLoginStatus = (candidate: any) => {
+    if (hasCredentials(candidate)) {
+      return {
+        hasCreds: true,
+        statusText: 'Credentials Set',
+        statusClass: 'bg-green-100 text-green-800',
+        icon: '✅'
+      }
+    } else {
+      return {
+        hasCreds: false,
+        statusText: 'No Credentials',
+        statusClass: 'bg-yellow-100 text-yellow-800',
+        icon: '⏳'
+      }
+    }
+  }
+
+  // ✅ Copy credentials to clipboard
+  const copyCredentialsToClipboard = () => {
+    const text = `Username: ${credUsername}\nPassword: ${credPassword}`
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        const originalSuccess = credSuccess
+        setCredSuccess('✅ Credentials copied to clipboard!')
+        setTimeout(() => setCredSuccess(originalSuccess), 2000)
+      })
+      .catch(() => {
+        setCredError('Failed to copy to clipboard')
+      })
   }
 
   if (pageLoading) {
@@ -732,24 +787,19 @@ const CandidateManagement = () => {
         <div className="bg-white p-4 rounded-xl shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-900">Avg. Plan Value</p>
+              <p className="text-sm text-gray-900">With Login Access</p>
               <p className="text-xl font-bold mt-1 text-gray-900">
-                ${(
-                  candidates.reduce((sum: number, c: any) => {
-                    const plan = SUBSCRIPTION_PLANS.find((p) => p.id === c.subscriptionPlan)
-                    return sum + (plan?.price || 0)
-                  }, 0) / candidates.length || 0
-                ).toFixed(0)}
+                {candidates.filter((c: any) => hasCredentials(c)).length}
               </p>
             </div>
             <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-              <span className="text-purple-600 text-sm">📊</span>
+              <span className="text-purple-600 text-sm">🔐</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ✅ NEW: Create Credentials Modal */}
+      {/* ✅ Create Credentials Modal */}
       {showCredModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg">
@@ -814,7 +864,25 @@ const CandidateManagement = () => {
                 <p className="text-xs text-gray-600 mt-1">Minimum 6 characters.</p>
               </div>
 
+              {/* ✅ Login Instructions */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-semibold text-blue-800 mb-2">Candidate Login Instructions:</h4>
+                <p className="text-sm text-blue-700 mb-2">
+                  Candidate can log in at: <strong>/candidate/login</strong>
+                </p>
+                <p className="text-sm text-blue-700">
+                  Use the username and password above to access their dashboard, edit profile, and generate resumes.
+                </p>
+              </div>
+
               <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={copyCredentialsToClipboard}
+                  className="px-4 py-2 border border-gray-300 text-gray-900 rounded-lg hover:bg-gray-50 flex items-center gap-2"
+                >
+                  📋 Copy
+                </button>
                 <button
                   type="button"
                   onClick={closeCredentialsModal}
@@ -1587,12 +1655,8 @@ const CandidateManagement = () => {
                   const recruiterName = recruiter?.name || candidate.recruiterName || 'Unassigned'
                   const recruiterLoad = recruiter?.assignedCandidatesCount ?? ''
 
-                  // ✅ Detect if credentials already exist (field names may vary)
-                  const hasCreds =
-                    candidate?.credentialsGenerated === true ||
-                    candidate?.hasCredentials === true ||
-                    Boolean(candidate?.username) ||
-                    Boolean(candidate?.passwordHash)
+                  // ✅ Get candidate login status
+                  const loginStatus = getLoginStatus(candidate)
 
                   return (
                     <tr key={id} className="hover:bg-gray-50">
@@ -1611,15 +1675,9 @@ const CandidateManagement = () => {
                             <p className="text-xs text-gray-700">{candidate.phone || 'No phone'}</p>
                             {candidate.targetRole && <p className="text-xs text-blue-600 mt-1">{candidate.targetRole}</p>}
                             <div className="mt-1">
-                              {hasCreds ? (
-                                <span className="inline-flex items-center gap-1 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                  ✅ Credentials Set
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                  ⏳ No Credentials
-                                </span>
-                              )}
+                              <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${loginStatus.statusClass}`}>
+                                {loginStatus.icon} {loginStatus.statusText}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1692,17 +1750,17 @@ const CandidateManagement = () => {
                             View Full
                           </button>
 
-                          {/* ✅ NEW: Create Login Credentials */}
+                          {/* ✅ Create/Update Login Credentials */}
                           <button
                             onClick={() => openCredentialsModal(candidate)}
                             className={`px-3 py-1 text-sm rounded ${
-                              hasCreds
-                                ? 'bg-gray-100 text-gray-800 hover:bg-gray-200'
-                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                              loginStatus.hasCreds
+                                ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
                             }`}
-                            title={hasCreds ? 'Update / Reset credentials' : 'Create credentials'}
+                            title={loginStatus.hasCreds ? 'Update / Reset credentials' : 'Create login credentials'}
                           >
-                            {hasCreds ? 'Reset Credentials' : 'Create Credentials'}
+                            {loginStatus.hasCreds ? 'Update Credentials' : 'Create Login'}
                           </button>
 
                           <button
@@ -1726,11 +1784,12 @@ const CandidateManagement = () => {
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
         <h4 className="font-bold text-blue-800 mb-2">💡 Admin Tips:</h4>
         <ul className="text-blue-700 space-y-2">
+          <li>• <strong>Create login credentials</strong> for candidates so they can access their portal</li>
+          <li>• Candidates can log in at <strong>/candidate/login</strong> with their credentials</li>
           <li>• <strong>Complete profiles</strong> generate better resumes - fill all sections</li>
           <li>• Candidates can add <strong>unlimited experiences, education, and projects</strong></li>
           <li>• <strong>Gold Plan ($79)</strong> is recommended for comprehensive resume generation</li>
           <li>• Follow up with <strong>Pending Payments</strong> within 24 hours</li>
-          <li>• Export data regularly for backup purposes</li>
         </ul>
       </div>
     </div>
