@@ -396,18 +396,39 @@ exports.createCandidate = async (req, res, next) => {
 
     if (mergedSkills.length) payload.skills = Array.from(new Set(mergedSkills));
 
-    if (!payload.workHistory && Array.isArray(payload.experience)) {
-      payload.workHistory = payload.experience.map((x) => ({
-        company: String(x.company || "").trim() || "Not Provided",
-        title: String(x.title || "").trim() || "Not Provided",
-        startDate: String(x.startDate || "").trim(),
-        endDate: String(x.endDate || "").trim(),
-        location: String(x.location || "").trim(),
-        bullets: Array.isArray(x.achievements)
-          ? x.achievements.map((b) => String(b || "").trim()).filter(Boolean)
+    // THE REAL FIX
+    // We must enforce that startDate is NEVER empty before saving.
+    // Replace your final experience mapping with this STRICT version:
+    payload.experience = experience.map((exp, index) => {
+      const company = String(exp.company || "").trim();
+      const title = String(exp.title || "").trim();
+      const startDate = String(exp.startDate || "").trim();
+      const endDate = String(exp.endDate || "").trim();
+      const location = String(exp.location || "").trim();
+
+      if (!company || !title || !startDate) {
+        throw new Error(
+          `Experience ${index + 1} must include company, title, and start date`
+        );
+      }
+
+      return {
+        company,
+        title,
+        startDate,
+        endDate,
+        location,
+        bullets: Array.isArray(exp.achievements)
+          ? exp.achievements
+              .map(a => String(a || "").trim())
+              .filter(Boolean)
           : [],
-      }));
-    }
+      };
+    });
+
+    // Add This Debug Log
+    // Right before const created = await Candidate.create(payload);
+    console.log("🔥 FINAL EXPERIENCE SAVING:", payload.experience);
 
     const created = await Candidate.create(payload);
 
