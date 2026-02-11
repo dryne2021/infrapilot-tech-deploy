@@ -302,7 +302,7 @@ export default function RecruiterPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ FUNCTION: Generate and download Word resume
+  // ✅ UPDATED: FUNCTION: Generate and download Word resume (without experience restriction)
   const generateAndDownloadWordResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -320,16 +320,18 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ ADDED: Normalize and validate experience
-      const normalizedExp = normalizeExperience(candidate.experience);
+      // ✅ UPDATED: Normalize experience (no validation restriction)
+      const normalizedExp = normalizeExperience(candidate.experience || []);
 
+      // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
-        const msg =
-          'Student experience is required. Please add at least one experience with Company, Title, and Start Date in the student profile.';
-        setResumeError(msg);
-        alert(msg);
-        setIsGeneratingResume(false);
-        return;
+        const proceed = window.confirm(
+          '⚠️ No work experience found. The resume will be generated with education and skills only. Continue?'
+        );
+        if (!proceed) {
+          setIsGeneratingResume(false);
+          return;
+        }
       }
 
       const token = localStorage.getItem('infrapilot_token');
@@ -341,16 +343,15 @@ export default function RecruiterPage() {
         email: candidate.email || '',
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
-        skills: candidate.skills,
-        experience: normalizedExp,          // ✅ normalized + valid
-        education: candidate.education,
-        certifications: candidate.certifications,
-        projects: candidate.projects,
+        skills: candidate.skills || [],
+        experience: normalizedExp,          // Can be empty array
+        education: candidate.education || [],
+        certifications: candidate.certifications || [],
+        projects: candidate.projects || [],
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume,
       };
 
-      // ✅ ADDED: Log the experience payload
       console.log("Payload experience:", payload.experience);
 
       // 1) Generate resume text (JSON)
@@ -395,7 +396,7 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ UPDATED: Function to generate resume
+  // ✅ UPDATED: Function to generate resume (without experience restriction)
   const generateResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -414,16 +415,18 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ ADDED: Normalize and validate experience
-      const normalizedExp = normalizeExperience(candidate.experience);
+      // ✅ UPDATED: Normalize experience (no validation restriction)
+      const normalizedExp = normalizeExperience(candidate.experience || []);
 
+      // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
-        const msg =
-          'Student experience is required. Please add at least one experience with Company, Title, and Start Date in the student profile.';
-        setResumeError(msg);
-        alert(msg);
-        setIsGeneratingResume(false);
-        return;
+        const proceed = window.confirm(
+          '⚠️ No work experience found. The resume will be generated with education and skills only. Continue?'
+        );
+        if (!proceed) {
+          setIsGeneratingResume(false);
+          return;
+        }
       }
 
       const token = localStorage.getItem('infrapilot_token');
@@ -435,16 +438,15 @@ export default function RecruiterPage() {
         email: candidate.email || '',
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
-        skills: candidate.skills,
-        experience: normalizedExp,          // ✅ normalized + valid
-        education: candidate.education,
-        certifications: candidate.certifications,
-        projects: candidate.projects,
+        skills: candidate.skills || [],
+        experience: normalizedExp,          // Can be empty array
+        education: candidate.education || [],
+        certifications: candidate.certifications || [],
+        projects: candidate.projects || [],
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume,
       };
 
-      // ✅ ADDED: Log the experience payload
       console.log("Payload experience:", payload.experience);
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
