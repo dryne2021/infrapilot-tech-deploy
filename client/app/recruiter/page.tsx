@@ -58,36 +58,39 @@ export default function RecruiterPage() {
     description?: string;
   };
 
-  const normalizeExperience = (expList: any[]): NormalizedExperience[] => {
+  const normalizeExperience = (expList: any[]) => {
     if (!Array.isArray(expList)) return [];
 
     return expList
-      .map((e) => {
-        const company = (e.company || e.employer || e.organization || '').trim();
-        const title = (e.title || e.role || e.position || '').trim();
+      .map((e, index) => {
+        const company = (e.company || '').trim();
+        const title = (e.title || '').trim();
+        const location = (e.location || '').trim();
 
-        // allow different date keys
-        const startDate = (e.startDate || e.from || e.start || e.start_time || '').trim();
-        const endDateRaw = (e.endDate || e.to || e.end || e.end_time || '').trim();
+        const startDate = (e.startDate || '').trim();
+        const endDateRaw = (e.endDate || '').trim();
 
         const isCurrent =
           e.isCurrent === true ||
           e.current === true ||
-          e.present === true ||
-          (typeof endDateRaw === 'string' && endDateRaw.toLowerCase() === 'present');
+          (typeof endDateRaw === 'string' &&
+            endDateRaw.toLowerCase() === 'present');
 
-        const endDate = isCurrent ? '' : endDateRaw;
+        if (!company || !title || !startDate) return null;
+
+        const dates = isCurrent
+          ? `${startDate} – Present`
+          : `${startDate} – ${endDateRaw}`;
 
         return {
+          id: `exp${index + 1}`,   // REQUIRED by backend
           company,
           title,
-          startDate,
-          endDate,
-          isCurrent,
-          description: (e.description || e.summary || '').trim(),
+          location,
+          dates,
         };
       })
-      .filter((e) => e.company && e.title && e.startDate); // REQUIRED fields
+      .filter(Boolean);
   };
 
   // ✅ FIXED: API HELPER FUNCTION with Bearer Token
@@ -347,6 +350,9 @@ export default function RecruiterPage() {
         jobDescription: jobDescriptionForResume,
       };
 
+      // ✅ ADDED: Log the experience payload
+      console.log("Payload experience:", payload.experience);
+
       // 1) Generate resume text (JSON)
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
@@ -437,6 +443,9 @@ export default function RecruiterPage() {
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume,
       };
+
+      // ✅ ADDED: Log the experience payload
+      console.log("Payload experience:", payload.experience);
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
