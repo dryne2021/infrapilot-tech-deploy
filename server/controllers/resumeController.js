@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// REQUIRED FUNCTION
+// 🔥 REQUIRED FUNCTION (THIS FIXES YOUR ERROR)
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -139,8 +139,58 @@ function parseHosTextToParagraphs(text) {
   return paragraphs;
 }
 
+// ---------- Format enforcement ----------
+function enforceHosFormat({
+  fullName = "",
+  email = "",
+  phone = "",
+  location = "",
+  resumeText = "",
+}) {
+  const cleaned = String(resumeText || "").replace(/```/g, "").trim();
+  const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
+
+  const headerContact = [email, phone, location].filter(Boolean).join(" | ");
+
+  const targetOrder = [
+    "PROFESSIONAL SUMMARY",
+    "SKILLS",
+    "EXPERIENCE",
+    "EDUCATION",
+    "TECHNOLOGIES",
+    "CERTIFICATIONS",
+  ];
+
+  const sections = {};
+  let current = null;
+
+  for (const line of rawLines) {
+    const upper = stripMarkdownBold(line).toUpperCase();
+    if (targetOrder.includes(upper) || upper === "SUMMARY") {
+      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+    if (!current) continue;
+    sections[current].push(line);
+  }
+
+  const out = [];
+  out.push(fullName);
+  out.push(headerContact);
+  out.push("");
+
+  for (const h of targetOrder) {
+    out.push(h);
+    (sections[h] || []).forEach((l) => out.push(l));
+    out.push("");
+  }
+
+  return out.join("\n").trim() + "\n";
+}
+
 // ==========================================================
-// UPDATED RESUME GENERATION
+// 🚀 UPDATED RESUME GENERATION — COMPANY + DATES ONLY
 // ==========================================================
 
 exports.generateResume = async (req, res) => {
@@ -151,6 +201,8 @@ exports.generateResume = async (req, res) => {
       location,
       email,
       phone,
+      summary,
+      skills = [],
       experience = [],
       education = [],
       certifications = [],
@@ -163,8 +215,7 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    // 🔥 EXPERIENCE (MANUALLY STRUCTURED — LIKE EDUCATION)
-    const experienceBlock = Array.isArray(experience)
+    const experienceText = Array.isArray(experience)
       ? experience
           .map(
             (exp) => `
@@ -175,8 +226,7 @@ Dates Worked: ${exp.startDate || ""} - ${exp.endDate || "Present"}
           .join("\n")
       : "";
 
-    // EDUCATION (UNCHANGED)
-    const educationBlock = Array.isArray(education)
+    const educationText = Array.isArray(education)
       ? education
           .map(
             (edu) => `
@@ -188,62 +238,74 @@ Years Attended: ${edu.startYear || ""} - ${edu.endYear || ""}
           .join("\n")
       : "";
 
+    const certificationsText = Array.isArray(certifications)
+      ? certifications.join(", ")
+      : certifications;
+
     const prompt = `
 You are a senior professional resume writer.
 
 STRICT RULES:
-
-1. PROFESSIONAL SUMMARY → EXACTLY 8 bullet points.
-2. SKILLS → EXACTLY 12 bullet points.
-3. EXPERIENCE → Generate EXACTLY 12 bullet points TOTAL.
-   - Do NOT repeat company names.
-   - Do NOT describe companies.
-   - Align strongly with job description.
-4. TECHNOLOGIES → EXACTLY 3.
-5. CERTIFICATIONS → EXACTLY 3.
-6. ATS optimized.
+- Use ONLY the company names and dates provided.
+- Use ONLY the school names and education years provided.
+- Do NOT invent fake companies.
+- Do NOT invent fake schools.
+- For each company listed, generate 3-5 strong professional bullet achievements.
+- Bullet points must align to the job description.
+- ATS optimized.
+- Clean formatting.
 
 FORMAT EXACTLY:
 
 PROFESSIONAL SUMMARY
-- bullets
-
 SKILLS
-- bullets
-
 EXPERIENCE
-- bullets
-
 EDUCATION
-
 TECHNOLOGIES
-
 CERTIFICATIONS
+
+CANDIDATE INFORMATION:
+
+Name: ${fullName}
+Email: ${email || ""}
+Phone: ${phone || ""}
+Location: ${location || ""}
+Target Role: ${targetRole || "Professional"}
+
+SUMMARY:
+${summary || ""}
+
+SKILLS:
+${Array.isArray(skills) ? skills.join(", ") : skills}
+
+WORK HISTORY:
+${experienceText}
+
+EDUCATION HISTORY:
+${educationText}
+
+CERTIFICATIONS:
+${certificationsText || ""}
 
 JOB DESCRIPTION:
 ${jobDescription}
+
+Generate a complete professional resume.
 `.trim();
 
-    const aiGeneratedContent = await generateWithOpenAI(prompt);
+    const resumeTextRaw = await generateWithOpenAI(prompt);
 
-    // 🔥 MANUALLY INJECT EXPERIENCE BLOCK (LIKE EDUCATION)
-    const finalResumeText = `
-${fullName}
-${[email, phone, location].filter(Boolean).join(" | ")}
-
-${aiGeneratedContent.replace(
-      "EXPERIENCE",
-      `EXPERIENCE
-${experienceBlock}`
-    )}
-
-EDUCATION
-${educationBlock}
-`;
+    const hosText = enforceHosFormat({
+      fullName,
+      email,
+      phone,
+      location,
+      resumeText: resumeTextRaw,
+    });
 
     return res.status(200).json({
       success: true,
-      resumeText: finalResumeText.trim(),
+      resumeText: hosText,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -259,8 +321,16 @@ exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
 
+    const hosText = enforceHosFormat({
+      fullName: name,
+      email,
+      phone,
+      location,
+      resumeText: text,
+    });
+
     const doc = new Document({
-      sections: [{ children: parseHosTextToParagraphs(text) }],
+      sections: [{ children: parseHosTextToParagraphs(hosText) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
