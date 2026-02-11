@@ -105,7 +105,7 @@ const CandidateManagement = () => {
     // Professional Summary
     summary: '',
 
-    // Work Experience (array)
+    // Work Experience (array) - At least one required with Company, Title, and Start Date
     experience: [
       {
         id: Date.now(),
@@ -168,6 +168,7 @@ const CandidateManagement = () => {
   }
 
   const [formData, setFormData] = useState<any>(initialFormState)
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({})
 
   // ✅ BACKEND: load candidates
   const loadCandidates = async () => {
@@ -235,6 +236,10 @@ const CandidateManagement = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }))
+    // Clear error when user starts typing
+    if (formErrors[name]) {
+      setFormErrors(prev => ({ ...prev, [name]: '' }))
+    }
   }
 
   const handleArrayInputChange = (arrayName: string, index: number, field: string, value: any) => {
@@ -242,6 +247,10 @@ const CandidateManagement = () => {
       ...prev,
       [arrayName]: prev[arrayName].map((item: any, i: number) => (i === index ? { ...item, [field]: value } : item)),
     }))
+    // Clear experience errors when user starts typing
+    if (arrayName === 'experience' && (field === 'company' || field === 'title' || field === 'startDate')) {
+      setFormErrors(prev => ({ ...prev, experience: '' }))
+    }
   }
 
   const handleSkillsChange = (skillType: string, skill: string) => {
@@ -342,6 +351,41 @@ const CandidateManagement = () => {
     }
   }
 
+  // ✅ Validate form data
+  const validateForm = () => {
+    const errors: Record<string, string> = {}
+
+    // Required fields
+    if (!formData.firstName.trim()) errors.firstName = 'First name is required'
+    if (!formData.email.trim()) errors.email = 'Email is required'
+
+    // Validate experience - at least one experience with Company, Title, and Start Date
+    const hasValidExperience = formData.experience.some((exp: any) => 
+      exp.company.trim() && exp.title.trim() && exp.startDate.trim()
+    )
+
+    if (!hasValidExperience) {
+      errors.experience = 'At least one experience entry with Company, Title, and Start Date is required'
+    }
+
+    // Validate each experience entry
+    formData.experience.forEach((exp: any, index: number) => {
+      if (!exp.company.trim() && !exp.title.trim() && !exp.startDate.trim()) {
+        // Only show error if this is the first experience and it's incomplete
+        if (index === 0 && formData.experience.length === 1) {
+          // Error already shown by hasValidExperience check
+        }
+      } else if (!exp.company.trim() || !exp.title.trim() || !exp.startDate.trim()) {
+        // If some fields are filled but not all
+        if (!exp.company.trim()) errors[`experience_${index}_company`] = 'Company is required'
+        if (!exp.title.trim()) errors[`experience_${index}_title`] = 'Title is required'
+        if (!exp.startDate.trim()) errors[`experience_${index}_startDate`] = 'Start date is required'
+      }
+    })
+
+    return errors
+  }
+
   // ✅ helpers to sanitize payload for backend
   const toNumberOrUndefined = (v: any) => {
     if (v === null || v === undefined) return undefined
@@ -358,8 +402,11 @@ const CandidateManagement = () => {
     e.preventDefault()
     setError('')
 
-    if (!formData.firstName || !formData.email) {
-      alert('First name and email are required!')
+    // Validate form
+    const validationErrors = validateForm()
+    if (Object.keys(validationErrors).length > 0) {
+      setFormErrors(validationErrors)
+      alert('Please fill in all required fields, including at least one complete experience entry.')
       return
     }
 
@@ -448,6 +495,7 @@ const CandidateManagement = () => {
 
       await Promise.all([loadCandidates(), loadRecruiters()])
       setFormData(initialFormState)
+      setFormErrors({})
       setShowAddForm(false)
       alert('Candidate added successfully (saved in backend)!')
     } catch (err: any) {
@@ -836,6 +884,9 @@ const CandidateManagement = () => {
                         required
                         placeholder="John"
                       />
+                      {formErrors.firstName && (
+                        <p className="text-red-500 text-xs mt-1">{formErrors.firstName}</p>
+                      )}
                     </div>
 
                     <div>
@@ -861,6 +912,9 @@ const CandidateManagement = () => {
                         required
                         placeholder="john.doe@example.com"
                       />
+                      {formErrors.email && (
+                        <p className="text-red-500 text-xs mt-1">{formErrors.email}</p>
+                      )}
                     </div>
 
                     <div>
@@ -1109,12 +1163,20 @@ const CandidateManagement = () => {
                   </div>
                 </div>
 
-                {/* Section 4: Work Experience */}
+                {/* Section 4: Work Experience - REQUIRED */}
                 <div className="bg-gray-50 p-6 rounded-xl">
-                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
-                    <span className="bg-orange-100 text-orange-600 p-2 rounded-lg">💼</span>
-                    Work Experience
-                  </h4>
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                      <span className="bg-orange-100 text-orange-600 p-2 rounded-lg">💼</span>
+                      Work Experience *
+                    </h4>
+                    {formErrors.experience && (
+                      <p className="text-red-500 text-sm">{formErrors.experience}</p>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-700 mb-4">
+                    At least one experience entry with Company, Title, and Start Date is required.
+                  </p>
 
                   {formData.experience.map((exp: any, index: number) => (
                     <div key={exp.id} className="mb-6 p-4 border border-gray-200 rounded-lg bg-white">
@@ -1142,6 +1204,9 @@ const CandidateManagement = () => {
                             placeholder="Senior Software Engineer"
                             required
                           />
+                          {formErrors[`experience_${index}_title`] && (
+                            <p className="text-red-500 text-xs mt-1">{formErrors[`experience_${index}_title`]}</p>
+                          )}
                         </div>
 
                         <div>
@@ -1154,6 +1219,9 @@ const CandidateManagement = () => {
                             placeholder="Microsoft"
                             required
                           />
+                          {formErrors[`experience_${index}_company`] && (
+                            <p className="text-red-500 text-xs mt-1">{formErrors[`experience_${index}_company`]}</p>
+                          )}
                         </div>
 
                         <div>
@@ -1168,13 +1236,17 @@ const CandidateManagement = () => {
                         </div>
 
                         <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-1">Start Date</label>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Start Date *</label>
                           <input
                             type="date"
                             value={exp.startDate}
                             onChange={(e) => handleArrayInputChange('experience', index, 'startDate', e.target.value)}
                             className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            required
                           />
+                          {formErrors[`experience_${index}_startDate`] && (
+                            <p className="text-red-500 text-xs mt-1">{formErrors[`experience_${index}_startDate`]}</p>
+                          )}
                         </div>
 
                         <div>

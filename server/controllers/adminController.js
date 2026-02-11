@@ -250,7 +250,7 @@ exports.getCandidates = async (req, res, next) => {
   }
 };
 
-// ✅ createCandidate
+// ✅ createCandidate - FIXED EXPERIENCE VALIDATION
 exports.createCandidate = async (req, res, next) => {
   try {
     console.log("📥 [ADMIN] createCandidate payload:", req.body);
@@ -263,6 +263,29 @@ exports.createCandidate = async (req, res, next) => {
       `${String(body.firstName || "").trim()} ${String(body.lastName || "").trim()}`.trim();
 
     if (!emailNorm) return next(new ErrorResponse("Email is required", 400));
+
+    // ✅ FIX 1: Validate experience BEFORE creating user
+    const experience = Array.isArray(body.experience) ? body.experience : [];
+    
+    // Check if at least one experience exists
+    if (experience.length === 0) {
+      return next(new ErrorResponse("At least one experience entry is required", 400));
+    }
+
+    // Validate each experience entry
+    for (let i = 0; i < experience.length; i++) {
+      const exp = experience[i];
+      const company = String(exp?.company || "").trim();
+      const title = String(exp?.title || "").trim();
+      const startDate = String(exp?.startDate || "").trim();
+      
+      if (!company || !title || !startDate) {
+        return next(new ErrorResponse(
+          `Experience ${i + 1} must have company, title, and start date`, 
+          400
+        ));
+      }
+    }
 
     let user = await User.findOne({ email: emailNorm });
 
@@ -297,36 +320,30 @@ exports.createCandidate = async (req, res, next) => {
       fullName: fullNameNorm,
     };
 
-    // Ensure education minimal
-    const edu = Array.isArray(payload.education) ? payload.education : [];
-    const hasValidEdu =
-      edu.length > 0 &&
-      edu.some(
-        (e) =>
-          e &&
-          String(e.school || "").trim() &&
-          String(e.degree || "").trim() &&
-          String(e.field || "").trim()
-      );
-
-    if (!hasValidEdu) {
-      payload.education = [
-        {
-          school: "Not Provided",
-          degree: "Not Provided",
-          field: "Not Provided",
-          startYear: "",
-          endYear: "",
-        },
-      ];
-    } else {
-      payload.education = edu.map((e) => ({
-        ...e,
-        school: String(e.school || "").trim(),
-        degree: String(e.degree || "").trim(),
-        field: String(e.field || "").trim(),
-      }));
+    // ✅ FIX 2: Remove the education validation (it's checking wrong thing)
+    // Just ensure education is an array
+    if (!Array.isArray(payload.education)) {
+      payload.education = [];
     }
+
+    // ✅ FIX 3: Ensure experience array is properly formatted
+    payload.experience = experience.map((exp, index) => ({
+      ...exp,
+      // Ensure required fields are strings
+      company: String(exp.company || "").trim() || `Company ${index + 1}`,
+      title: String(exp.title || "").trim() || `Title ${index + 1}`,
+      startDate: String(exp.startDate || "").trim(),
+      endDate: String(exp.endDate || "").trim(),
+      location: String(exp.location || "").trim(),
+      description: String(exp.description || "").trim(),
+      achievements: Array.isArray(exp.achievements) 
+        ? exp.achievements.map(a => String(a || "").trim()).filter(Boolean)
+        : [],
+      technologies: Array.isArray(exp.technologies)
+        ? exp.technologies.map(t => String(t || "").trim()).filter(Boolean)
+        : [],
+      currentlyWorking: Boolean(exp.currentlyWorking || false),
+    }));
 
     const incomingAssignedRecruiter = body.assignedRecruiter;
 
