@@ -3,6 +3,40 @@
 import { useState, useEffect, useMemo } from 'react'
 import { fetchWithAuth } from '@/utils/fetchWithAuth'
 
+// =============================
+// 🔥 Experience Format Helpers
+// =============================
+
+// Format date to: Jan 2024
+const formatMonthYear = (dateString: string) => {
+  if (!dateString) return ''
+
+  const date = new Date(dateString)
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+// Format as:
+//
+// Atlantic Union Bank - Richmond, VA
+// Network Engineer - Jan 2023 to May 2024
+//
+const formatExperienceBlock = (exp: any) => {
+  if (!exp?.title || !exp?.company || !exp?.startDate) return ''
+
+  const start = formatMonthYear(exp.startDate)
+  const end = exp.currentlyWorking
+    ? 'Present'
+    : formatMonthYear(exp.endDate)
+
+  const companyLine = `${exp.company}${exp.location ? ` - ${exp.location}` : ''}`
+  const roleLine = `${exp.title} - ${start} to ${end}`
+
+  return `${companyLine}\n${roleLine}`
+}
+
 // Subscription Plans Configuration
 const SUBSCRIPTION_PLANS = [
   { id: 'free', name: 'Free Trial', price: 0, duration: 7 },
@@ -1737,12 +1771,23 @@ const CandidateManagement = () => {
                         <div className="flex flex-col gap-2">
                           <button
                             onClick={() => {
+                              const fullName =
+                                candidate.fullName ||
+                                `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()
+
+                              const experienceBlocks = (candidate.experience || [])
+                                .map((exp: any) => formatExperienceBlock(exp))
+                                .filter(Boolean)
+                                .join('\n\n')
+
                               alert(
-                                `Viewing full profile for ${
-                                  candidate.fullName
-                                }\n\nExperience: ${candidate.experience?.length || 0} positions\nEducation: ${
-                                  candidate.education?.length || 0
-                                } entries\nSkills: ${candidate.technicalSkills?.length || 0} technical skills`
+                                `Viewing full profile for ${fullName}
+
+EXPERIENCE:
+${experienceBlocks || 'No experience provided.'}
+
+Education: ${candidate.education?.length || 0} entries
+Skills: ${candidate.technicalSkills?.length || 0} technical skills`
                               )
                             }}
                             className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
