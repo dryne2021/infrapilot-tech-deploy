@@ -48,49 +48,21 @@ export default function RecruiterPage() {
   
   const router = useRouter()
 
-  // ✅ ADDED: Experience normalization helper
-  type NormalizedExperience = {
-    company: string;
-    title: string;
-    startDate: string;   // ISO or yyyy-mm
-    endDate?: string;    // optional if present/current
-    isCurrent?: boolean;
-    description?: string;
-  };
-
-  const normalizeExperience = (expList: any[]) => {
-    if (!Array.isArray(expList)) return [];
-
-    return expList
-      .map((e, index) => {
-        const company = (e.company || '').trim();
-        const title = (e.title || '').trim();
-        const location = (e.location || '').trim();
-
-        const startDate = (e.startDate || '').trim();
-        const endDateRaw = (e.endDate || '').trim();
-
-        const isCurrent =
-          e.isCurrent === true ||
-          e.current === true ||
-          (typeof endDateRaw === 'string' &&
-            endDateRaw.toLowerCase() === 'present');
-
-        if (!company || !title || !startDate) return null;
-
-        const dates = isCurrent
-          ? `${startDate} – Present`
-          : `${startDate} – ${endDateRaw}`;
-
-        return {
-          id: `exp${index + 1}`,   // REQUIRED by backend
-          company,
-          title,
-          location,
-          dates,
-        };
-      })
-      .filter(Boolean);
+  // ✅ CRITICAL FIX — send raw dates to backend (no concatenation)
+  const normalizeExperience = (exp: any) => {
+    return {
+      company: exp.company || "",
+      title: exp.title || "",
+      
+      // ✅ CRITICAL FIX — send raw dates to backend
+      startDate: exp.startDate || "",
+      endDate: exp.currentlyWorking
+        ? ""
+        : exp.endDate || "",
+      
+      location: exp.location || "",
+      bullets: exp.bullets || [],
+    };
   };
 
   // ✅ FIXED: API HELPER FUNCTION with Bearer Token
@@ -302,7 +274,7 @@ export default function RecruiterPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ UPDATED: FUNCTION: Generate and download Word resume (without experience restriction)
+  // ✅ UPDATED: FUNCTION: Generate and download Word resume (using correct normalizeExperience)
   const generateAndDownloadWordResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -320,8 +292,8 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ UPDATED: Normalize experience (no validation restriction)
-      const normalizedExp = normalizeExperience(candidate.experience || []);
+      // ✅ UPDATED: Use the new normalizeExperience function
+      const normalizedExp = (candidate.experience || []).map(normalizeExperience);
 
       // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
@@ -344,7 +316,7 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills || [],
-        experience: normalizedExp,          // Can be empty array
+        experience: normalizedExp,          // ✅ Now sends raw startDate/endDate
         education: candidate.education || [],
         certifications: candidate.certifications || [],
         projects: candidate.projects || [],
@@ -396,7 +368,7 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ UPDATED: Function to generate resume (without experience restriction)
+  // ✅ UPDATED: Function to generate resume (using correct normalizeExperience)
   const generateResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -415,8 +387,8 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ UPDATED: Normalize experience (no validation restriction)
-      const normalizedExp = normalizeExperience(candidate.experience || []);
+      // ✅ UPDATED: Use the new normalizeExperience function
+      const normalizedExp = (candidate.experience || []).map(normalizeExperience);
 
       // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
@@ -439,7 +411,7 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills || [],
-        experience: normalizedExp,          // Can be empty array
+        experience: normalizedExp,          // ✅ Now sends raw startDate/endDate
         education: candidate.education || [],
         certifications: candidate.certifications || [],
         projects: candidate.projects || [],
