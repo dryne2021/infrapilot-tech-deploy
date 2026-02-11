@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 OPENAI GENERATOR
+// OPENAI GENERATOR
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -35,7 +35,7 @@ async function generateWithOpenAI(prompt) {
 }
 
 // ==========================================================
-// 🔥 DATE FORMATTER
+// DATE FORMATTER
 // ==========================================================
 function formatMonthYear(dateString) {
   if (!dateString) return "";
@@ -48,7 +48,7 @@ function formatMonthYear(dateString) {
 }
 
 // ==========================================================
-// 🔥 TEXT HELPERS
+// TEXT HELPERS
 // ==========================================================
 function normalizeLine(line) {
   return String(line || "").replace(/```/g, "").trim();
@@ -86,13 +86,13 @@ function isSectionHeader(line) {
 }
 
 // ==========================================================
-// 🔥 DOCX HELPERS
+// DOCX HELPERS
 // ==========================================================
 function makeRun(text, opts = {}) {
   return new TextRun({
-    text: String(text ?? ""),
+    text: String(text || ""),
     font: FONT_FAMILY,
-    size: opts.size ?? BODY_SIZE,
+    size: opts.size || BODY_SIZE,
     bold: Boolean(opts.bold),
   });
 }
@@ -117,10 +117,10 @@ function makeHeadingParagraph(text) {
   });
 }
 
-function makeBodyParagraph(text, spacingAfter = 80) {
+function makeBodyParagraph(text) {
   return new Paragraph({
     children: [makeRun(text)],
-    spacing: { after: spacingAfter },
+    spacing: { after: 80 },
   });
 }
 
@@ -158,7 +158,7 @@ function parseHosTextToParagraphs(text) {
 }
 
 // ==========================================================
-// 🔥 FORMAT ENFORCER
+// FORMAT ENFORCER
 // ==========================================================
 function enforceHosFormat({
   fullName = "",
@@ -210,7 +210,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 GENERATE RESUME
+// GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
@@ -230,7 +230,6 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    // EXPERIENCE INPUT (AI WILL ADD BULLETS + TECHNOLOGIES)
     const experienceText = Array.isArray(experience)
       ? experience
           .map((exp) => {
@@ -239,73 +238,52 @@ exports.generateResume = async (req, res) => {
               ? formatMonthYear(exp.endDate)
               : "Present";
 
-            return `
-Company: ${exp.company || ""}
-Title: ${exp.title || ""}
-Dates: ${start} to ${end}
-`;
+            return (
+              "Company: " + (exp.company || "") + "\n" +
+              "Title: " + (exp.title || "") + "\n" +
+              "Dates: " + start + " to " + end + "\n"
+            );
           })
           .join("\n")
       : "";
 
-    // EDUCATION (NO YEARS)
     const educationText = Array.isArray(education)
       ? education
           .map((edu) => {
             const degree = edu.degree || "";
-            const field = edu.field ? ` in ${edu.field}` : "";
+            const field = edu.field ? " in " + edu.field : "";
             const school = edu.school || "";
-            return `${degree}${field} | ${school}`;
+            return degree + field + " | " + school;
           })
           .join("\n")
       : "";
 
-    const prompt = `
-You are a senior professional resume writer.
-
-STRICT RULES:
-- DO NOT invent companies.
-- DO NOT invent schools.
-- DO NOT change experience dates.
-- For EACH company:
-    • Write 4-6 strong bullet points aligned to the job description.
-    • AFTER bullet points, add:
-      Technologies Used: comma separated tools relevant to that role.
-- Generate a TECHNOLOGIES section summarizing all technical skills.
-- Generate a CERTIFICATIONS section relevant to the job description.
-- Education format must be:
-  Degree in Field | University Name
-- Do NOT include education years.
-
-EXPERIENCE FORMAT REQUIRED:
-
-Company Name
-Job Title — Date to Date
-• Bullet
-• Bullet
-• Bullet
-Technologies Used: Tool1, Tool2, Tool3
-
-SECTION ORDER MUST BE EXACT:
-
-PROFESSIONAL SUMMARY
-SKILLS
-EXPERIENCE
-EDUCATION
-TECHNOLOGIES
-CERTIFICATIONS
-
-WORK HISTORY:
-${experienceText}
-
-EDUCATION:
-${educationText}
-
-JOB DESCRIPTION:
-${jobDescription}
-
-Generate a complete ATS-optimized professional resume.
-`;
+    const prompt =
+      "You are a senior professional resume writer.\n\n" +
+      "STRICT RULES:\n" +
+      "- Do not invent companies.\n" +
+      "- Do not invent schools.\n" +
+      "- Do not change dates.\n" +
+      "- For EACH company:\n" +
+      "  * Write 4-6 strong bullet points.\n" +
+      "  * After bullets add: Technologies Used: Tool1, Tool2\n" +
+      "- Generate TECHNOLOGIES section summarizing all tools.\n" +
+      "- Generate CERTIFICATIONS section relevant to job description.\n" +
+      "- Education format: Degree in Field | University\n\n" +
+      "SECTION ORDER MUST BE EXACT:\n" +
+      "PROFESSIONAL SUMMARY\n" +
+      "SKILLS\n" +
+      "EXPERIENCE\n" +
+      "EDUCATION\n" +
+      "TECHNOLOGIES\n" +
+      "CERTIFICATIONS\n\n" +
+      "WORK HISTORY:\n" +
+      experienceText + "\n\n" +
+      "EDUCATION:\n" +
+      educationText + "\n\n" +
+      "JOB DESCRIPTION:\n" +
+      jobDescription + "\n\n" +
+      "Generate a complete ATS-optimized professional resume.";
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
@@ -323,7 +301,7 @@ Generate a complete ATS-optimized professional resume.
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("❌ Resume Generation Error:", error);
+    console.error("Resume Generation Error:", error);
     return res.status(500).json({
       message: error.message || "Generation failed",
     });
@@ -351,18 +329,23 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const buffer = await Packer.toBuffer(doc);
 
+    const safeFileName = (name || "Resume")
+      .replace(/\s+/g, "_")
+      .replace(/[^a-zA-Z0-9_]/g, "");
+
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
+
     res.setHeader(
       "Content-Disposition",
-      \`attachment; filename="Resume_\${name.replace(/\\s+/g, "_")}.docx"\`
+      'attachment; filename="Resume_' + safeFileName + '.docx"'
     );
 
     res.send(buffer);
   } catch (error) {
-    console.error("❌ Word generation failed:", error);
+    console.error("Word generation failed:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to generate Word document",
