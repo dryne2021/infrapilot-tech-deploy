@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 REQUIRED FUNCTION (THIS FIXES YOUR ERROR)
+// 🔥 REQUIRED FUNCTION
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -68,6 +68,19 @@ function isSectionHeader(line) {
     "CERTIFICATIONS",
   ]);
   return headers.has(upper);
+}
+
+// 🔥 NEW: Safe Date Formatter
+function formatMonthYear(dateString) {
+  if (!dateString) return "";
+
+  const date = new Date(dateString);
+  if (isNaN(date)) return "";
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function makeRun(text, opts = {}) {
@@ -190,7 +203,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 UPDATED RESUME GENERATION — COMPANY + DATES ONLY
+// 🚀 UPDATED RESUME GENERATION — FIXED DATE FORMATTING
 // ==========================================================
 
 exports.generateResume = async (req, res) => {
@@ -215,14 +228,20 @@ exports.generateResume = async (req, res) => {
       });
     }
 
+    // 🔥 FIXED EXPERIENCE FORMATTING
     const experienceText = Array.isArray(experience)
       ? experience
-          .map(
-            (exp) => `
+          .map((exp) => {
+            const start = formatMonthYear(exp.startDate);
+            const end = exp.endDate
+              ? formatMonthYear(exp.endDate)
+              : "Present";
+
+            return `
 Company: ${exp.company || ""}
-Dates Worked: ${exp.startDate || ""} - ${exp.endDate || "Present"}
-`
-          )
+Dates Worked: ${start} - ${end}
+`;
+          })
           .join("\n")
       : "";
 
