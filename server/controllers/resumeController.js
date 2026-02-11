@@ -236,7 +236,7 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    // ✅ CORRECT EXPERIENCE STRUCTURE (WITH TITLE)
+    // ✅ EXPERIENCE STRUCTURE
     const experienceText = Array.isArray(experience)
       ? experience
           .map((exp) => {
@@ -254,15 +254,16 @@ Dates: ${start} to ${end}
           .join("\n")
       : "";
 
+    // ✅ UPDATED EDUCATION STRUCTURE (NO YEARS)
     const educationText = Array.isArray(education)
       ? education
-          .map(
-            (edu) => `
-School: ${edu.school || ""}
-Degree: ${edu.degree || ""}
-Years: ${edu.startYear || ""} - ${edu.endYear || ""}
-`
-          )
+          .map((edu) => {
+            const degree = edu.degree || "";
+            const field = edu.field ? ` in ${edu.field}` : "";
+            const school = edu.school || "";
+
+            return `${degree}${field} | ${school}`;
+          })
           .join("\n")
       : "";
 
@@ -274,14 +275,9 @@ STRICT RULES:
 - DO NOT invent schools.
 - DO NOT change the dates.
 - Use EXACT company names and titles provided.
-- Use EXACT dates provided.
-- Format experience as:
-
-Company Name
-Job Title — Date to Date
-• Bullet
-• Bullet
-• Bullet
+- Format education EXACTLY as:
+  Degree in Field | University Name
+- DO NOT include education years.
 
 FORMAT EXACTLY:
 
