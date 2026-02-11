@@ -190,7 +190,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 UPDATED RESUME GENERATION (WITH STRICT COUNTS)
+// 🚀 UPDATED RESUME GENERATION (STRICT EXPERIENCE RULES)
 // ==========================================================
 
 exports.generateResume = async (req, res) => {
@@ -201,8 +201,6 @@ exports.generateResume = async (req, res) => {
       location,
       email,
       phone,
-      summary,
-      skills = [],
       experience = [],
       education = [],
       certifications = [],
@@ -215,6 +213,7 @@ exports.generateResume = async (req, res) => {
       });
     }
 
+    // ONLY COMPANY + DATES
     const experienceText = Array.isArray(experience)
       ? experience
           .map(
@@ -238,25 +237,24 @@ Years Attended: ${edu.startYear || ""} - ${edu.endYear || ""}
           .join("\n")
       : "";
 
-    const certificationsText = Array.isArray(certifications)
-      ? certifications.join(", ")
-      : certifications;
-
     const prompt = `
 You are a senior professional resume writer.
 
-STRICT OUTPUT RULES (MANDATORY):
+STRICT RULES:
 
-1. PROFESSIONAL SUMMARY → Generate EXACTLY 8 bullet points.
-2. SKILLS → Generate EXACTLY 12 bullet points.
-3. EXPERIENCE → Generate EXACTLY 12 bullet points total (distributed across companies).
-4. TECHNOLOGIES → Generate EXACTLY 3 technologies only.
-5. CERTIFICATIONS → Generate EXACTLY 3 certifications only.
-6. Do NOT invent fake companies.
-7. Do NOT invent fake schools.
-8. Use ONLY the companies and dates provided.
-9. ATS optimized and achievement focused.
-10. Clean bullet formatting.
+1. PROFESSIONAL SUMMARY → EXACTLY 8 bullet points.
+2. SKILLS → EXACTLY 12 bullet points.
+3. EXPERIENCE:
+   - Show ONLY company name and dates provided.
+   - Generate EXACTLY 12 bullet points TOTAL.
+   - Bullet points must be achievement-based.
+   - Align strongly with the job description.
+   - Do NOT invent companies.
+   - Do NOT describe companies.
+4. TECHNOLOGIES → EXACTLY 3.
+5. CERTIFICATIONS → EXACTLY 3.
+6. If no experience is provided, leave section blank.
+7. ATS optimized.
 
 FORMAT EXACTLY:
 
@@ -267,6 +265,8 @@ SKILLS
 - bullets
 
 EXPERIENCE
+Company: X
+Dates Worked: X - X
 - bullets
 
 EDUCATION
@@ -275,27 +275,24 @@ TECHNOLOGIES
 
 CERTIFICATIONS
 
-CANDIDATE INFORMATION:
+CANDIDATE:
 
 Name: ${fullName}
 Email: ${email || ""}
 Phone: ${phone || ""}
 Location: ${location || ""}
-Target Role: ${targetRole || "Professional"}
+Target Role: ${targetRole || ""}
 
-WORK HISTORY:
+WORK HISTORY PROVIDED:
 ${experienceText}
 
-EDUCATION HISTORY:
+EDUCATION:
 ${educationText}
-
-CERTIFICATIONS PROVIDED:
-${certificationsText || ""}
 
 JOB DESCRIPTION:
 ${jobDescription}
 
-Generate a complete professional resume following ALL rules strictly.
+Generate resume now.
 `.trim();
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
