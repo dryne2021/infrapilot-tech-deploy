@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// OPENAI GENERATOR
+// 🔥 OPENAI GENERATOR
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -35,20 +35,17 @@ async function generateWithOpenAI(prompt) {
 }
 
 // ==========================================================
-// DATE FORMATTER
+// 🔥 DATE FORMATTER
 // ==========================================================
 function formatMonthYear(dateString) {
   if (!dateString) return "";
   const date = new Date(dateString);
   if (isNaN(date)) return "";
-  return date.toLocaleString("en-US", {
-    month: "short",
-    year: "numeric",
-  });
+  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
 }
 
 // ==========================================================
-// TEXT HELPERS
+// 🔥 TEXT HELPERS
 // ==========================================================
 function normalizeLine(line) {
   return String(line || "").replace(/```/g, "").trim();
@@ -65,9 +62,7 @@ function isBulletLine(line) {
 
 function stripBulletMarker(line) {
   const t = String(line || "").trim();
-  if (t.startsWith("•") || t.startsWith("-") || t.startsWith("*")) {
-    return t.slice(1).trim();
-  }
+  if (isBulletLine(t)) return t.slice(1).trim();
   return t;
 }
 
@@ -86,13 +81,13 @@ function isSectionHeader(line) {
 }
 
 // ==========================================================
-// DOCX HELPERS
+// 🔥 DOCX HELPERS
 // ==========================================================
 function makeRun(text, opts = {}) {
   return new TextRun({
-    text: String(text || ""),
+    text: String(text ?? ""),
     font: FONT_FAMILY,
-    size: opts.size || BODY_SIZE,
+    size: opts.size ?? BODY_SIZE,
     bold: Boolean(opts.bold),
   });
 }
@@ -117,14 +112,31 @@ function makeHeadingParagraph(text) {
   });
 }
 
-function makeBodyParagraph(text) {
+function makeBodyParagraph(text, spacingAfter = 80) {
   return new Paragraph({
     children: [makeRun(text)],
-    spacing: { after: 80 },
+    spacing: { after: spacingAfter },
   });
 }
 
 function makeBulletParagraph(text) {
+  // Bold category before colon
+  const colonIndex = text.indexOf(":");
+  if (colonIndex !== -1) {
+    const category = text.substring(0, colonIndex + 1);
+    const rest = text.substring(colonIndex + 1);
+
+    return new Paragraph({
+      children: [
+        makeRun(category, { bold: true }),
+        makeRun(rest),
+      ],
+      bullet: { level: 0 },
+      spacing: { after: 60 },
+      indent: { left: 360, hanging: 180 },
+    });
+  }
+
   return new Paragraph({
     children: [makeRun(text)],
     bullet: { level: 0 },
@@ -158,7 +170,7 @@ function parseHosTextToParagraphs(text) {
 }
 
 // ==========================================================
-// FORMAT ENFORCER
+// 🔥 FORMAT ENFORCER
 // ==========================================================
 function enforceHosFormat({
   fullName = "",
@@ -210,7 +222,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// GENERATE RESUME
+// 🚀 GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
@@ -238,11 +250,11 @@ exports.generateResume = async (req, res) => {
               ? formatMonthYear(exp.endDate)
               : "Present";
 
-            return (
-              "Company: " + (exp.company || "") + "\n" +
-              "Title: " + (exp.title || "") + "\n" +
-              "Dates: " + start + " to " + end + "\n"
-            );
+            return `
+Company: ${exp.company || ""}
+Title: ${exp.title || ""}
+Dates: ${start} to ${end}
+`;
           })
           .join("\n")
       : "";
@@ -251,39 +263,60 @@ exports.generateResume = async (req, res) => {
       ? education
           .map((edu) => {
             const degree = edu.degree || "";
-            const field = edu.field ? " in " + edu.field : "";
+            const field = edu.field ? ` in ${edu.field}` : "";
             const school = edu.school || "";
-            return degree + field + " | " + school;
+            return `${degree}${field} | ${school}`;
           })
           .join("\n")
       : "";
 
-    const prompt =
-      "You are a senior professional resume writer.\n\n" +
-      "STRICT RULES:\n" +
-      "- Do not invent companies.\n" +
-      "- Do not invent schools.\n" +
-      "- Do not change dates.\n" +
-      "- For EACH company:\n" +
-      "  * Write 4-6 strong bullet points.\n" +
-      "  * After bullets add: Technologies Used: Tool1, Tool2\n" +
-      "- Generate TECHNOLOGIES section summarizing all tools.\n" +
-      "- Generate CERTIFICATIONS section relevant to job description.\n" +
-      "- Education format: Degree in Field | University\n\n" +
-      "SECTION ORDER MUST BE EXACT:\n" +
-      "PROFESSIONAL SUMMARY\n" +
-      "SKILLS\n" +
-      "EXPERIENCE\n" +
-      "EDUCATION\n" +
-      "TECHNOLOGIES\n" +
-      "CERTIFICATIONS\n\n" +
-      "WORK HISTORY:\n" +
-      experienceText + "\n\n" +
-      "EDUCATION:\n" +
-      educationText + "\n\n" +
-      "JOB DESCRIPTION:\n" +
-      jobDescription + "\n\n" +
-      "Generate a complete ATS-optimized professional resume.";
+    const prompt = `
+You are a senior professional resume writer.
+
+STRICT REQUIREMENTS:
+
+PROFESSIONAL SUMMARY:
+- Exactly 8 bullet points.
+- Each bullet must be strong and professional.
+
+SKILLS:
+- Exactly 12 skill lines.
+- Format EXACTLY like:
+  Networking Protocols: BGP, OSPF, EIGRP, VLANs
+- Main category before colon.
+- Subskills separated by commas.
+
+EXPERIENCE:
+- For EACH company:
+  - Add 12 detailed bullet points (long sentences).
+  - After bullet points add:
+    TECHNOLOGIES USED:
+    Followed by a comma-separated list.
+
+CERTIFICATIONS:
+- Generate exactly 3 professional certifications relevant to the job.
+
+DO NOT invent companies.
+DO NOT change dates.
+
+FORMAT EXACTLY:
+
+PROFESSIONAL SUMMARY
+SKILLS
+EXPERIENCE
+EDUCATION
+TECHNOLOGIES
+CERTIFICATIONS
+
+WORK HISTORY:
+${experienceText}
+
+EDUCATION HISTORY:
+${educationText}
+
+JOB DESCRIPTION:
+${jobDescription}
+`;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
@@ -301,7 +334,7 @@ exports.generateResume = async (req, res) => {
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
-    console.error("Resume Generation Error:", error);
+    console.error("❌ Resume Generation Error:", error);
     return res.status(500).json({
       message: error.message || "Generation failed",
     });
@@ -329,23 +362,20 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const buffer = await Packer.toBuffer(doc);
 
-    const safeFileName = (name || "Resume")
-      .replace(/\s+/g, "_")
-      .replace(/[^a-zA-Z0-9_]/g, "");
+    const safeName = (name || "Resume").replace(/\s+/g, "_");
 
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
-
     res.setHeader(
       "Content-Disposition",
-      'attachment; filename="Resume_' + safeFileName + '.docx"'
+      `attachment; filename="Resume_${safeName}.docx"`
     );
 
     res.send(buffer);
   } catch (error) {
-    console.error("Word generation failed:", error);
+    console.error("❌ Word generation failed:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to generate Word document",
