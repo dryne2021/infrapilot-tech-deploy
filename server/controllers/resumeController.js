@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 REQUIRED FUNCTION (THIS FIXES YOUR ERROR)
+// 🔥 REQUIRED FUNCTION
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
@@ -190,7 +190,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 UPDATED RESUME GENERATION — COMPANY + DATES ONLY
+// 🚀 UPDATED RESUME GENERATION (WITH STRICT COUNTS)
 // ==========================================================
 
 exports.generateResume = async (req, res) => {
@@ -245,23 +245,34 @@ Years Attended: ${edu.startYear || ""} - ${edu.endYear || ""}
     const prompt = `
 You are a senior professional resume writer.
 
-STRICT RULES:
-- Use ONLY the company names and dates provided.
-- Use ONLY the school names and education years provided.
-- Do NOT invent fake companies.
-- Do NOT invent fake schools.
-- For each company listed, generate 3-5 strong professional bullet achievements.
-- Bullet points must align to the job description.
-- ATS optimized.
-- Clean formatting.
+STRICT OUTPUT RULES (MANDATORY):
+
+1. PROFESSIONAL SUMMARY → Generate EXACTLY 8 bullet points.
+2. SKILLS → Generate EXACTLY 12 bullet points.
+3. EXPERIENCE → Generate EXACTLY 12 bullet points total (distributed across companies).
+4. TECHNOLOGIES → Generate EXACTLY 3 technologies only.
+5. CERTIFICATIONS → Generate EXACTLY 3 certifications only.
+6. Do NOT invent fake companies.
+7. Do NOT invent fake schools.
+8. Use ONLY the companies and dates provided.
+9. ATS optimized and achievement focused.
+10. Clean bullet formatting.
 
 FORMAT EXACTLY:
 
 PROFESSIONAL SUMMARY
+- bullets
+
 SKILLS
+- bullets
+
 EXPERIENCE
+- bullets
+
 EDUCATION
+
 TECHNOLOGIES
+
 CERTIFICATIONS
 
 CANDIDATE INFORMATION:
@@ -272,25 +283,19 @@ Phone: ${phone || ""}
 Location: ${location || ""}
 Target Role: ${targetRole || "Professional"}
 
-SUMMARY:
-${summary || ""}
-
-SKILLS:
-${Array.isArray(skills) ? skills.join(", ") : skills}
-
 WORK HISTORY:
 ${experienceText}
 
 EDUCATION HISTORY:
 ${educationText}
 
-CERTIFICATIONS:
+CERTIFICATIONS PROVIDED:
 ${certificationsText || ""}
 
 JOB DESCRIPTION:
 ${jobDescription}
 
-Generate a complete professional resume.
+Generate a complete professional resume following ALL rules strictly.
 `.trim();
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
@@ -316,7 +321,7 @@ Generate a complete professional resume.
   }
 };
 
-// ---------- Word Download ----------
+// ---------- Word Download (UNCHANGED) ----------
 exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
