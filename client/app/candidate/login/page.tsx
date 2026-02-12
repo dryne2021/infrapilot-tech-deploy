@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function CandidateLogin() {
   const [email, setEmail] = useState('')
@@ -57,9 +58,9 @@ export default function CandidateLogin() {
       localStorage.setItem('candidate_authenticated', 'true')
       if (candidateUser.id) localStorage.setItem('candidate_id', candidateUser.id)
 
-      // ✅ FIXED REDIRECT
-      router.push('/candidate/dashboard')
+      router.push('/candidate')
       router.refresh()
+
     } catch (err) {
       setError('Login failed. Please try again.')
     } finally {
@@ -70,6 +71,18 @@ export default function CandidateLogin() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 to-black p-4">
       <div className="max-w-md w-full p-8 bg-gray-800 rounded-2xl shadow-2xl border border-gray-700">
+        
+        {/* ✅ ADDED LOGO HERE */}
+        <div className="flex justify-center mb-6">
+          <Image
+            src="/logo.jpeg"
+            alt="Infrapilot Tech Logo"
+            width={80}
+            height={80}
+            className="object-contain"
+          />
+        </div>
+
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
             <span className="text-2xl">🧑‍💼</span>
