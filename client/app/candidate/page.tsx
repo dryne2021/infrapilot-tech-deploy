@@ -17,7 +17,18 @@ export default function CandidateDashboard() {
     router.replace('/candidate/login')
   }
 
-  // ✅ STEP 1: Load authenticated user using cookie
+  const handleLogout = async () => {
+    try {
+      await fetchWithAuth('/api/v1/auth/logout', {
+        method: 'POST',
+      })
+    } catch (err) {
+      console.error('Logout failed')
+    }
+
+    router.replace('/candidate/login')
+  }
+
   const loadProfile = async () => {
     try {
       const res = await fetchWithAuth('/api/v1/auth/me')
@@ -45,7 +56,6 @@ export default function CandidateDashboard() {
     }
   }
 
-  // ✅ STEP 2: Load applications
   const loadApplications = async (cid: string) => {
     try {
       const res = await fetchWithAuth(
@@ -96,6 +106,9 @@ export default function CandidateDashboard() {
     })
   }, [applications])
 
+  // 🔥 NEW: Latest application (FIRST VISIBLE)
+  const latestApplication = sortedApplications[0] || null
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
@@ -106,19 +119,53 @@ export default function CandidateDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4">
-        <h1 className="text-2xl font-bold">
-          Welcome, {candidateName}
-        </h1>
-        <p className="text-gray-400 text-sm">
-          Track your applications and download the resume used
-        </p>
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">
+            Welcome, {candidateName}
+          </h1>
+          <p className="text-gray-400 text-sm">
+            Track your applications and download the resume used
+          </p>
+        </div>
+
+        <button
+          onClick={handleLogout}
+          className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded text-sm font-semibold"
+        >
+          Logout
+        </button>
       </div>
 
       <div className="px-6 py-6">
         {error && (
           <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 text-red-200 mb-4">
             {error}
+          </div>
+        )}
+
+        {/* 🔥 NEW: Highlight Job ID + Description FIRST */}
+        {latestApplication && (
+          <div className="bg-blue-900/30 border border-blue-700 rounded-xl p-6 mb-6">
+            <h2 className="text-xl font-bold mb-3 text-blue-300">
+              Latest Application
+            </h2>
+
+            <div className="mb-4">
+              <span className="text-gray-400 text-sm">Job ID:</span>
+              <div className="text-lg font-semibold">
+                {latestApplication.jobId || '-'}
+              </div>
+            </div>
+
+            <div>
+              <span className="text-gray-400 text-sm">Job Description:</span>
+              <div className="text-sm mt-1">
+                {latestApplication.description ||
+                  latestApplication.jobDescriptionFull ||
+                  '-'}
+              </div>
+            </div>
           </div>
         )}
 
