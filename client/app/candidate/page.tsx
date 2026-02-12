@@ -14,10 +14,6 @@ export default function CandidateDashboard() {
   const [error, setError] = useState('')
 
   const [applications, setApplications] = useState<Application[]>([])
-  const [openId, setOpenId] = useState<string | null>(null)
-  const [detail, setDetail] = useState<any>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
-
   const [candidateName, setCandidateName] = useState<string>('Candidate')
 
   const clearAuthAndGoLogin = () => {
@@ -46,22 +42,39 @@ export default function CandidateDashboard() {
 
       const composed =
         (first || last) && `${first || ''} ${last || ''}`.trim()
+
       return composed || full || user?.email || 'Candidate'
     } catch {
       return 'Candidate'
     }
   }
 
+  // ✅ CORRECT ROUTE NOW
   const loadApplications = async () => {
     setError('')
     setAppsLoading(true)
+
     try {
-      const res = await fetchWithAuth('/api/v1/candidate/applications')
+      const rawUser = localStorage.getItem('infrapilot_user')
+      if (!rawUser) return clearAuthAndGoLogin()
+
+      const user = JSON.parse(rawUser)
+      const candidateId = user?.candidateId || user?._id
+
+      if (!candidateId) {
+        setError('Candidate ID not found.')
+        return
+      }
+
+      const res = await fetchWithAuth(
+        `/api/v1/job-applications/candidate/${candidateId}`
+      )
+
       if (res.status === 401) return clearAuthAndGoLogin()
 
-      const json = await res.json().catch(() => ({}))
-      const list = json?.data ?? json
-      setApplications(Array.isArray(list) ? list : [])
+      const json = await res.json()
+      setApplications(json?.jobs || [])
+
     } catch (e: any) {
       setError(e?.message || 'Failed to load applications')
     } finally {
@@ -69,29 +82,20 @@ export default function CandidateDashboard() {
     }
   }
 
-  const loadApplicationDetail = async (id: string) => {
-    setDetailLoading(true)
-    setError('')
-    try {
-      const res = await fetchWithAuth(`/api/v1/candidate/applications/${id}`)
-      if (res.status === 401) return clearAuthAndGoLogin()
-      const json = await res.json().catch(() => ({}))
-      setDetail(json?.data ?? json)
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load application details')
-    } finally {
-      setDetailLoading(false)
-    }
-  }
-
-  // 🔥 UPDATED: Download using resumeUrl from backend
-  const downloadResumeUsed = (resumeUrl: string | null) => {
-    if (!resumeUrl) {
+  // ✅ DOWNLOAD FUNCTION
+  const downloadResumeUsed = (fileUrl?: string) => {
+    if (!fileUrl) {
       alert('No resume available for this application.')
       return
     }
 
-    window.open(resumeUrl, '_blank')
+    const link = document.createElement('a')
+    link.href = fileUrl
+    link.target = '_blank'
+    link.download = ''
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
   }
 
   const sortedApplications = useMemo(() => {
@@ -116,7 +120,6 @@ export default function CandidateDashboard() {
         setLoading(false)
       }
     })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) {
@@ -129,18 +132,17 @@ export default function CandidateDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Header */}
       <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold truncate">
-            Welcome, <span className="text-white">{candidateName}</span>
+        <div>
+          <h1 className="text-2xl font-bold">
+            Welcome, <span>{candidateName}</span>
           </h1>
           <p className="text-gray-400 text-sm">
             Track your applications and download the resume used
           </p>
         </div>
 
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2">
           <button
             onClick={loadApplications}
             className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm font-semibold"
@@ -156,7 +158,7 @@ export default function CandidateDashboard() {
         </div>
       </div>
 
-      <div className="px-6 py-6 space-y-6">
+      <div className="px-6 py-6">
         {error && (
           <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 text-red-200">
             {error}
@@ -166,120 +168,79 @@ export default function CandidateDashboard() {
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-bold">My Applications</h2>
-            <p className="text-sm text-gray-400">
-              View job details and download the resume used for each application
-            </p>
           </div>
 
           {sortedApplications.length === 0 ? (
-            <div className="p-8 text-center text-gray-400">No applications found.</div>
+            <div className="p-8 text-center text-gray-400">
+              No applications found.
+            </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full table-fixed">
+              <table className="w-full">
                 <thead className="bg-gray-900">
                   <tr>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[34%]">
-                      Job
-                    </th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
-                      Job ID
-                    </th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
-                      Status
-                    </th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[16%]">
-                      Applied
-                    </th>
-                    <th className="p-4 text-left text-sm font-semibold text-gray-200 w-[18%]">
-                      Actions
-                    </th>
+                    <th className="p-4 text-left">Job Title</th>
+                    <th className="p-4 text-left">Job ID</th>
+                    <th className="p-4 text-left">Description</th>
+                    <th className="p-4 text-left">Resume Status</th>
+                    <th className="p-4 text-left">Status</th>
+                    <th className="p-4 text-left">Applied</th>
+                    <th className="p-4 text-left">Actions</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-gray-700">
                   {sortedApplications.map((a: any) => {
                     const id = a._id || a.id
-                    const jobTitle = a.jobTitle || 'Job'
-                    const jobId = a.jobId || '-'
-                    const status = a.status || 'Applied'
-                    const appliedAt = a.appliedDate
-                    const expanded = openId === id
+                    const resumeUrl = a?.resumeUsed?.fileUrl
 
                     return (
-                      <>
-                        <tr key={id} className="hover:bg-gray-900/40 align-top">
-                          <td className="p-4">
-                            <p className="font-semibold truncate" title={jobTitle}>
-                              {jobTitle}
-                            </p>
-                          </td>
+                      <tr key={id} className="hover:bg-gray-900/40">
+                        <td className="p-4 font-semibold">
+                          {a.jobTitle}
+                          <div className="text-xs text-gray-400">
+                            {a.companyName}
+                          </div>
+                        </td>
 
-                          <td className="p-4 text-gray-300">
-                            <span className="block truncate" title={String(jobId)}>
-                              {jobId}
-                            </span>
-                          </td>
+                        <td className="p-4 text-gray-300">
+                          {a.jobId || '-'}
+                        </td>
 
-                          <td className="p-4">
-                            <span className="inline-flex items-center px-2 py-1 rounded bg-blue-900/40 border border-blue-700 text-blue-200 text-xs">
-                              {status}
-                            </span>
-                          </td>
+                        <td className="p-4 text-gray-300 text-sm max-w-xs truncate">
+                          {a.description || a.jobDescriptionFull || '-'}
+                        </td>
 
-                          <td className="p-4 text-gray-300">
-                            {appliedAt ? new Date(appliedAt).toLocaleDateString() : '-'}
-                          </td>
+                        <td className="p-4 text-sm">
+                          {a.resumeStatus || 'Pending'}
+                        </td>
 
-                          <td className="p-4">
-                            <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-                              <button
-                                onClick={async () => {
-                                  if (expanded) {
-                                    setOpenId(null)
-                                    setDetail(null)
-                                    return
-                                  }
-                                  setOpenId(id)
-                                  await loadApplicationDetail(id)
-                                }}
-                                className="px-3 py-2 text-sm bg-gray-700 hover:bg-gray-600 rounded whitespace-nowrap"
-                              >
-                                {expanded ? 'Hide Job' : 'View Job'}
-                              </button>
+                        <td className="p-4">
+                          <span className="px-2 py-1 bg-blue-900/40 border border-blue-700 text-blue-200 rounded text-xs capitalize">
+                            {a.status}
+                          </span>
+                        </td>
 
-                              <button
-                                onClick={() => downloadResumeUsed(a.resumeUrl)}
-                                className="px-3 py-2 text-sm bg-green-700 hover:bg-green-600 rounded whitespace-nowrap"
-                              >
-                                Download Resume Used
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                        <td className="p-4 text-gray-300">
+                          {a.appliedDate
+                            ? new Date(a.appliedDate).toLocaleDateString()
+                            : '-'}
+                        </td>
 
-                        {expanded && (
-                          <tr>
-                            <td colSpan={5} className="p-4 bg-gray-900/30">
-                              <div className="rounded-lg border border-gray-700 p-4">
-                                <p className="text-sm text-gray-400 mb-2">
-                                  Full Job Description
-                                </p>
-
-                                {detailLoading ? (
-                                  <div className="text-gray-300">
-                                    Loading job description…
-                                  </div>
-                                ) : (
-                                  <div className="whitespace-pre-wrap text-gray-200 text-sm">
-                                    {detail?.jobDescription ||
-                                      'No description available.'}
-                                  </div>
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
+                        <td className="p-4">
+                          <button
+                            onClick={() => downloadResumeUsed(resumeUrl)}
+                            disabled={!resumeUrl}
+                            className={`px-3 py-2 text-sm rounded ${
+                              resumeUrl
+                                ? 'bg-green-700 hover:bg-green-600'
+                                : 'bg-gray-600 cursor-not-allowed'
+                            }`}
+                          >
+                            Download Resume
+                          </button>
+                        </td>
+                      </tr>
                     )
                   })}
                 </tbody>
