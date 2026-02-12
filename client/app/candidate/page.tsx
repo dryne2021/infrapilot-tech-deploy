@@ -12,7 +12,6 @@ export default function CandidateDashboard() {
   const [loading, setLoading] = useState(true)
   const [appsLoading, setAppsLoading] = useState(false)
   const [error, setError] = useState('')
-
   const [applications, setApplications] = useState<Application[]>([])
   const [candidateName, setCandidateName] = useState<string>('Candidate')
 
@@ -27,29 +26,16 @@ export default function CandidateDashboard() {
 
   const resolveCandidateName = () => {
     try {
-      const raw =
-        localStorage.getItem('infrapilot_user') ||
-        localStorage.getItem('candidate_user') ||
-        localStorage.getItem('user')
-
+      const raw = localStorage.getItem('infrapilot_user')
       if (!raw) return 'Candidate'
-
       const user = JSON.parse(raw)
-
-      const first = user?.firstName || user?.first_name
-      const last = user?.lastName || user?.last_name
-      const full = user?.name || user?.fullName || user?.full_name
-
-      const composed =
-        (first || last) && `${first || ''} ${last || ''}`.trim()
-
-      return composed || full || user?.email || 'Candidate'
+      return user?.name || user?.email || 'Candidate'
     } catch {
       return 'Candidate'
     }
   }
 
-  // ✅ CORRECT ROUTE NOW
+  // ✅ FIXED — USES user.id
   const loadApplications = async () => {
     setError('')
     setAppsLoading(true)
@@ -59,7 +45,12 @@ export default function CandidateDashboard() {
       if (!rawUser) return clearAuthAndGoLogin()
 
       const user = JSON.parse(rawUser)
-      const candidateId = user?.candidateId || user?._id
+
+      // 🔥 IMPORTANT FIX HERE
+      const candidateId =
+        user?.candidateId ||
+        user?._id ||
+        user?.id
 
       if (!candidateId) {
         setError('Candidate ID not found.')
@@ -82,7 +73,6 @@ export default function CandidateDashboard() {
     }
   }
 
-  // ✅ DOWNLOAD FUNCTION
   const downloadResumeUsed = (fileUrl?: string) => {
     if (!fileUrl) {
       alert('No resume available for this application.')
@@ -99,13 +89,11 @@ export default function CandidateDashboard() {
   }
 
   const sortedApplications = useMemo(() => {
-    const copy = [...applications]
-    copy.sort((a: any, b: any) => {
+    return [...applications].sort((a: any, b: any) => {
       const da = new Date(a?.appliedDate || 0).getTime()
       const db = new Date(b?.appliedDate || 0).getTime()
       return db - da
     })
-    return copy
   }, [applications])
 
   useEffect(() => {
@@ -149,6 +137,7 @@ export default function CandidateDashboard() {
           >
             {appsLoading ? 'Refreshing…' : 'Refresh'}
           </button>
+
           <button
             onClick={clearAuthAndGoLogin}
             className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold"
@@ -191,11 +180,10 @@ export default function CandidateDashboard() {
 
                 <tbody className="divide-y divide-gray-700">
                   {sortedApplications.map((a: any) => {
-                    const id = a._id || a.id
                     const resumeUrl = a?.resumeUsed?.fileUrl
 
                     return (
-                      <tr key={id} className="hover:bg-gray-900/40">
+                      <tr key={a._id} className="hover:bg-gray-900/40">
                         <td className="p-4 font-semibold">
                           {a.jobTitle}
                           <div className="text-xs text-gray-400">
