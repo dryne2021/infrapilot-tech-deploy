@@ -442,9 +442,10 @@ exports.downloadResumeAsWord = async (req, res) => {
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     );
+
     res.setHeader(
       "Content-Disposition",
-      \`attachment; filename="Resume_\${safeName}.docx"\`
+      `attachment; filename="Resume_${safeName}.docx"`
     );
 
     res.send(buffer);
