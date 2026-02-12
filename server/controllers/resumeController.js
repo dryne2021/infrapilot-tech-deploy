@@ -7,17 +7,67 @@ const {
   Paragraph,
   TextRun,
   BorderStyle,
+  AlignmentType,
 } = require("docx");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
 const BODY_SIZE = 18;
 const HEADING_SIZE = 24;
+const NAME_SIZE = 32;
 
 // ---------- OpenAI client ----------
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// ==========================================================
+// 🔥 UTILITIES
+// ==========================================================
+function toTitleCase(str) {
+  return String(str || "")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeLine(line) {
+  return String(line || "").replace(/```/g, "").trim();
+}
+
+function stripMarkdownBold(text) {
+  return String(text || "").replace(/\*\*(.*?)\*\*/g, "$1");
+}
+
+function isSectionHeader(line) {
+  const upper = stripMarkdownBold(normalizeLine(line)).toUpperCase();
+  return [
+    "PROFESSIONAL SUMMARY",
+    "SUMMARY",
+    "SKILLS",
+    "EXPERIENCE",
+    "EDUCATION",
+    "CERTIFICATIONS",
+  ].includes(upper);
+}
+
+function isExperienceHeader(line) {
+  return line.includes("—") && line.includes("|");
+}
+
+function isTechnologiesUsed(line) {
+  return line.toLowerCase().startsWith("technologies used");
+}
+
+function isBulletLine(line) {
+  const t = String(line || "").trim();
+  return t.startsWith("•") || t.startsWith("-") || t.startsWith("*");
+}
+
+function stripBulletMarker(line) {
+  const t = String(line || "").trim();
+  if (isBulletLine(t)) return t.slice(1).trim();
+  return t;
+}
 
 // ==========================================================
 // 🔥 OPENAI GENERATOR
@@ -35,65 +85,30 @@ async function generateWithOpenAI(prompt) {
 }
 
 // ==========================================================
-// 🔥 DATE FORMATTER
-// ==========================================================
-function formatMonthYear(dateString) {
-  if (!dateString) return "";
-  const date = new Date(dateString);
-  if (isNaN(date)) return "";
-  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
-}
-
-// ==========================================================
-// 🔥 TEXT HELPERS
-// ==========================================================
-function normalizeLine(line) {
-  return String(line || "").replace(/```/g, "").trim();
-}
-
-function stripMarkdownBold(text) {
-  return String(text || "").replace(/\*\*(.*?)\*\*/g, "$1");
-}
-
-function isBulletLine(line) {
-  const t = String(line || "").trim();
-  return t.startsWith("•") || t.startsWith("-") || t.startsWith("*");
-}
-
-function stripBulletMarker(line) {
-  const t = String(line || "").trim();
-  if (isBulletLine(t)) return t.slice(1).trim();
-  return t;
-}
-
-function isSectionHeader(line) {
-  const upper = stripMarkdownBold(normalizeLine(line)).toUpperCase();
-  const headers = new Set([
-    "PROFESSIONAL SUMMARY",
-    "SUMMARY",
-    "SKILLS",
-    "EXPERIENCE",
-    "EDUCATION",
-    "CERTIFICATIONS",
-  ]);
-  return headers.has(upper);
-}
-
-// Detect experience header like:
-// Amazon — Bingo | May 2020 to Feb 2025
-function isExperienceHeader(line) {
-  return line.includes("—") && line.includes("|");
-}
-
-// ==========================================================
 // 🔥 DOCX HELPERS
 // ==========================================================
 function makeRun(text, opts = {}) {
   return new TextRun({
     text: String(text ?? ""),
     font: FONT_FAMILY,
-    size: opts.size ?? BODY_SIZE,
+    size: opts.size || BODY_SIZE,
     bold: Boolean(opts.bold),
+  });
+}
+
+function makeNameParagraph(name) {
+  return new Paragraph({
+    children: [makeRun(name, { bold: true, size: NAME_SIZE })],
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 80 },
+  });
+}
+
+function makeContactParagraph(text) {
+  return new Paragraph({
+    children: [makeRun(text)],
+    alignment: AlignmentType.CENTER,
+    spacing: { after: 200 },
   });
 }
 
@@ -118,23 +133,32 @@ function makeHeadingParagraph(text) {
 }
 
 function makeExperienceHeaderParagraph(text) {
+  const parts = text.split("|");
+
+  const left = toTitleCase(parts[0].trim());
+  const right = parts[1] ? parts[1].trim() : "";
+
   return new Paragraph({
-    children: [makeRun(text, { bold: true })],
+    children: [
+      makeRun(left + " | " + right, { bold: true }),
+    ],
     spacing: { before: 120, after: 80 },
   });
 }
 
-function makeBodyParagraph(text, spacingAfter = 80) {
+function makeTechnologiesUsedParagraph(text) {
   return new Paragraph({
-    children: [makeRun(text)],
-    spacing: { after: spacingAfter },
+    children: [
+      makeRun(text.toUpperCase(), { bold: true }),
+    ],
+    spacing: { before: 80, after: 60 },
   });
 }
 
 function makeBulletParagraph(text) {
   const colonIndex = text.indexOf(":");
 
-  // Bold skill category before colon
+  // Bold skill category
   if (colonIndex !== -1) {
     const category = text.substring(0, colonIndex + 1);
     const rest = text.substring(colonIndex + 1);
@@ -158,28 +182,41 @@ function makeBulletParagraph(text) {
   });
 }
 
-function parseHosTextToParagraphs(text) {
+function makeBodyParagraph(text) {
+  return new Paragraph({
+    children: [makeRun(text)],
+    spacing: { after: 80 },
+  });
+}
+
+function parseHosTextToParagraphs(text, fullName, contactLine) {
   const lines = String(text || "").split("\n");
   const paragraphs = [];
+
+  // HEADER
+  paragraphs.push(makeNameParagraph(fullName));
+  paragraphs.push(makeContactParagraph(contactLine));
 
   for (const raw of lines) {
     if (!raw || !raw.trim()) continue;
 
     const line = normalizeLine(raw);
 
-    // Section headers
     if (isSectionHeader(line)) {
       paragraphs.push(makeHeadingParagraph(line));
       continue;
     }
 
-    // Experience header line (Amazon — Bingo | May 2020 to Feb 2025)
     if (isExperienceHeader(line)) {
       paragraphs.push(makeExperienceHeaderParagraph(line));
       continue;
     }
 
-    // Bullet lines
+    if (isTechnologiesUsed(line)) {
+      paragraphs.push(makeTechnologiesUsedParagraph(line));
+      continue;
+    }
+
     if (isBulletLine(line)) {
       paragraphs.push(makeBulletParagraph(stripBulletMarker(line)));
       continue;
@@ -192,72 +229,11 @@ function parseHosTextToParagraphs(text) {
 }
 
 // ==========================================================
-// 🔥 FORMAT ENFORCER
-// ==========================================================
-function enforceHosFormat({
-  fullName = "",
-  email = "",
-  phone = "",
-  location = "",
-  resumeText = "",
-}) {
-  const cleaned = String(resumeText || "").replace(/```/g, "").trim();
-  const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
-
-  const headerContact = [email, phone, location].filter(Boolean).join(" | ");
-
-  const targetOrder = [
-    "PROFESSIONAL SUMMARY",
-    "SKILLS",
-    "EXPERIENCE",
-    "EDUCATION",
-    "CERTIFICATIONS",
-  ];
-
-  const sections = {};
-  let current = null;
-
-  for (const line of rawLines) {
-    const upper = stripMarkdownBold(line).toUpperCase();
-
-    if (targetOrder.includes(upper) || upper === "SUMMARY") {
-      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
-      if (!sections[current]) sections[current] = [];
-      continue;
-    }
-
-    if (!current) continue;
-    sections[current].push(line);
-  }
-
-  const out = [];
-  out.push(fullName);
-  out.push(headerContact);
-  out.push("");
-
-  for (const h of targetOrder) {
-    out.push(h);
-    (sections[h] || []).forEach((l) => out.push(l));
-    out.push("");
-  }
-
-  return out.join("\n").trim() + "\n";
-}
-
-// ==========================================================
 // 🚀 GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
-    const {
-      fullName,
-      location,
-      email,
-      phone,
-      experience = [],
-      education = [],
-      jobDescription,
-    } = req.body;
+    const { fullName, jobDescription } = req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -265,88 +241,13 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    const experienceText = Array.isArray(experience)
-      ? experience
-          .map((exp) => {
-            const start = formatMonthYear(exp.startDate);
-            const end = exp.endDate
-              ? formatMonthYear(exp.endDate)
-              : "Present";
-
-            return `
-Company: ${exp.company || ""}
-Title: ${exp.title || ""}
-Dates: ${start} to ${end}
-`;
-          })
-          .join("\n")
-      : "";
-
-    const educationText = Array.isArray(education)
-      ? education
-          .map((edu) => {
-            const degree = edu.degree || "";
-            const field = edu.field ? ` in ${edu.field}` : "";
-            const school = edu.school || "";
-            return `${degree}${field} | ${school}`;
-          })
-          .join("\n")
-      : "";
-
-    const prompt = `
-You are a senior professional resume writer.
-
-PROFESSIONAL SUMMARY:
-- 8 bullet points.
-
-SKILLS:
-- 12 skill categories.
-- Format: Front-End Development: React, Vue, HTML5
-
-EXPERIENCE:
-- For each job:
-  - First line formatted exactly:
-    Company — Title | Month Year to Month Year
-  - 12 detailed bullet points.
-  - Add TECHNOLOGIES USED after bullets.
-
-CERTIFICATIONS:
-- 3 certifications.
-
-DO NOT invent companies.
-DO NOT change dates.
-
-FORMAT:
-
-PROFESSIONAL SUMMARY
-SKILLS
-EXPERIENCE
-EDUCATION
-CERTIFICATIONS
-
-WORK HISTORY:
-${experienceText}
-
-EDUCATION HISTORY:
-${educationText}
-
-JOB DESCRIPTION:
-${jobDescription}
-`;
-
-    const resumeTextRaw = await generateWithOpenAI(prompt);
-
-    const hosText = enforceHosFormat({
-      fullName,
-      email,
-      phone,
-      location,
-      resumeText: resumeTextRaw,
-    });
+    const resumeTextRaw = await generateWithOpenAI(
+      "Generate professional resume content."
+    );
 
     return res.status(200).json({
       success: true,
-      resumeText: hosText,
+      resumeText: resumeTextRaw,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -364,16 +265,24 @@ exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
 
-    const hosText = enforceHosFormat({
-      fullName: name,
-      email,
-      phone,
-      location,
-      resumeText: text,
-    });
+    const contactLine = [
+      email && `Email: ${email}`,
+      phone && `Mobile: ${phone}`,
+      location && `Location: ${location}`,
+    ]
+      .filter(Boolean)
+      .join(" | ");
 
     const doc = new Document({
-      sections: [{ children: parseHosTextToParagraphs(hosText) }],
+      sections: [
+        {
+          children: parseHosTextToParagraphs(
+            text,
+            name,
+            contactLine
+          ),
+        },
+      ],
     });
 
     const buffer = await Packer.toBuffer(doc);
