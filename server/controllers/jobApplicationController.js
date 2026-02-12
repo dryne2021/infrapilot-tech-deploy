@@ -2,7 +2,13 @@
 const JobApplication = require("../models/JobApplication");
 
 // 🔥 Allowed status values (must match schema enum)
-const ALLOWED_STATUSES = ['pending', 'applied', 'interview', 'offer', 'rejected'];
+const ALLOWED_STATUSES = [
+  "pending",
+  "applied",
+  "interview",
+  "offer",
+  "rejected",
+];
 
 // ============================================================
 // ✅ Create a job application
@@ -25,19 +31,28 @@ exports.createJobApplication = async (req, res) => {
       jobDescriptionFull,
       resumeText,
       resumeDocxUrl,
+      resumeFileName,
     } = req.body;
 
     if (!candidateId || !recruiterId || !jobTitle || !(company || companyName)) {
       return res.status(400).json({
-        message: "candidateId, recruiterId, jobTitle and company/companyName are required",
+        message:
+          "candidateId, recruiterId, jobTitle and company/companyName are required",
+      });
+    }
+
+    // 🔥 REQUIRE RESUME
+    if (!resumeDocxUrl) {
+      return res.status(400).json({
+        message: "Resume is required when applying for a job",
       });
     }
 
     // 🔥 Normalize status BEFORE Mongoose validation
-    status = (status || 'applied').toString().toLowerCase().trim();
+    status = (status || "applied").toString().toLowerCase().trim();
 
     if (!ALLOWED_STATUSES.includes(status)) {
-      status = 'applied';
+      status = "applied";
     }
 
     const doc = await JobApplication.create({
@@ -50,20 +65,29 @@ exports.createJobApplication = async (req, res) => {
       description: description || "",
       jobLink: jobLink || "",
       status,
-      resumeStatus: resumeStatus || "Pending",
+      resumeStatus: resumeStatus || "Submitted",
       matchScore: typeof matchScore === "number" ? matchScore : 0,
       salaryRange: salaryRange || "",
       jobDescriptionFull: jobDescriptionFull || "",
       resumeText: resumeText || "",
-      resumeDocxUrl: resumeDocxUrl || "",
+
+      // 🔥 ALWAYS SAVE RESUME OBJECT
+      resumeUsed: {
+        resumeId: null,
+        fileName: resumeFileName || "Resume.docx",
+        fileUrl: resumeDocxUrl,
+      },
+
+      resumeDocxUrl: resumeDocxUrl,
       appliedDate: new Date(),
     });
 
     return res.status(201).json({ success: true, job: doc });
-
   } catch (err) {
     console.error("❌ createJobApplication error:", err);
-    return res.status(500).json({ message: "Server error creating job application" });
+    return res
+      .status(500)
+      .json({ message: "Server error creating job application" });
   }
 };
 
@@ -78,14 +102,17 @@ exports.getJobsByCandidate = async (req, res) => {
     const filter = { candidateId };
     if (recruiterId) filter.recruiterId = recruiterId;
 
-    const jobs = await JobApplication.find(filter)
-      .sort({ appliedDate: -1, createdAt: -1 });
+    const jobs = await JobApplication.find(filter).sort({
+      appliedDate: -1,
+      createdAt: -1,
+    });
 
     return res.status(200).json({ success: true, jobs });
-
   } catch (err) {
     console.error("❌ getJobsByCandidate error:", err);
-    return res.status(500).json({ message: "Server error fetching job applications" });
+    return res
+      .status(500)
+      .json({ message: "Server error fetching job applications" });
   }
 };
 
@@ -103,7 +130,7 @@ exports.updateJobApplication = async (req, res) => {
       updates.status = updates.status.toString().toLowerCase().trim();
 
       if (!ALLOWED_STATUSES.includes(updates.status)) {
-        updates.status = 'pending';
+        updates.status = "pending";
       }
     }
 
@@ -126,10 +153,11 @@ exports.updateJobApplication = async (req, res) => {
     }
 
     return res.status(200).json({ success: true, job });
-
   } catch (err) {
     console.error("❌ updateJobApplication error:", err);
-    return res.status(500).json({ message: "Server error updating job application" });
+    return res
+      .status(500)
+      .json({ message: "Server error updating job application" });
   }
 };
 
@@ -150,9 +178,10 @@ exports.deleteJobApplication = async (req, res) => {
       success: true,
       message: "Job application deleted",
     });
-
   } catch (err) {
     console.error("❌ deleteJobApplication error:", err);
-    return res.status(500).json({ message: "Server error deleting job application" });
+    return res
+      .status(500)
+      .json({ message: "Server error deleting job application" });
   }
 };
