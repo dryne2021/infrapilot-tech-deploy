@@ -89,8 +89,6 @@ exports.login = async (req, res, next) => {
       req.body.emailOrUsername || req.body.email || req.body.username;
 
     const password = req.body.password;
-    const role = req.body.role;
-
     const identifier = (identifierRaw || "").toString().trim();
 
     if (!identifier || !password) {
@@ -124,33 +122,8 @@ exports.login = async (req, res, next) => {
         return next(new ErrorResponse("Invalid credentials", 401));
       }
 
-      let candidateId = null;
-
-      // 🔥 Fetch candidate profile if role is candidate
-      if (user.role === "candidate") {
-        const candidateProfile = await Candidate.findOne({
-          userId: user._id,
-        });
-
-        if (candidateProfile) {
-          candidateId = candidateProfile._id;
-        }
-      }
-
-      const token = user.getSignedJwtToken();
-
-      return res.status(200).json({
-        success: true,
-        token,
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          status: user.status,
-          candidateId: candidateId, // ✅ THIS FIXES EVERYTHING
-        },
-      });
+      // ✅ USE EXISTING TOKEN HANDLER
+      return sendTokenResponse(user, 200, res);
     }
 
     // =============================
@@ -183,20 +156,8 @@ exports.login = async (req, res, next) => {
       );
     }
 
-    const token = linkedUser.getSignedJwtToken();
-
-    return res.status(200).json({
-      success: true,
-      token,
-      user: {
-        id: linkedUser._id,
-        name: linkedUser.name,
-        email: linkedUser.email,
-        role: linkedUser.role,
-        status: linkedUser.status,
-        candidateId: candidate._id, // ✅ CRITICAL
-      },
-    });
+    // ✅ USE EXISTING TOKEN HANDLER
+    return sendTokenResponse(linkedUser, 200, res);
   } catch (error) {
     next(error);
   }
