@@ -19,6 +19,77 @@ const planPrices = {
   enterprise: 299,
 };
 
+// ✅ Safe user query helper - handles both ObjectId and string IDs
+const safeFindUsers = async (userIds) => {
+  if (!userIds || userIds.length === 0) return [];
+  
+  // Separate valid ObjectIds from string IDs
+  const objectIds = userIds.filter(id => 
+    id && mongoose.Types.ObjectId.isValid(id)
+  ).map(id => new mongoose.Types.ObjectId(id));
+  
+  const stringIds = userIds.filter(id => 
+    id && !mongoose.Types.ObjectId.isValid(id)
+  );
+  
+  // Build query that handles both types
+  const query = [];
+  if (objectIds.length > 0) query.push({ _id: { $in: objectIds } });
+  if (stringIds.length > 0) query.push({ _id: { $in: stringIds } });
+  
+  return User.find(query.length > 0 ? { $or: query } : {})
+    .select("username role email")
+    .lean();
+};
+
+// ✅ Safe user finder - get a single user by ID (handles both types)
+const safeFindUserById = async (userId, selectFields = "") => {
+  if (!userId) return null;
+  
+  let query;
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    query = User.findById(userId);
+  } else {
+    query = User.findOne({ _id: userId });
+  }
+  
+  if (selectFields) {
+    query = query.select(selectFields);
+  }
+  
+  return query.lean();
+};
+
+// ✅ Safe user finder with password - for credential operations
+const safeFindUserWithPassword = async (userId) => {
+  if (!userId) return null;
+  
+  let query;
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    query = User.findById(userId);
+  } else {
+    query = User.findOne({ _id: userId });
+  }
+  
+  return query.select("+password");
+};
+
+// ✅ Safe user delete - handles both ID types
+const safeDeleteUser = async (userId) => {
+  if (!userId) return null;
+  
+  try {
+    if (mongoose.Types.ObjectId.isValid(userId)) {
+      return await User.findByIdAndDelete(userId);
+    } else {
+      return await User.findOneAndDelete({ _id: userId });
+    }
+  } catch (error) {
+    console.warn(`Could not delete user ${userId}:`, error.message);
+    return null;
+  }
+};
+
 // ✅ Legacy helper (Candidate.passwordHash was old approach)
 const safeHashedPasswordFlag = (candidate) => {
   return candidate?.passwordHash && String(candidate.passwordHash).trim() ? "SET" : "";
@@ -224,7 +295,9 @@ exports.getCandidates = async (req, res, next) => {
       .lean();
 
     const userIds = candidates.map((c) => c.userId).filter(Boolean);
-    const users = await User.find({ _id: { $in: userIds } }).select("username role").lean();
+    
+    // ✅ FIXED: Use safe query helper
+    const users = await safeFindUsers(userIds);
     const userMap = new Map(users.map((u) => [String(u._id), u]));
 
     const mapped = candidates.map((c) => {
@@ -241,6 +314,8 @@ exports.getCandidates = async (req, res, next) => {
         credentialsGenerated: credsFlag, // ✅ makes UI badge reliable
         password: credsFlag ? "SET" : (u?.username ? "SET" : safeHashedPasswordFlag(c)),
         username: u?.username || c.username || "",
+        // ✅ Add this to help with debugging
+        userIdType: mongoose.Types.ObjectId.isValid(c.userId) ? 'ObjectId' : 'String',
       };
     });
 
@@ -459,8 +534,9 @@ exports.deleteCandidate = async (req, res, next) => {
     const candidate = await Candidate.findById(req.params.id);
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
 
+    // ✅ FIXED: Handle both ObjectId and string ID formats
     if (candidate.userId) {
-      await User.findByIdAndDelete(candidate.userId);
+      await safeDeleteUser(candidate.userId);
     }
 
     await candidate.deleteOne();
@@ -586,7 +662,10 @@ exports.deleteRecruiter = async (req, res, next) => {
       { $set: { assignedRecruiterId: null, assignedRecruiter: null, recruiterStatus: "", assignedDate: null } }
     );
 
-    if (recruiter.userId) await User.findByIdAndDelete(recruiter.userId);
+    // ✅ FIXED: Handle both ObjectId and string ID formats
+    if (recruiter.userId) {
+      await safeDeleteUser(recruiter.userId);
+    }
 
     await recruiter.deleteOne();
     return res.status(200).json({ success: true, data: {} });
@@ -754,7 +833,7 @@ exports.autoAssignCandidates = async (req, res, next) => {
 ========================================================= */
 exports.setCandidateCredentials = async (req, res, next) => {
   try {
-    const candidateId = req.params.id; // ✅ FIX: comes from URL param
+    const candidateId = req.params.id;
     const { username, password } = req.body;
 
     if (!candidateId) return next(new ErrorResponse("candidateId is required", 400));
@@ -786,8 +865,8 @@ exports.setCandidateCredentials = async (req, res, next) => {
     candidate.credentialsUpdatedBy = String(req.user?._id || "admin");
     await candidate.save();
 
-    // ✅ also set linked User password so login-by-email works reliably
-    const user = await User.findById(candidate.userId).select("+password");
+    // ✅ FIXED: Handle both ObjectId and string ID formats
+    const user = await safeFindUserWithPassword(candidate.userId);
     if (!user) return next(new ErrorResponse("Candidate user not found", 404));
 
     // Only set username on User if schema supports it
@@ -830,7 +909,8 @@ exports.resetCandidateCredentials = async (req, res, next) => {
     if (!candidate) return next(new ErrorResponse("Candidate not found", 404));
     if (!candidate.userId) return next(new ErrorResponse("Candidate userId missing", 400));
 
-    const user = await User.findById(candidate.userId).select("+password");
+    // ✅ FIXED: Handle both ObjectId and string ID formats
+    const user = await safeFindUserWithPassword(candidate.userId);
     if (!user) return next(new ErrorResponse("Candidate user not found", 404));
 
     candidate.username = "";
@@ -1050,7 +1130,8 @@ exports.resetRecruiterPassword = async (req, res, next) => {
     if (!recruiter) return next(new ErrorResponse("Recruiter not found", 404));
     if (!recruiter.userId) return next(new ErrorResponse("Recruiter user account missing", 400));
 
-    const user = await User.findById(recruiter.userId).select("+password");
+    // ✅ FIXED: Handle both ObjectId and string ID formats
+    const user = await safeFindUserWithPassword(recruiter.userId);
     if (!user) return next(new ErrorResponse("Recruiter user not found", 404));
 
     const newPassword = generateRandomPassword(10);
@@ -1063,6 +1144,96 @@ exports.resetRecruiterPassword = async (req, res, next) => {
     await recruiter.save();
 
     return res.status(200).json({ success: true, newPassword });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   DATA MIGRATION UTILITY (Optional - run once to fix existing data)
+   POST /api/v1/admin/migrate-user-ids
+========================================================= */
+exports.migrateUserIds = async (req, res, next) => {
+  try {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Migrate candidates
+      const candidates = await Candidate.find({
+        userId: { $exists: true, $ne: null }
+      }).session(session);
+      
+      let candidateMigrated = 0;
+      for (const candidate of candidates) {
+        if (!mongoose.Types.ObjectId.isValid(candidate.userId)) {
+          console.log(`Migrating candidate ${candidate._id} - userId: ${candidate.userId}`);
+          
+          let user = await User.findOne({ _id: candidate.userId }).session(session);
+          
+          if (!user) {
+            user = await User.create([{
+              _id: new mongoose.Types.ObjectId(),
+              email: candidate.email,
+              name: candidate.fullName || candidate.email,
+              role: 'candidate',
+              status: 'active',
+              password: 'Tmp@' + Math.random().toString(36).slice(2, 10) + '9!'
+            }], { session });
+            user = user[0];
+          }
+          
+          candidate.userId = user._id;
+          await candidate.save({ session });
+          candidateMigrated++;
+        }
+      }
+      
+      // Migrate recruiters
+      const recruiters = await Recruiter.find({
+        userId: { $exists: true, $ne: null }
+      }).session(session);
+      
+      let recruiterMigrated = 0;
+      for (const recruiter of recruiters) {
+        if (!mongoose.Types.ObjectId.isValid(recruiter.userId)) {
+          console.log(`Migrating recruiter ${recruiter._id} - userId: ${recruiter.userId}`);
+          
+          let user = await User.findOne({ _id: recruiter.userId }).session(session);
+          
+          if (!user) {
+            user = await User.create([{
+              _id: new mongoose.Types.ObjectId(),
+              email: recruiter.email,
+              name: recruiter.name,
+              role: 'recruiter',
+              status: recruiter.status || 'active',
+              password: 'Tmp@' + Math.random().toString(36).slice(2, 10) + '9!'
+            }], { session });
+            user = user[0];
+          }
+          
+          recruiter.userId = user._id;
+          await recruiter.save({ session });
+          recruiterMigrated++;
+        }
+      }
+      
+      await session.commitTransaction();
+      session.endSession();
+      
+      return res.status(200).json({
+        success: true,
+        data: {
+          candidatesMigrated: candidateMigrated,
+          recruitersMigrated: recruiterMigrated
+        }
+      });
+    } catch (error) {
+      await session.abortTransaction();
+      session.endSession();
+      throw error;
+    }
   } catch (error) {
     next(error);
   }
