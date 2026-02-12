@@ -7,14 +7,12 @@ const {
   Paragraph,
   TextRun,
   BorderStyle,
-  AlignmentType,
 } = require("docx");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
 const BODY_SIZE = 18;
 const HEADING_SIZE = 24;
-const NAME_SIZE = 32;
 
 // ---------- OpenAI client ----------
 const openai = new OpenAI({
@@ -28,45 +26,6 @@ function toTitleCase(str) {
   return String(str || "")
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function normalizeLine(line) {
-  return String(line || "").replace(/```/g, "").trim();
-}
-
-function stripMarkdownBold(text) {
-  return String(text || "").replace(/\*\*(.*?)\*\*/g, "$1");
-}
-
-function isSectionHeader(line) {
-  const upper = stripMarkdownBold(normalizeLine(line)).toUpperCase();
-  return [
-    "PROFESSIONAL SUMMARY",
-    "SUMMARY",
-    "SKILLS",
-    "EXPERIENCE",
-    "EDUCATION",
-    "CERTIFICATIONS",
-  ].includes(upper);
-}
-
-function isExperienceHeader(line) {
-  return line.includes("—") && line.includes("|");
-}
-
-function isTechnologiesUsed(line) {
-  return line.toLowerCase().startsWith("technologies used");
-}
-
-function isBulletLine(line) {
-  const t = String(line || "").trim();
-  return t.startsWith("•") || t.startsWith("-") || t.startsWith("*");
-}
-
-function stripBulletMarker(line) {
-  const t = String(line || "").trim();
-  if (isBulletLine(t)) return t.slice(1).trim();
-  return t;
 }
 
 // ==========================================================
@@ -85,30 +44,67 @@ async function generateWithOpenAI(prompt) {
 }
 
 // ==========================================================
+// 🔥 DATE FORMATTER
+// ==========================================================
+function formatMonthYear(dateString) {
+  if (!dateString) return "";
+  const date = new Date(dateString);
+  if (isNaN(date)) return "";
+  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
+// ==========================================================
+// 🔥 TEXT HELPERS
+// ==========================================================
+function normalizeLine(line) {
+  return String(line || "").replace(/```/g, "").trim();
+}
+
+function stripMarkdownBold(text) {
+  return String(text || "").replace(/\*\*(.*?)\*\*/g, "$1");
+}
+
+function isBulletLine(line) {
+  const t = String(line || "").trim();
+  return t.startsWith("•") || t.startsWith("-") || t.startsWith("*");
+}
+
+function stripBulletMarker(line) {
+  const t = String(line || "").trim();
+  if (isBulletLine(t)) return t.slice(1).trim();
+  return t;
+}
+
+function isSectionHeader(line) {
+  const upper = stripMarkdownBold(normalizeLine(line)).toUpperCase();
+  const headers = new Set([
+    "PROFESSIONAL SUMMARY",
+    "SUMMARY",
+    "SKILLS",
+    "EXPERIENCE",
+    "EDUCATION",
+    "CERTIFICATIONS",
+  ]);
+  return headers.has(upper);
+}
+
+function isExperienceHeader(line) {
+  return line.includes("—") && line.includes("|");
+}
+
+function isTechnologiesUsed(line) {
+  return line.toLowerCase().startsWith("technologies used");
+}
+
+// ==========================================================
 // 🔥 DOCX HELPERS
 // ==========================================================
 function makeRun(text, opts = {}) {
   return new TextRun({
     text: String(text ?? ""),
     font: FONT_FAMILY,
-    size: opts.size || BODY_SIZE,
+    size: opts.size ?? BODY_SIZE,
     bold: Boolean(opts.bold),
-  });
-}
-
-function makeNameParagraph(name) {
-  return new Paragraph({
-    children: [makeRun(name, { bold: true, size: NAME_SIZE })],
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 80 },
-  });
-}
-
-function makeContactParagraph(text) {
-  return new Paragraph({
-    children: [makeRun(text)],
-    alignment: AlignmentType.CENTER,
-    spacing: { after: 200 },
   });
 }
 
@@ -134,19 +130,30 @@ function makeHeadingParagraph(text) {
 
 function makeExperienceHeaderParagraph(text) {
   const parts = text.split("|");
+
   const left = toTitleCase(parts[0].trim());
   const right = parts[1] ? parts[1].trim() : "";
 
   return new Paragraph({
-    children: [makeRun(left + " | " + right, { bold: true })],
+    children: [
+      makeRun(left + " | " + right, { bold: true }),
+    ],
     spacing: { before: 120, after: 80 },
   });
 }
 
 function makeTechnologiesUsedParagraph(text) {
+  const upper = text.toUpperCase();
   return new Paragraph({
-    children: [makeRun(text.toUpperCase(), { bold: true })],
+    children: [makeRun(upper, { bold: true })],
     spacing: { before: 80, after: 60 },
+  });
+}
+
+function makeBodyParagraph(text, spacingAfter = 80) {
+  return new Paragraph({
+    children: [makeRun(text)],
+    spacing: { after: spacingAfter },
   });
 }
 
@@ -176,19 +183,9 @@ function makeBulletParagraph(text) {
   });
 }
 
-function makeBodyParagraph(text) {
-  return new Paragraph({
-    children: [makeRun(text)],
-    spacing: { after: 80 },
-  });
-}
-
-function parseHosTextToParagraphs(text, fullName, contactLine) {
+function parseHosTextToParagraphs(text) {
   const lines = String(text || "").split("\n");
   const paragraphs = [];
-
-  paragraphs.push(makeNameParagraph(fullName));
-  paragraphs.push(makeContactParagraph(contactLine));
 
   for (const raw of lines) {
     if (!raw || !raw.trim()) continue;
@@ -222,11 +219,72 @@ function parseHosTextToParagraphs(text, fullName, contactLine) {
 }
 
 // ==========================================================
-// 🚀 GENERATE RESUME (FIXED PROMPT)
+// 🔥 FORMAT ENFORCER
+// ==========================================================
+function enforceHosFormat({
+  fullName = "",
+  email = "",
+  phone = "",
+  location = "",
+  resumeText = "",
+}) {
+  const cleaned = String(resumeText || "").replace(/```/g, "").trim();
+  const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
+
+  const headerContact = [email, phone, location].filter(Boolean).join(" | ");
+
+  const targetOrder = [
+    "PROFESSIONAL SUMMARY",
+    "SKILLS",
+    "EXPERIENCE",
+    "EDUCATION",
+    "CERTIFICATIONS",
+  ];
+
+  const sections = {};
+  let current = null;
+
+  for (const line of rawLines) {
+    const upper = stripMarkdownBold(line).toUpperCase();
+
+    if (targetOrder.includes(upper) || upper === "SUMMARY") {
+      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
+      if (!sections[current]) sections[current] = [];
+      continue;
+    }
+
+    if (!current) continue;
+    sections[current].push(line);
+  }
+
+  const out = [];
+  out.push(fullName);
+  out.push(headerContact);
+  out.push("");
+
+  for (const h of targetOrder) {
+    out.push(h);
+    (sections[h] || []).forEach((l) => out.push(l));
+    out.push("");
+  }
+
+  return out.join("\n").trim() + "\n";
+}
+
+// ==========================================================
+// 🚀 GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
-    const { fullName, jobDescription } = req.body;
+    const {
+      fullName,
+      location,
+      email,
+      phone,
+      experience = [],
+      education = [],
+      jobDescription,
+    } = req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -234,45 +292,62 @@ exports.generateResume = async (req, res) => {
       });
     }
 
+    const experienceText = Array.isArray(experience)
+      ? experience
+          .map((exp) => {
+            const start = formatMonthYear(exp.startDate);
+            const end = exp.endDate
+              ? formatMonthYear(exp.endDate)
+              : "Present";
+
+            return `
+Company: ${exp.company || ""}
+Title: ${exp.title || ""}
+Dates: ${start} to ${end}
+`;
+          })
+          .join("\n")
+      : "";
+
+    const educationText = Array.isArray(education)
+      ? education
+          .map((edu) => {
+            const degree = edu.degree || "";
+            const field = edu.field ? ` in ${edu.field}` : "";
+            const school = edu.school || "";
+            return `${degree}${field} | ${school}`;
+          })
+          .join("\n")
+      : "";
+
     const prompt = `
-You are a senior professional resume writer.
-
-Generate a complete professional resume.
-
-STRICT RULES:
-- Do NOT ask questions.
-- Do NOT request additional input.
-- Generate the resume directly.
-
-FORMAT:
+Generate a professional resume using this structure:
 
 PROFESSIONAL SUMMARY
-- 8 strong bullet points
-
 SKILLS
-- 12 skill categories formatted like:
-  Front-End Development: React, Vue, HTML5
-
 EXPERIENCE
-Company — Title | Month Year to Month Year
-- 12 detailed achievement bullets
-TECHNOLOGIES USED: comma-separated tools
-
 EDUCATION
-Degree in Field | University
-
 CERTIFICATIONS
-- 3 certifications
 
-JOB DESCRIPTION:
-${jobDescription}
+Experience header format:
+Company — Title | Month Year to Month Year
+
+Add TECHNOLOGIES USED: after each experience.
 `;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
+    const hosText = enforceHosFormat({
+      fullName,
+      email,
+      phone,
+      location,
+      resumeText: resumeTextRaw,
+    });
+
     return res.status(200).json({
       success: true,
-      resumeText: resumeTextRaw,
+      resumeText: hosText,
       generatedAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -290,24 +365,16 @@ exports.downloadResumeAsWord = async (req, res) => {
   try {
     const { name, text, email, phone, location } = req.body;
 
-    const contactLine = [
-      email && `Email: ${email}`,
-      phone && `Mobile: ${phone}`,
-      location && `Location: ${location}`,
-    ]
-      .filter(Boolean)
-      .join(" | ");
+    const hosText = enforceHosFormat({
+      fullName: name,
+      email,
+      phone,
+      location,
+      resumeText: text,
+    });
 
     const doc = new Document({
-      sections: [
-        {
-          children: parseHosTextToParagraphs(
-            text,
-            name,
-            contactLine
-          ),
-        },
-      ],
+      sections: [{ children: parseHosTextToParagraphs(hosText) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
