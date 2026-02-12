@@ -13,6 +13,9 @@ export default function CandidateDashboard() {
   const [candidateName, setCandidateName] = useState('Candidate')
   const [candidateId, setCandidateId] = useState<string | null>(null)
 
+  // 🔥 NEW: Track expanded job description
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
   const redirectToLogin = () => {
     router.replace('/candidate/login')
   }
@@ -49,7 +52,6 @@ export default function CandidateDashboard() {
       setCandidateId(data.profile._id)
 
       return data.profile._id
-
     } catch (err: any) {
       setError('Failed to load profile')
       return null
@@ -69,7 +71,6 @@ export default function CandidateDashboard() {
 
       const data = await res.json()
       setApplications(data?.jobs || [])
-
     } catch (err: any) {
       setError('Failed to load applications')
     }
@@ -106,7 +107,6 @@ export default function CandidateDashboard() {
     })
   }, [applications])
 
-  // 🔥 NEW: Latest application (FIRST VISIBLE)
   const latestApplication = sortedApplications[0] || null
 
   if (loading) {
@@ -144,7 +144,7 @@ export default function CandidateDashboard() {
           </div>
         )}
 
-        {/* 🔥 NEW: Highlight Job ID + Description FIRST */}
+        {/* Latest Highlight */}
         {latestApplication && (
           <div className="bg-blue-900/30 border border-blue-700 rounded-xl p-6 mb-6">
             <h2 className="text-xl font-bold mb-3 text-blue-300">
@@ -193,39 +193,69 @@ export default function CandidateDashboard() {
                 </thead>
 
                 <tbody className="divide-y divide-gray-700">
-                  {sortedApplications.map((app) => (
-                    <tr key={app._id}>
-                      <td className="p-4 font-semibold">
-                        {app.jobTitle}
-                        <div className="text-xs text-gray-400">
-                          {app.companyName}
-                        </div>
-                      </td>
+                  {sortedApplications.map((app) => {
+                    const fullText =
+                      app.description || app.jobDescriptionFull || '-'
 
-                      <td className="p-4">{app.jobId || '-'}</td>
+                    const isExpanded = expandedId === app._id
 
-                      <td className="p-4 text-sm max-w-xs truncate">
-                        {app.description || app.jobDescriptionFull || '-'}
-                      </td>
+                    return (
+                      <tr key={app._id}>
+                        <td className="p-4 font-semibold">
+                          {app.jobTitle}
+                          <div className="text-xs text-gray-400">
+                            {app.companyName}
+                          </div>
+                        </td>
 
-                      <td className="p-4 capitalize">{app.status}</td>
+                        <td className="p-4">{app.jobId || '-'}</td>
 
-                      <td className="p-4">
-                        {new Date(app.appliedDate).toLocaleDateString()}
-                      </td>
+                        <td className="p-4 text-sm max-w-xs">
+                          <div className={isExpanded ? '' : 'truncate'}>
+                            {fullText}
+                          </div>
 
-                      <td className="p-4">
-                        <button
-                          onClick={() =>
-                            downloadResume(app?.resumeUsed?.fileUrl)
-                          }
-                          className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
-                        >
-                          Download
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                          {fullText.length > 100 && (
+                            <button
+                              onClick={() =>
+                                setExpandedId(
+                                  isExpanded ? null : app._id
+                                )
+                              }
+                              className="text-blue-400 text-xs mt-1 hover:underline"
+                            >
+                              {isExpanded
+                                ? 'Show Less'
+                                : 'View Full'}
+                            </button>
+                          )}
+                        </td>
+
+                        <td className="p-4 capitalize">
+                          {app.status}
+                        </td>
+
+                        <td className="p-4">
+                          {new Date(
+                            app.appliedDate
+                          ).toLocaleDateString()}
+                        </td>
+
+                        <td className="p-4">
+                          <button
+                            onClick={() =>
+                              downloadResume(
+                                app?.resumeUsed?.fileUrl
+                              )
+                            }
+                            className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
+                          >
+                            Download
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>
