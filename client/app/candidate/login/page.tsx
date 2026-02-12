@@ -25,9 +25,9 @@ export default function CandidateLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email,               // ✅ candidate uses email too (recommended)
+          email,
           password,
-          role: 'candidate',   // ✅ backend must enforce this
+          role: 'candidate',
         }),
       })
 
@@ -43,7 +43,10 @@ export default function CandidateLogin() {
 
       const candidateUser = {
         id: user?._id || user?.id,
-        name: user?.name || user?.fullName || `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
+        name:
+          user?.name ||
+          user?.fullName ||
+          `${user?.firstName || ''} ${user?.lastName || ''}`.trim(),
         email: user?.email,
         role: user?.role || 'candidate',
         candidateAuthenticated: true,
@@ -54,7 +57,8 @@ export default function CandidateLogin() {
       localStorage.setItem('candidate_authenticated', 'true')
       if (candidateUser.id) localStorage.setItem('candidate_id', candidateUser.id)
 
-      router.push('/candidate')
+      // ✅ FIXED REDIRECT
+      router.push('/candidate/dashboard')
       router.refresh()
     } catch (err) {
       setError('Login failed. Please try again.')
@@ -71,7 +75,9 @@ export default function CandidateLogin() {
             <span className="text-2xl">🧑‍💼</span>
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Candidate Portal</h1>
-          <p className="text-gray-400">Log in using credentials provided by the administrator</p>
+          <p className="text-gray-400">
+            Log in using credentials provided by the administrator
+          </p>
         </div>
 
         {error && (
@@ -85,7 +91,9 @@ export default function CandidateLogin() {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label className="block text-gray-300 mb-2 text-sm font-medium">Email</label>
+            <label className="block text-gray-300 mb-2 text-sm font-medium">
+              Email
+            </label>
             <input
               type="email"
               value={email}
@@ -97,7 +105,9 @@ export default function CandidateLogin() {
           </div>
 
           <div>
-            <label className="block text-gray-300 mb-2 text-sm font-medium">Password</label>
+            <label className="block text-gray-300 mb-2 text-sm font-medium">
+              Password
+            </label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -135,12 +145,20 @@ export default function CandidateLogin() {
 
         <div className="mt-8 pt-6 border-t border-gray-700">
           <div className="text-center">
-            <p className="text-gray-500 text-sm">Are you a recruiter or admin?</p>
+            <p className="text-gray-500 text-sm">
+              Are you a recruiter or admin?
+            </p>
             <div className="flex justify-center gap-4 mt-2">
-              <Link href="/recruiter/login" className="text-sm text-blue-400 hover:text-blue-300">
+              <Link
+                href="/recruiter/login"
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
                 Recruiter Login →
               </Link>
-              <Link href="/admin/login" className="text-sm text-blue-400 hover:text-blue-300">
+              <Link
+                href="/admin/login"
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
                 Admin Login →
               </Link>
             </div>

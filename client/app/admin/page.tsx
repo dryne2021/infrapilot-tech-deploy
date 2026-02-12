@@ -30,8 +30,8 @@ export default function AdminPage() {
   const handleLogout = () => {
     localStorage.removeItem('infrapilot_user')
     localStorage.removeItem('infrapilot_token')
-    localStorage.removeItem('admin_authenticated') // cleanup if it exists
-    router.replace('/login')
+    localStorage.removeItem('admin_authenticated')
+    router.replace('/admin/login') // ✅ FIXED
   }
 
   useEffect(() => {
@@ -48,8 +48,6 @@ export default function AdminPage() {
           const statsJson = await statsRes.json()
           const data = statsJson?.data ?? statsJson
           if (data) setStats((prev) => ({ ...prev, ...data }))
-        } else {
-          console.error('Admin dashboard stats failed:', statsRes.status)
         }
 
         const activityRes = await fetchWithAuth('/api/v1/admin/activity')
@@ -62,8 +60,6 @@ export default function AdminPage() {
         if (activityRes.ok) {
           const activityJson = await activityRes.json()
           setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
-        } else {
-          console.error('Admin activity failed:', activityRes.status)
         }
       } catch (err) {
         console.error('Failed to load dashboard data:', err)
@@ -75,16 +71,15 @@ export default function AdminPage() {
         const userStr = localStorage.getItem('infrapilot_user')
         const token = localStorage.getItem('infrapilot_token')
 
-        // ✅ do NOT rely on admin_authenticated flag
         if (!userStr || !token) {
-          router.replace('/login')
+          router.replace('/admin/login') // ✅ FIXED
           return
         }
 
         const userData = JSON.parse(userStr)
 
         if (userData.role !== 'admin' && !userData.isAdmin) {
-          router.replace('/login')
+          router.replace('/admin/login') // ✅ FIXED
           return
         }
 
@@ -94,14 +89,13 @@ export default function AdminPage() {
         await loadDashboardData()
       } catch (error) {
         console.error('Admin auth check failed:', error)
-        router.replace('/login')
+        router.replace('/admin/login') // ✅ FIXED
       } finally {
         setLoading(false)
       }
     }
 
     checkAdminAuth()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (loading) {
@@ -116,7 +110,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
-      {/* Top Bar */}
       <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
@@ -130,7 +123,6 @@ export default function AdminPage() {
         </button>
       </div>
 
-      {/* Tabs */}
       <div className="px-6 pt-6">
         <div className="flex gap-2 mb-6">
           {['dashboard', 'candidates', 'recruiters', 'plans'].map((tab) => (
@@ -148,10 +140,8 @@ export default function AdminPage() {
           ))}
         </div>
 
-        {/* Content */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
-            {/* Stats */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className="bg-gray-800 p-4 rounded-xl border border-gray-700">
                 <p className="text-gray-400 text-sm">Total Candidates</p>
@@ -171,7 +161,6 @@ export default function AdminPage() {
               </div>
             </div>
 
-            {/* Recent Activity */}
             <div className="bg-gray-800 rounded-xl border border-gray-700 p-6">
               <h2 className="text-lg font-bold mb-4">Recent Activity</h2>
               {recentActivity.length === 0 ? (
