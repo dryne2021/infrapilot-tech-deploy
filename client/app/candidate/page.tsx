@@ -76,18 +76,44 @@ export default function CandidateDashboard() {
     }
   }
 
-  const downloadResume = (url?: string) => {
-    if (!url) {
+  const downloadResume = async (resumeText?: string) => {
+    if (!resumeText) {
       alert('No resume available')
       return
     }
 
-    const link = document.createElement('a')
-    link.href = url
-    link.target = '_blank'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    try {
+      const res = await fetchWithAuth('/api/v1/resume/download', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: resumeText,
+          name: candidateName,
+        }),
+      })
+
+      if (!res.ok) {
+        alert('Failed to generate resume file')
+        return
+      }
+
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Resume_${Date.now()}.docx`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error(err)
+      alert('Error downloading resume')
+    }
   }
 
   useEffect(() => {
@@ -245,7 +271,7 @@ export default function CandidateDashboard() {
                           <button
                             onClick={() =>
                               downloadResume(
-                                app?.resumeUsed?.fileUrl
+                                app?.resumeText
                               )
                             }
                             className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
