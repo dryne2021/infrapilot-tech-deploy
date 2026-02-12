@@ -74,10 +74,15 @@ function isSectionHeader(line) {
     "SKILLS",
     "EXPERIENCE",
     "EDUCATION",
-    "TECHNOLOGIES",
     "CERTIFICATIONS",
   ]);
   return headers.has(upper);
+}
+
+// Detect experience header like:
+// Amazon — Bingo | May 2020 to Feb 2025
+function isExperienceHeader(line) {
+  return line.includes("—") && line.includes("|");
 }
 
 // ==========================================================
@@ -112,6 +117,13 @@ function makeHeadingParagraph(text) {
   });
 }
 
+function makeExperienceHeaderParagraph(text) {
+  return new Paragraph({
+    children: [makeRun(text, { bold: true })],
+    spacing: { before: 120, after: 80 },
+  });
+}
+
 function makeBodyParagraph(text, spacingAfter = 80) {
   return new Paragraph({
     children: [makeRun(text)],
@@ -120,8 +132,9 @@ function makeBodyParagraph(text, spacingAfter = 80) {
 }
 
 function makeBulletParagraph(text) {
-  // Bold category before colon
   const colonIndex = text.indexOf(":");
+
+  // Bold skill category before colon
   if (colonIndex !== -1) {
     const category = text.substring(0, colonIndex + 1);
     const rest = text.substring(colonIndex + 1);
@@ -151,13 +164,22 @@ function parseHosTextToParagraphs(text) {
 
   for (const raw of lines) {
     if (!raw || !raw.trim()) continue;
+
     const line = normalizeLine(raw);
 
+    // Section headers
     if (isSectionHeader(line)) {
       paragraphs.push(makeHeadingParagraph(line));
       continue;
     }
 
+    // Experience header line (Amazon — Bingo | May 2020 to Feb 2025)
+    if (isExperienceHeader(line)) {
+      paragraphs.push(makeExperienceHeaderParagraph(line));
+      continue;
+    }
+
+    // Bullet lines
     if (isBulletLine(line)) {
       paragraphs.push(makeBulletParagraph(stripBulletMarker(line)));
       continue;
@@ -189,7 +211,6 @@ function enforceHosFormat({
     "SKILLS",
     "EXPERIENCE",
     "EDUCATION",
-    "TECHNOLOGIES",
     "CERTIFICATIONS",
   ];
 
@@ -198,11 +219,13 @@ function enforceHosFormat({
 
   for (const line of rawLines) {
     const upper = stripMarkdownBold(line).toUpperCase();
+
     if (targetOrder.includes(upper) || upper === "SUMMARY") {
       current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
       if (!sections[current]) sections[current] = [];
       continue;
     }
+
     if (!current) continue;
     sections[current].push(line);
   }
@@ -273,39 +296,32 @@ Dates: ${start} to ${end}
     const prompt = `
 You are a senior professional resume writer.
 
-STRICT REQUIREMENTS:
-
 PROFESSIONAL SUMMARY:
-- Exactly 8 bullet points.
-- Each bullet must be strong and professional.
+- 8 bullet points.
 
 SKILLS:
-- Exactly 12 skill lines.
-- Format EXACTLY like:
-  Networking Protocols: BGP, OSPF, EIGRP, VLANs
-- Main category before colon.
-- Subskills separated by commas.
+- 12 skill categories.
+- Format: Front-End Development: React, Vue, HTML5
 
 EXPERIENCE:
-- For EACH company:
-  - Add 12 detailed bullet points (long sentences).
-  - After bullet points add:
-    TECHNOLOGIES USED:
-    Followed by a comma-separated list.
+- For each job:
+  - First line formatted exactly:
+    Company — Title | Month Year to Month Year
+  - 12 detailed bullet points.
+  - Add TECHNOLOGIES USED after bullets.
 
 CERTIFICATIONS:
-- Generate exactly 3 professional certifications relevant to the job.
+- 3 certifications.
 
 DO NOT invent companies.
 DO NOT change dates.
 
-FORMAT EXACTLY:
+FORMAT:
 
 PROFESSIONAL SUMMARY
 SKILLS
 EXPERIENCE
 EDUCATION
-TECHNOLOGIES
 CERTIFICATIONS
 
 WORK HISTORY:
