@@ -18,7 +18,6 @@ export default function CandidateDashboard() {
   const [detail, setDetail] = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
 
-  // ✅ Candidate name
   const [candidateName, setCandidateName] = useState<string>('Candidate')
 
   const clearAuthAndGoLogin = () => {
@@ -41,7 +40,6 @@ export default function CandidateDashboard() {
 
       const user = JSON.parse(raw)
 
-      // Try common shapes
       const first = user?.firstName || user?.first_name
       const last = user?.lastName || user?.last_name
       const full = user?.name || user?.fullName || user?.full_name
@@ -86,17 +84,22 @@ export default function CandidateDashboard() {
     }
   }
 
-  // ✅ download the resume used for THIS application
-  const downloadResumeUsed = (applicationId: string) => {
-    window.open(`/api/v1/candidate/applications/${applicationId}/resume`, '_blank')
+  // 🔥 UPDATED: Download using resumeUrl from backend
+  const downloadResumeUsed = (resumeUrl: string | null) => {
+    if (!resumeUrl) {
+      alert('No resume available for this application.')
+      return
+    }
+
+    window.open(resumeUrl, '_blank')
   }
 
   const sortedApplications = useMemo(() => {
     const copy = [...applications]
     copy.sort((a: any, b: any) => {
-      const da = new Date(a?.appliedAt || a?.createdAt || 0).getTime()
-      const db = new Date(b?.appliedAt || b?.createdAt || 0).getTime()
-      return db - da // newest first
+      const da = new Date(a?.appliedDate || 0).getTime()
+      const db = new Date(b?.appliedDate || 0).getTime()
+      return db - da
     })
     return copy
   }, [applications])
@@ -107,9 +110,7 @@ export default function CandidateDashboard() {
         const token = localStorage.getItem('infrapilot_token')
         if (!token) return clearAuthAndGoLogin()
 
-        // ✅ set candidate name from localStorage user payload
         setCandidateName(resolveCandidateName())
-
         await loadApplications()
       } finally {
         setLoading(false)
@@ -162,7 +163,6 @@ export default function CandidateDashboard() {
           </div>
         )}
 
-        {/* Applications */}
         <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
           <div className="p-4 border-b border-gray-700">
             <h2 className="text-lg font-bold">My Applications</h2>
@@ -199,11 +199,10 @@ export default function CandidateDashboard() {
                 <tbody className="divide-y divide-gray-700">
                   {sortedApplications.map((a: any) => {
                     const id = a._id || a.id
-                    const job = a.job || a.jobId || a.jobDetails || {}
-                    const jobTitle = job.title || a.jobTitle || 'Job'
-                    const jobId = job.jobId || job.publicId || job._id || a.jobId || '-'
+                    const jobTitle = a.jobTitle || 'Job'
+                    const jobId = a.jobId || '-'
                     const status = a.status || 'Applied'
-                    const appliedAt = a.appliedAt || a.createdAt
+                    const appliedAt = a.appliedDate
                     const expanded = openId === id
 
                     return (
@@ -249,7 +248,7 @@ export default function CandidateDashboard() {
                               </button>
 
                               <button
-                                onClick={() => downloadResumeUsed(id)}
+                                onClick={() => downloadResumeUsed(a.resumeUrl)}
                                 className="px-3 py-2 text-sm bg-green-700 hover:bg-green-600 rounded whitespace-nowrap"
                               >
                                 Download Resume Used
@@ -262,15 +261,17 @@ export default function CandidateDashboard() {
                           <tr>
                             <td colSpan={5} className="p-4 bg-gray-900/30">
                               <div className="rounded-lg border border-gray-700 p-4">
-                                <p className="text-sm text-gray-400 mb-2">Full Job Description</p>
+                                <p className="text-sm text-gray-400 mb-2">
+                                  Full Job Description
+                                </p>
 
                                 {detailLoading ? (
-                                  <div className="text-gray-300">Loading job description…</div>
+                                  <div className="text-gray-300">
+                                    Loading job description…
+                                  </div>
                                 ) : (
                                   <div className="whitespace-pre-wrap text-gray-200 text-sm">
-                                    {detail?.job?.description ||
-                                      detail?.jobDescription ||
-                                      detail?.job?.fullDescription ||
+                                    {detail?.jobDescription ||
                                       'No description available.'}
                                   </div>
                                 )}

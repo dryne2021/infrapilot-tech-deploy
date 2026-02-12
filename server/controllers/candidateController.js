@@ -1,13 +1,14 @@
 const Candidate = require('../models/Candidate');
 const JobApplication = require('../models/JobApplication');
 const ErrorResponse = require('../utils/ErrorResponse');
-const { upload, getFileUrl, deleteFile } = require('../utils/fileUpload');
+const { upload, getFileUrl } = require('../utils/fileUpload');
 const path = require('path');
 const fs = require('fs');
 
-// @desc    Get candidate profile
-// @route   GET /api/v1/candidate/profile
-// @access  Private/Candidate
+
+// ======================================================
+// GET CANDIDATE PROFILE
+// ======================================================
 exports.getProfile = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id })
@@ -26,27 +27,21 @@ exports.getProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Update candidate profile
-// @route   PUT /api/v1/candidate/profile
-// @access  Private/Candidate
+
+// ======================================================
+// UPDATE CANDIDATE PROFILE
+// ======================================================
 exports.updateProfile = async (req, res, next) => {
   try {
     const { skills, workHistory, experience } = req.body;
 
-    // Parse skills (can arrive as JSON string or array)
     const parsedSkills =
       skills !== undefined
         ? (typeof skills === 'string' ? JSON.parse(skills) : skills)
         : undefined;
 
-    /**
-     * IMPORTANT:
-     * Schema field is `workHistory`, not `experience`.
-     * Some clients may still send `experience`, so accept both.
-     */
     const incomingWorkHistory = workHistory ?? experience;
 
-    // Parse work history (can arrive as JSON string or array)
     const parsedWorkHistory =
       incomingWorkHistory !== undefined
         ? (typeof incomingWorkHistory === 'string'
@@ -54,7 +49,6 @@ exports.updateProfile = async (req, res, next) => {
             : incomingWorkHistory)
         : undefined;
 
-    // Only set fields provided (prevents overwriting with undefined)
     const update = {};
     if (parsedSkills !== undefined) update.skills = parsedSkills;
     if (parsedWorkHistory !== undefined) update.workHistory = parsedWorkHistory;
@@ -62,10 +56,7 @@ exports.updateProfile = async (req, res, next) => {
     const candidate = await Candidate.findOneAndUpdate(
       { userId: req.user.id },
       update,
-      {
-        new: true,
-        runValidators: true
-      }
+      { new: true, runValidators: true }
     ).populate('assignedRecruiterId', 'name email');
 
     res.status(200).json({
@@ -77,12 +68,12 @@ exports.updateProfile = async (req, res, next) => {
   }
 };
 
-// @desc    Upload resume
-// @route   POST /api/v1/candidate/resumes
-// @access  Private/Candidate
+
+// ======================================================
+// UPLOAD RESUME
+// ======================================================
 exports.uploadResume = async (req, res, next) => {
   try {
-    // Use multer upload middleware
     const uploadSingle = upload.single('resume');
 
     uploadSingle(req, res, async function (err) {
@@ -100,14 +91,13 @@ exports.uploadResume = async (req, res, next) => {
         return next(new ErrorResponse('Candidate profile not found', 404));
       }
 
-      // Add new resume to candidate's resumes array
       const newResume = {
         fileName: req.file.originalname,
         fileUrl: getFileUrl(req, req.file.filename),
-        uploadedAt: new Date()
+        uploadedAt: new Date(),
+        isActive: true
       };
 
-      // Set all other resumes as inactive
       candidate.resumes.forEach(resume => {
         resume.isActive = false;
       });
@@ -125,9 +115,10 @@ exports.uploadResume = async (req, res, next) => {
   }
 };
 
-// @desc    Get all resumes
-// @route   GET /api/v1/candidate/resumes
-// @access  Private/Candidate
+
+// ======================================================
+// GET ALL RESUMES
+// ======================================================
 exports.getResumes = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id });
@@ -146,9 +137,10 @@ exports.getResumes = async (req, res, next) => {
   }
 };
 
-// @desc    Delete resume
-// @route   DELETE /api/v1/candidate/resumes/:resumeId
-// @access  Private/Candidate
+
+// ======================================================
+// DELETE RESUME
+// ======================================================
 exports.deleteResume = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id });
@@ -157,7 +149,6 @@ exports.deleteResume = async (req, res, next) => {
       return next(new ErrorResponse('Candidate profile not found', 404));
     }
 
-    // Find the resume to delete
     const resumeIndex = candidate.resumes.findIndex(
       resume => resume._id.toString() === req.params.resumeId
     );
@@ -168,7 +159,6 @@ exports.deleteResume = async (req, res, next) => {
 
     const resumeToDelete = candidate.resumes[resumeIndex];
 
-    // Extract filename from URL to delete physical file
     const filename = path.basename(resumeToDelete.fileUrl);
     const filePath = path.join(
       process.env.UPLOAD_PATH || './uploads',
@@ -177,15 +167,12 @@ exports.deleteResume = async (req, res, next) => {
       filename
     );
 
-    // Delete physical file
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
-    // Remove resume from array
     candidate.resumes.splice(resumeIndex, 1);
 
-    // If we deleted the active resume and there are other resumes, activate the most recent one
     if (resumeToDelete.isActive && candidate.resumes.length > 0) {
       candidate.resumes[candidate.resumes.length - 1].isActive = true;
     }
@@ -201,9 +188,10 @@ exports.deleteResume = async (req, res, next) => {
   }
 };
 
-// @desc    Set active resume
-// @route   PUT /api/v1/candidate/resumes/:resumeId/set-active
-// @access  Private/Candidate
+
+// ======================================================
+// SET ACTIVE RESUME
+// ======================================================
 exports.setActiveResume = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id });
@@ -212,12 +200,10 @@ exports.setActiveResume = async (req, res, next) => {
       return next(new ErrorResponse('Candidate profile not found', 404));
     }
 
-    // Set all resumes as inactive
     candidate.resumes.forEach(resume => {
       resume.isActive = false;
     });
 
-    // Find and set the specified resume as active
     const resume = candidate.resumes.find(
       r => r._id.toString() === req.params.resumeId
     );
@@ -238,9 +224,10 @@ exports.setActiveResume = async (req, res, next) => {
   }
 };
 
-// @desc    Get job applications
-// @route   GET /api/v1/candidate/applications
-// @access  Private/Candidate
+
+// ======================================================
+// 🔥 UPDATED: GET JOB APPLICATIONS (CLEAN RESPONSE)
+// ======================================================
 exports.getApplications = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id });
@@ -254,14 +241,15 @@ exports.getApplications = async (req, res, next) => {
     const limitInt = parseInt(limit);
     const startIndex = (pageInt - 1) * limitInt;
 
-    // Build query
     const query = { candidateId: candidate._id };
     if (status) query.status = status;
 
     const total = await JobApplication.countDocuments(query);
 
     const applications = await JobApplication.find(query)
-      .populate('recruiterId', 'name email')
+      .select(
+        'jobId jobTitle companyName jobDescription resumeUsed resumeDocxUrl status appliedDate'
+      )
       .sort({ createdAt: -1 })
       .skip(startIndex)
       .limit(limitInt);
@@ -272,16 +260,29 @@ exports.getApplications = async (req, res, next) => {
       total,
       totalPages: Math.ceil(total / limitInt),
       currentPage: pageInt,
-      data: applications
+      data: applications.map(app => ({
+        _id: app._id,
+        jobId: app.jobId,
+        jobTitle: app.jobTitle,
+        companyName: app.companyName,
+        jobDescription: app.jobDescription,
+        status: app.status,
+        appliedDate: app.appliedDate,
+        resumeUrl:
+          app.resumeUsed?.fileUrl ||
+          app.resumeDocxUrl ||
+          null
+      }))
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get single job application
-// @route   GET /api/v1/candidate/applications/:id
-// @access  Private/Candidate
+
+// ======================================================
+// GET SINGLE APPLICATION
+// ======================================================
 exports.getApplication = async (req, res, next) => {
   try {
     const candidate = await Candidate.findOne({ userId: req.user.id });
@@ -293,7 +294,7 @@ exports.getApplication = async (req, res, next) => {
     const application = await JobApplication.findOne({
       _id: req.params.id,
       candidateId: candidate._id
-    }).populate('recruiterId', 'name email');
+    });
 
     if (!application) {
       return next(new ErrorResponse('Application not found', 404));
@@ -302,67 +303,6 @@ exports.getApplication = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: application
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// ✅ NEW: List candidates (Admin/Recruiter)
-// @route   GET /api/v1/admin/candidates
-// @access  Private (Admin/Recruiter)
-exports.getCandidates = async (req, res, next) => {
-  try {
-    const { page = 1, limit = 20, q } = req.query;
-
-    const pageInt = parseInt(page, 10);
-    const limitInt = parseInt(limit, 10);
-    const skip = (pageInt - 1) * limitInt;
-
-    const filter = {};
-    if (q) {
-      filter.$or = [
-        { fullName: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } }
-      ];
-    }
-
-    const total = await Candidate.countDocuments(filter);
-
-    const candidates = await Candidate.find(filter)
-      .populate('assignedRecruiterId', 'name email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitInt);
-
-    return res.status(200).json({
-      success: true,
-      count: candidates.length,
-      total,
-      totalPages: Math.ceil(total / limitInt),
-      currentPage: pageInt,
-      data: candidates
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-// @desc    Get candidate by id (for Option A resume generation)
-// @route   GET /api/v1/candidates/:id
-// @access  Private (Admin/Recruiter) or Private (Server internal)
-exports.getCandidateById = async (req, res, next) => {
-  try {
-    const candidate = await Candidate.findById(req.params.id)
-      .populate('assignedRecruiterId', 'name email');
-
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate not found', 404));
-    }
-
-    res.status(200).json({
-      success: true,
-      data: candidate
     });
   } catch (error) {
     next(error);

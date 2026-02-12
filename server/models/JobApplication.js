@@ -10,7 +10,6 @@ const jobApplicationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ✅ FIX: recruiterId should point to Recruiter doc (not User)
     recruiterId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Recruiter',
@@ -18,7 +17,6 @@ const jobApplicationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Optional stable job ref (frontend uses job.id sometimes)
     jobId: {
       type: String,
       trim: true,
@@ -33,32 +31,31 @@ const jobApplicationSchema = new mongoose.Schema(
       maxlength: [100, 'Job title cannot be more than 100 characters'],
     },
 
-    // ✅ Keep both fields for compatibility
     companyName: {
       type: String,
       required: [true, 'Please provide company name'],
       trim: true,
       maxlength: [100, 'Company name cannot be more than 100 characters'],
     },
+
     company: {
       type: String,
       trim: true,
       maxlength: [100, 'Company cannot be more than 100 characters'],
     },
 
-    // ✅ Canonical job description field (use this everywhere going forward)
     jobDescription: {
       type: String,
       trim: true,
       default: '',
     },
 
-    // ✅ Backward compatible fields (older frontend/code may still send these)
     description: {
       type: String,
       trim: true,
       default: '',
     },
+
     jobDescriptionFull: {
       type: String,
       default: '',
@@ -78,29 +75,27 @@ const jobApplicationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ✅ Store EXACT resume used
+    // 🔥 Primary resume download source
     resumeUsed: {
       resumeId: {
         type: mongoose.Schema.Types.ObjectId,
         default: null,
       },
       fileName: { type: String, default: '' },
-      fileUrl: { type: String, default: '' },
+      fileUrl: { type: String, default: '' }, // <-- This is what frontend will use
     },
 
-    // ✅ Resume content tracking (optional)
     resumeText: {
       type: String,
       default: '',
     },
 
+    // Backward compatibility
     resumeDocxUrl: {
       type: String,
       default: '',
     },
 
-    // ✅ Canonical status for backend logic
-    // (we’ll map frontend labels to this value in pre-save)
     status: {
       type: String,
       enum: ['pending', 'applied', 'interview', 'offer', 'rejected'],
@@ -108,7 +103,6 @@ const jobApplicationSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ✅ Optional: keep UI label if you want (not required)
     uiStatusLabel: {
       type: String,
       default: '',
@@ -120,6 +114,7 @@ const jobApplicationSchema = new mongoose.Schema(
       max: 100,
       default: 0,
     },
+
     salaryRange: {
       type: String,
       trim: true,
@@ -150,6 +145,7 @@ const jobApplicationSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
     updatedAt: {
       type: Date,
       default: Date.now,
@@ -158,7 +154,6 @@ const jobApplicationSchema = new mongoose.Schema(
   { minimize: false }
 );
 
-// ✅ Normalize fields for compatibility + consistency
 jobApplicationSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
 
@@ -166,29 +161,35 @@ jobApplicationSchema.pre('save', function (next) {
   if (!this.company && this.companyName) this.company = this.companyName;
   if (!this.companyName && this.company) this.companyName = this.company;
 
-  // job description sync (canonical)
+  // job description sync
   if (!this.jobDescription) {
     this.jobDescription = this.jobDescriptionFull || this.description || '';
   }
-  // Keep older fields in sync so older UI still displays something
-  if (!this.description && this.jobDescription) this.description = this.jobDescription;
-  if (!this.jobDescriptionFull && this.jobDescription) this.jobDescriptionFull = this.jobDescription;
 
-  // appliedDate default
-  if (!this.appliedDate) this.appliedDate = new Date();
+  if (!this.description && this.jobDescription)
+    this.description = this.jobDescription;
 
-  // ✅ Map common frontend label statuses → backend canonical
-  // If your UI sends "Applied", "Interview", etc, we convert it
+  if (!this.jobDescriptionFull && this.jobDescription)
+    this.jobDescriptionFull = this.jobDescription;
+
+  // resume sync (🔥 important)
+  if (!this.resumeUsed.fileUrl && this.resumeDocxUrl) {
+    this.resumeUsed.fileUrl = this.resumeDocxUrl;
+  }
+
+  if (!this.resumeDocxUrl && this.resumeUsed.fileUrl) {
+    this.resumeDocxUrl = this.resumeUsed.fileUrl;
+  }
+
   const label = (this.status || '').toString();
   const map = {
-    'Applied': 'applied',
+    Applied: 'applied',
     'Under Review': 'pending',
-    'Interview': 'interview',
-    'Offer': 'offer',
-    'Rejected': 'rejected',
+    Interview: 'interview',
+    Offer: 'offer',
+    Rejected: 'rejected',
   };
 
-  // If someone accidentally set status to a UI label, convert it
   if (map[label]) {
     this.uiStatusLabel = label;
     this.status = map[label];
@@ -197,7 +198,6 @@ jobApplicationSchema.pre('save', function (next) {
   next();
 });
 
-// ✅ Indexes
 jobApplicationSchema.index({ candidateId: 1, appliedDate: -1 });
 jobApplicationSchema.index({ recruiterId: 1, appliedDate: -1 });
 jobApplicationSchema.index({ recruiterId: 1, candidateId: 1, appliedDate: -1 });

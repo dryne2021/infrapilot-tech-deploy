@@ -1,4 +1,8 @@
 // server/routes/admin.js
+router.use((req, res, next) => {
+  console.log("🔥 ADMIN ROUTE HIT:", req.originalUrl);
+  next();
+});
 
 const express = require("express");
 const { protect, authorize } = require("../middleware/auth");
