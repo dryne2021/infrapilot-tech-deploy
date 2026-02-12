@@ -16,17 +16,22 @@ const recruiterRoutes = require("./routes/recruiter");
 const resumeRoutes = require("./routes/resumeRoutes");
 const candidatesRoutes = require("./routes/candidatesRoutes");
 
-// ✅ Job applications routes
+// Job applications routes
 const jobApplicationRoutes = require("./routes/jobApplicationRoutes");
 
-// ✅ Plans routes (Admin Plans API)
+// Plans routes
 const planRoutes = require("./routes/planRoutes");
 
-// ✅ Load env vars explicitly from server/.env (local). On Render, env vars come from dashboard.
-dotenv.config({ path: path.join(__dirname, ".env") });
+/* =========================================================
+   ✅ FIXED ENV LOADING
+   - Load .env only in local development
+   - Render provides env vars automatically
+========================================================= */
+if (process.env.NODE_ENV !== "production") {
+  dotenv.config({ path: path.join(__dirname, ".env") });
+}
 
-// OPTIONAL logs (safe)
-console.log("Gemini model:", process.env.GEMINI_MODEL);
+// Optional logs
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("CLIENT_URL:", process.env.CLIENT_URL);
 
@@ -39,24 +44,21 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 /* =========================================================
-   CORS (FIXED for Render + cookies)
-   - Must return exact origin when credentials:true
+   CORS
 ========================================================= */
 const allowedOrigins = [
-  process.env.CLIENT_URL, // deployed frontend (Render/Vercel etc)
-  "http://localhost:3000", // local dev
+  process.env.CLIENT_URL,
+  "http://localhost:3000",
 ].filter(Boolean);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // allow requests with no origin (curl, server-to-server, mobile apps)
     if (!origin) return callback(null, true);
 
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
 
-    // ✅ Do not throw (throwing can break preflight + cause weird browser behavior)
     console.log("❌ CORS blocked origin:", origin);
     return callback(null, false);
   },
@@ -73,36 +75,19 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-
-// ✅ Preflight handling (IMPORTANT for cookies + complex requests)
 app.options("*", cors(corsOptions));
 
 /* =========================================================
    Mount routers
 ========================================================= */
 app.use("/api/v1/auth", authRoutes);
-
-// ✅ Admin core routes (includes /candidates endpoints in routes/admin.js)
 app.use("/api/v1/admin", adminRoutes);
-
-// ✅ Admin Plans endpoints (GET/POST/PUT/DELETE /api/v1/admin/plans)
 app.use("/api/v1/admin/plans", planRoutes);
-
-// ✅ IMPORTANT: Option 1 => DO NOT mount candidatesRoutes under /api/v1/admin/candidates
-// Because /api/v1/admin/candidates is already defined inside routes/admin.js
-// app.use("/api/v1/admin/candidates", candidatesRoutes); // ❌ removed to prevent conflicts
-
-// Existing candidate/recruiter app routes
 app.use("/api/v1/candidate", candidateRoutes);
 app.use("/api/v1/recruiter", recruiterRoutes);
-
-// (Optional) Keep this if other parts of your app use /api/v1/candidates
 app.use("/api/v1/candidates", candidatesRoutes);
-
-// ✅ Job applications
 app.use("/api/v1/job-applications", jobApplicationRoutes);
 
-// ✅ Resume routes
 console.log("✅ Resume routes mounted at /api/v1/resume");
 app.use("/api/v1/resume", resumeRoutes);
 
@@ -112,24 +97,23 @@ app.use("/api/v1/resume", resumeRoutes);
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
 /* =========================================================
-   Error handler middleware (must be last)
+   Error handler (must be last)
 ========================================================= */
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
 /* =========================================================
-   Start server only after DB connects, then seed admin (prod only)
+   Start server
 ========================================================= */
 async function startServer() {
   try {
     await connectDB();
     console.log("✅ MongoDB connected");
 
-    // ✅ Auto-seed admin in production (no shell needed)
     if (process.env.NODE_ENV === "production") {
       try {
-        require("./scripts/seedAdmin"); // runs immediately
+        require("./scripts/seedAdmin");
         console.log("✅ Admin seed check triggered");
       } catch (e) {
         console.error("❌ Admin seed failed to run:", e.message);
@@ -142,7 +126,6 @@ async function startServer() {
       );
       console.log("✅ Allowed CORS origins:", allowedOrigins);
       console.log("✅ Admin routes mounted at /api/v1/admin");
-      console.log("✅ Admin candidates now served by routes/admin.js at /api/v1/admin/candidates");
     });
   } catch (err) {
     console.error("❌ Server failed to start:", err.message);
@@ -152,7 +135,6 @@ async function startServer() {
 
 startServer();
 
-// Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
   console.log(`Error: ${err.message}`);
 });
