@@ -539,9 +539,36 @@ const CandidateManagement = () => {
     }
   }
 
-  // ⚠️ For now, keep delete/update local only? We will wire backend later.
+  // ✅ BACKEND: delete candidate with confirmation
   const handleDeleteCandidate = async (id: string) => {
-    alert('Next step: we will connect Delete to backend (DELETE endpoint). For now, backend create/load is working.')
+    const confirmDelete = confirm(
+      "Are you sure you want to permanently delete this candidate?"
+    )
+
+    if (!confirmDelete) return
+
+    try {
+      const res = await fetchWithAuth(`/api/v1/admin/candidates/${id}`, {
+        method: "DELETE",
+      })
+
+      const json = await res.json().catch(() => ({}))
+
+      if (!res.ok) {
+        alert(json?.error || json?.message || "Failed to delete candidate")
+        return
+      }
+
+      // ✅ Remove from UI instantly
+      setCandidates((prev) =>
+        prev.filter((c: any) => (c._id || c.id) !== id)
+      )
+
+      alert("✅ Candidate deleted successfully")
+
+    } catch (err: any) {
+      alert(err?.message || "Network error deleting candidate")
+    }
   }
 
   const updateCandidateField = (id: string, field: string, value: any) => {

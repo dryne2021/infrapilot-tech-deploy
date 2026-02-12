@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 /**
- * RecruiterManagement.jsx (UI + Add Recruiter + Assign/Unassign)
+ * RecruiterManagement.jsx (UI + Add Recruiter + Assign/Unassign + Delete)
  * - REAL backend (MongoDB)
  * - NO localhost fallback
  * - Reads NEXT_PUBLIC_API_BASE_URL correctly
@@ -223,6 +223,32 @@ export default function RecruiterManagement() {
       await loadUnassignedCandidates()
 
       alert('✅ Candidate unassigned')
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ✅ DELETE recruiter
+  const handleDeleteRecruiter = async (recruiterId) => {
+    const confirmDelete = confirm(
+      "Are you sure you want to permanently delete this recruiter?\n\nThis action cannot be undone."
+    )
+
+    if (!confirmDelete) return
+
+    setLoading(true)
+    try {
+      await api(`/api/v1/admin/recruiters/${recruiterId}`, {
+        method: 'DELETE',
+      })
+
+      alert('✅ Recruiter deleted successfully')
+
+      // Reload recruiters
+      await loadRecruiters()
+
     } catch (e) {
       alert(e.message)
     } finally {
@@ -463,8 +489,20 @@ export default function RecruiterManagement() {
                     </div>
 
                     <div className="flex gap-2">
-                      <Btn variant="primary" onClick={() => openAssignModal(r)} disabled={loading}>
+                      <Btn
+                        variant="primary"
+                        onClick={() => openAssignModal(r)}
+                        disabled={loading}
+                      >
                         + Assign Candidate
+                      </Btn>
+
+                      <Btn
+                        variant="danger"
+                        onClick={() => handleDeleteRecruiter(rid)}
+                        disabled={loading}
+                      >
+                        Delete
                       </Btn>
                     </div>
                   </div>
