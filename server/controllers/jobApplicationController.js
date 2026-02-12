@@ -11,7 +11,7 @@ const ALLOWED_STATUSES = [
 ];
 
 // ============================================================
-// ✅ Create a job application
+// ✅ Create a job application (OPTION A FLOW)
 // ============================================================
 exports.createJobApplication = async (req, res) => {
   try {
@@ -25,13 +25,9 @@ exports.createJobApplication = async (req, res) => {
       description,
       jobLink,
       status,
-      resumeStatus,
       matchScore,
       salaryRange,
       jobDescriptionFull,
-      resumeText,
-      resumeDocxUrl,
-      resumeFileName,
     } = req.body;
 
     if (!candidateId || !recruiterId || !jobTitle || !(company || companyName)) {
@@ -41,14 +37,7 @@ exports.createJobApplication = async (req, res) => {
       });
     }
 
-    // 🔥 REQUIRE RESUME
-    if (!resumeDocxUrl) {
-      return res.status(400).json({
-        message: "Resume is required when applying for a job",
-      });
-    }
-
-    // 🔥 Normalize status BEFORE Mongoose validation
+    // 🔥 Normalize status
     status = (status || "applied").toString().toLowerCase().trim();
 
     if (!ALLOWED_STATUSES.includes(status)) {
@@ -65,20 +54,17 @@ exports.createJobApplication = async (req, res) => {
       description: description || "",
       jobLink: jobLink || "",
       status,
-      resumeStatus: resumeStatus || "Submitted",
+      resumeStatus: "Pending", // 🔥 starts pending
       matchScore: typeof matchScore === "number" ? matchScore : 0,
       salaryRange: salaryRange || "",
       jobDescriptionFull: jobDescriptionFull || "",
-      resumeText: resumeText || "",
-
-      // 🔥 ALWAYS SAVE RESUME OBJECT
+      resumeText: "",
+      resumeDocxUrl: "",
       resumeUsed: {
         resumeId: null,
-        fileName: resumeFileName || "Resume.docx",
-        fileUrl: resumeDocxUrl,
+        fileName: "",
+        fileUrl: "",
       },
-
-      resumeDocxUrl: resumeDocxUrl,
       appliedDate: new Date(),
     });
 
@@ -117,7 +103,7 @@ exports.getJobsByCandidate = async (req, res) => {
 };
 
 // ============================================================
-// ✅ Update job by id
+// ✅ Update job by id (Used to attach resume later)
 // ============================================================
 exports.updateJobApplication = async (req, res) => {
   try {
@@ -134,13 +120,24 @@ exports.updateJobApplication = async (req, res) => {
       }
     }
 
-    // keep compatibility for company/companyName
+    // Keep compatibility for company/companyName
     if (updates.company && !updates.companyName) {
       updates.companyName = updates.company;
     }
 
     if (updates.companyName && !updates.company) {
       updates.company = updates.companyName;
+    }
+
+    // 🔥 If resumeDocxUrl is being attached, auto-update resumeStatus
+    if (updates.resumeDocxUrl) {
+      updates.resumeStatus = "Submitted";
+
+      updates.resumeUsed = {
+        resumeId: null,
+        fileName: updates.resumeFileName || "Resume.docx",
+        fileUrl: updates.resumeDocxUrl,
+      };
     }
 
     const job = await JobApplication.findByIdAndUpdate(id, updates, {
