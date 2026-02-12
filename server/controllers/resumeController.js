@@ -22,7 +22,7 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 CAPITALIZATION HELPERS (NEW)
+// 🔥 CAPITALIZATION HELPERS
 // ==========================================================
 function capitalizeWords(text = "") {
   return String(text)
@@ -171,7 +171,6 @@ function makeBodyParagraph(text, spacingAfter = 80) {
 function makeBulletParagraph(text) {
   const colonIndex = text.indexOf(":");
 
-  // ✅ Bold TECHNOLOGIES USED fully
   if (text.toUpperCase().startsWith("TECHNOLOGIES USED:")) {
     return new Paragraph({
       children: [makeRun(text, { bold: true })],
@@ -212,13 +211,11 @@ function parseHosTextToParagraphs(text) {
 
     const line = normalizeLine(raw);
 
-    // First line = Name
     if (i === 0) {
       paragraphs.push(makeNameParagraph(line));
       continue;
     }
 
-    // Second line = Contact
     if (i === 1) {
       paragraphs.push(makeContactParagraph(line));
       continue;
@@ -246,7 +243,7 @@ function parseHosTextToParagraphs(text) {
 }
 
 // ==========================================================
-// 🔥 FORMAT ENFORCER (unchanged logic except name capitalization)
+// 🔥 FORMAT ENFORCER
 // ==========================================================
 function enforceHosFormat({
   fullName = "",
@@ -299,7 +296,7 @@ function enforceHosFormat({
 }
 
 // ==========================================================
-// 🚀 GENERATE RESUME (UNCHANGED)
+// 🚀 GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
@@ -347,7 +344,46 @@ Dates: ${start} to ${end}
           .join("\n")
       : "";
 
-    const prompt = `... SAME AS BEFORE ...`;
+    const prompt = `
+You are a senior professional resume writer.
+
+PROFESSIONAL SUMMARY:
+- 8 bullet points.
+
+SKILLS:
+- 12 skill categories.
+- Format: Front-End Development: React, Vue, HTML5
+
+EXPERIENCE:
+- For each job:
+  - First line formatted exactly:
+    Company — Title | Month Year to Month Year
+  - 12 detailed bullet points.
+  - Add TECHNOLOGIES USED after bullets.
+
+CERTIFICATIONS:
+- 3 certifications.
+
+DO NOT invent companies.
+DO NOT change dates.
+
+FORMAT:
+
+PROFESSIONAL SUMMARY
+SKILLS
+EXPERIENCE
+EDUCATION
+CERTIFICATIONS
+
+WORK HISTORY:
+${experienceText}
+
+EDUCATION HISTORY:
+${educationText}
+
+JOB DESCRIPTION:
+${jobDescription}
+`;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
@@ -373,7 +409,7 @@ Dates: ${start} to ${end}
 };
 
 // ==========================================================
-// WORD DOWNLOAD (UNCHANGED)
+// WORD DOWNLOAD
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
