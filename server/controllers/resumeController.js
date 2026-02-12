@@ -134,23 +134,18 @@ function makeHeadingParagraph(text) {
 
 function makeExperienceHeaderParagraph(text) {
   const parts = text.split("|");
-
   const left = toTitleCase(parts[0].trim());
   const right = parts[1] ? parts[1].trim() : "";
 
   return new Paragraph({
-    children: [
-      makeRun(left + " | " + right, { bold: true }),
-    ],
+    children: [makeRun(left + " | " + right, { bold: true })],
     spacing: { before: 120, after: 80 },
   });
 }
 
 function makeTechnologiesUsedParagraph(text) {
   return new Paragraph({
-    children: [
-      makeRun(text.toUpperCase(), { bold: true }),
-    ],
+    children: [makeRun(text.toUpperCase(), { bold: true })],
     spacing: { before: 80, after: 60 },
   });
 }
@@ -158,7 +153,6 @@ function makeTechnologiesUsedParagraph(text) {
 function makeBulletParagraph(text) {
   const colonIndex = text.indexOf(":");
 
-  // Bold skill category
   if (colonIndex !== -1) {
     const category = text.substring(0, colonIndex + 1);
     const rest = text.substring(colonIndex + 1);
@@ -193,7 +187,6 @@ function parseHosTextToParagraphs(text, fullName, contactLine) {
   const lines = String(text || "").split("\n");
   const paragraphs = [];
 
-  // HEADER
   paragraphs.push(makeNameParagraph(fullName));
   paragraphs.push(makeContactParagraph(contactLine));
 
@@ -229,7 +222,7 @@ function parseHosTextToParagraphs(text, fullName, contactLine) {
 }
 
 // ==========================================================
-// 🚀 GENERATE RESUME
+// 🚀 GENERATE RESUME (FIXED PROMPT)
 // ==========================================================
 exports.generateResume = async (req, res) => {
   try {
@@ -241,9 +234,41 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    const resumeTextRaw = await generateWithOpenAI(
-      "Generate professional resume content."
-    );
+    const prompt = `
+You are a senior professional resume writer.
+
+Generate a complete professional resume.
+
+STRICT RULES:
+- Do NOT ask questions.
+- Do NOT request additional input.
+- Generate the resume directly.
+
+FORMAT:
+
+PROFESSIONAL SUMMARY
+- 8 strong bullet points
+
+SKILLS
+- 12 skill categories formatted like:
+  Front-End Development: React, Vue, HTML5
+
+EXPERIENCE
+Company — Title | Month Year to Month Year
+- 12 detailed achievement bullets
+TECHNOLOGIES USED: comma-separated tools
+
+EDUCATION
+Degree in Field | University
+
+CERTIFICATIONS
+- 3 certifications
+
+JOB DESCRIPTION:
+${jobDescription}
+`;
+
+    const resumeTextRaw = await generateWithOpenAI(prompt);
 
     return res.status(200).json({
       success: true,
