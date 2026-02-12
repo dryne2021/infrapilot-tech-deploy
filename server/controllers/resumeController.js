@@ -347,27 +347,34 @@ Dates: ${start} to ${end}
     const prompt = `
 You are a senior professional resume writer.
 
+IMPORTANT RULES:
+- TECHNOLOGIES USED must ALWAYS be generated based strictly on the JOB DESCRIPTION.
+- Extract relevant tools, frameworks, programming languages, platforms, and software mentioned in the job description.
+- If technologies are not explicitly listed, infer them logically from responsibilities.
+- CERTIFICATIONS must be professionally relevant to the JOB DESCRIPTION.
+- Generate exactly 3 certifications aligned with the job role.
+- Do NOT leave TECHNOLOGIES USED empty.
+- Do NOT leave CERTIFICATIONS empty.
+
 PROFESSIONAL SUMMARY:
-- 8 bullet points.
+- 8 bullet points tailored to the job description.
 
 SKILLS:
-- 12 skill categories.
+- 12 skill categories relevant to the job.
 - Format: Front-End Development: React, Vue, HTML5
 
 EXPERIENCE:
 - For each job:
   - First line formatted exactly:
     Company — Title | Month Year to Month Year
-  - 12 detailed bullet points.
-  - Add TECHNOLOGIES USED after bullets.
+  - 12 detailed bullet points tailored to the job description.
+  - After the bullet points, add:
+    TECHNOLOGIES USED: <comma separated technologies derived from job description>
 
 CERTIFICATIONS:
-- 3 certifications.
+- 3 certifications aligned with the job description.
 
-DO NOT invent companies.
-DO NOT change dates.
-
-FORMAT:
+FORMAT STRICTLY:
 
 PROFESSIONAL SUMMARY
 SKILLS
@@ -437,7 +444,7 @@ exports.downloadResumeAsWord = async (req, res) => {
     );
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="Resume_${safeName}.docx"`
+      \`attachment; filename="Resume_\${safeName}.docx"\`
     );
 
     res.send(buffer);
