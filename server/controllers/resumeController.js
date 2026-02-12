@@ -20,15 +20,6 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
-// 🔥 UTILITIES
-// ==========================================================
-function toTitleCase(str) {
-  return String(str || "")
-    .toLowerCase()
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-// ==========================================================
 // 🔥 OPENAI GENERATOR
 // ==========================================================
 async function generateWithOpenAI(prompt) {
@@ -88,12 +79,10 @@ function isSectionHeader(line) {
   return headers.has(upper);
 }
 
+// Detect experience header like:
+// Amazon — Bingo | May 2020 to Feb 2025
 function isExperienceHeader(line) {
   return line.includes("—") && line.includes("|");
-}
-
-function isTechnologiesUsed(line) {
-  return line.toLowerCase().startsWith("technologies used");
 }
 
 // ==========================================================
@@ -129,24 +118,9 @@ function makeHeadingParagraph(text) {
 }
 
 function makeExperienceHeaderParagraph(text) {
-  const parts = text.split("|");
-
-  const left = toTitleCase(parts[0].trim());
-  const right = parts[1] ? parts[1].trim() : "";
-
   return new Paragraph({
-    children: [
-      makeRun(left + " | " + right, { bold: true }),
-    ],
+    children: [makeRun(text, { bold: true })],
     spacing: { before: 120, after: 80 },
-  });
-}
-
-function makeTechnologiesUsedParagraph(text) {
-  const upper = text.toUpperCase();
-  return new Paragraph({
-    children: [makeRun(upper, { bold: true })],
-    spacing: { before: 80, after: 60 },
   });
 }
 
@@ -160,6 +134,7 @@ function makeBodyParagraph(text, spacingAfter = 80) {
 function makeBulletParagraph(text) {
   const colonIndex = text.indexOf(":");
 
+  // Bold skill category before colon
   if (colonIndex !== -1) {
     const category = text.substring(0, colonIndex + 1);
     const rest = text.substring(colonIndex + 1);
@@ -192,21 +167,19 @@ function parseHosTextToParagraphs(text) {
 
     const line = normalizeLine(raw);
 
+    // Section headers
     if (isSectionHeader(line)) {
       paragraphs.push(makeHeadingParagraph(line));
       continue;
     }
 
+    // Experience header line (Amazon — Bingo | May 2020 to Feb 2025)
     if (isExperienceHeader(line)) {
       paragraphs.push(makeExperienceHeaderParagraph(line));
       continue;
     }
 
-    if (isTechnologiesUsed(line)) {
-      paragraphs.push(makeTechnologiesUsedParagraph(line));
-      continue;
-    }
-
+    // Bullet lines
     if (isBulletLine(line)) {
       paragraphs.push(makeBulletParagraph(stripBulletMarker(line)));
       continue;
@@ -321,7 +294,29 @@ Dates: ${start} to ${end}
       : "";
 
     const prompt = `
-Generate a professional resume using this structure:
+You are a senior professional resume writer.
+
+PROFESSIONAL SUMMARY:
+- 8 bullet points.
+
+SKILLS:
+- 12 skill categories.
+- Format: Front-End Development: React, Vue, HTML5
+
+EXPERIENCE:
+- For each job:
+  - First line formatted exactly:
+    Company — Title | Month Year to Month Year
+  - 12 detailed bullet points.
+  - Add TECHNOLOGIES USED after bullets.
+
+CERTIFICATIONS:
+- 3 certifications.
+
+DO NOT invent companies.
+DO NOT change dates.
+
+FORMAT:
 
 PROFESSIONAL SUMMARY
 SKILLS
@@ -329,10 +324,14 @@ EXPERIENCE
 EDUCATION
 CERTIFICATIONS
 
-Experience header format:
-Company — Title | Month Year to Month Year
+WORK HISTORY:
+${experienceText}
 
-Add TECHNOLOGIES USED: after each experience.
+EDUCATION HISTORY:
+${educationText}
+
+JOB DESCRIPTION:
+${jobDescription}
 `;
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
