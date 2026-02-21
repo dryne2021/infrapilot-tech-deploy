@@ -308,7 +308,7 @@ export default function RecruiterPage() {
     return newJob._id || jobsResp.jobs?.[0]?._id;
   };
 
-  // ✅ UPDATED: FUNCTION: Generate and download Word resume (with auto-create job)
+  // ✅ UPDATED: FUNCTION: Generate and download Word resume (non-blocking save)
   const generateAndDownloadWordResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -384,12 +384,19 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ STEP 3 — AUTO CREATE JOB IF NEEDED (Word version)
-      const jobDbId = await autoCreateJobIfNeeded();
-
-      if (jobDbId) {
-        await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
-      }
+      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
+      autoCreateJobIfNeeded()
+        .then((jobDbId) => {
+          if (jobDbId) {
+            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+          }
+        })
+        .then(() => {
+          console.log("✅ Resume saved to DB");
+        })
+        .catch((err) => {
+          console.error("❌ Background save failed:", err);
+        });
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
@@ -404,7 +411,7 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ UPDATED: Function to generate resume (with auto-create job)
+  // ✅ UPDATED: Function to generate resume (non-blocking save)
   const generateResume = async () => {
     if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
       alert('Please enter both Job ID and Job Description');
@@ -478,14 +485,22 @@ export default function RecruiterPage() {
         throw new Error('No resume text returned from API');
       }
 
+      // ✅ SHOW RESUME IMMEDIATELY
       setGeneratedResume(resumeText);
 
-      // ✅ STEP 2 — AUTO CREATE JOB IF NEEDED
-      const jobDbId = await autoCreateJobIfNeeded();
-
-      if (jobDbId) {
-        await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
-      }
+      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
+      autoCreateJobIfNeeded()
+        .then((jobDbId) => {
+          if (jobDbId) {
+            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+          }
+        })
+        .then(() => {
+          console.log("✅ Resume saved to DB");
+        })
+        .catch((err) => {
+          console.error("❌ Background save failed:", err);
+        });
 
       // Save to history
       const newResumeEntry = {

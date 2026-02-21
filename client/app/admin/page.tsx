@@ -43,7 +43,7 @@ export default function AdminPage() {
     router.replace('/admin/login')
   }
 
-  // ✅ Load all recruiters with their assigned candidates and job stats
+  // ✅ Load all recruiters with their assigned candidates
   const loadRecruiterDetails = async () => {
     setLoadingRecruiterData(true)
     try {
@@ -53,7 +53,7 @@ export default function AdminPage() {
         const recruitersJson = await recruitersRes.json()
         const recruitersList = Array.isArray(recruitersJson) ? recruitersJson : recruitersJson?.data || []
         
-        // For each recruiter, fetch their assigned candidates with job application stats
+        // For each recruiter, fetch their assigned candidates
         const recruitersWithStats = await Promise.all(
           recruitersList.map(async (recruiter: any) => {
             const recruiterId = recruiter._id || recruiter.id
@@ -65,45 +65,10 @@ export default function AdminPage() {
                 const candidatesJson = await candidatesRes.json()
                 const candidates = Array.isArray(candidatesJson) ? candidatesJson : candidatesJson?.data || []
                 
-                // 🔥 Fetch all job applications for this recruiter
-                let totalJobApplications = 0
-                let candidatesWithJobs = 0
-
-                try {
-                  const jobsRes = await fetchWithAuth(
-                    `/api/v1/job-applications?recruiterId=${recruiterId}`
-                  )
-
-                  if (jobsRes.ok) {
-                    const jobsJson = await jobsRes.json()
-                    const jobs = jobsJson.jobs || jobsJson || []
-
-                    totalJobApplications = jobs.length
-
-                    // Count unique candidates that have jobs
-                    const uniqueCandidates = new Set(
-                      jobs.map((job: any) =>
-                        typeof job.candidateId === "object"
-                          ? job.candidateId._id
-                          : job.candidateId
-                      )
-                    )
-
-                    candidatesWithJobs = uniqueCandidates.size
-                  }
-                } catch (err) {
-                  console.error("Error loading recruiter jobs:", err)
-                }
-
                 return {
                   ...recruiter,
                   assignedCandidates: candidates,
-                  assignedCount: candidates.length,
-                  totalJobApplications,
-                  candidatesWithJobs,
-                  avgApplicationsPerCandidate: candidates.length > 0 
-                    ? (totalJobApplications / candidates.length).toFixed(1) 
-                    : 0
+                  assignedCount: candidates.length
                 }
               }
             } catch (error) {
@@ -113,10 +78,7 @@ export default function AdminPage() {
             return {
               ...recruiter,
               assignedCandidates: [],
-              assignedCount: 0,
-              totalJobApplications: 0,
-              candidatesWithJobs: 0,
-              avgApplicationsPerCandidate: 0
+              assignedCount: 0
             }
           })
         )
@@ -347,9 +309,6 @@ export default function AdminPage() {
                         <th className="p-3 text-left text-xs font-semibold text-gray-400">Department</th>
                         <th className="p-3 text-left text-xs font-semibold text-gray-400">Status</th>
                         <th className="p-3 text-left text-xs font-semibold text-gray-400">Assigned Candidates</th>
-                        <th className="p-3 text-left text-xs font-semibold text-gray-400">Total Job Apps</th>
-                        <th className="p-3 text-left text-xs font-semibold text-gray-400">Candidates with Jobs</th>
-                        <th className="p-3 text-left text-xs font-semibold text-gray-400">Avg Apps/Candidate</th>
                         <th className="p-3 text-left text-xs font-semibold text-gray-400">Actions</th>
                       </tr>
                     </thead>
@@ -375,13 +334,6 @@ export default function AdminPage() {
                             </span>
                           </td>
                           <td className="p-3 text-sm font-semibold">{recruiter.assignedCount || 0}</td>
-                          <td className="p-3 text-sm font-semibold text-blue-400">
-                            {recruiter.totalJobApplications || 0}
-                          </td>
-                          <td className="p-3 text-sm">
-                            {recruiter.candidatesWithJobs || 0}
-                          </td>
-                          <td className="p-3 text-sm">{recruiter.avgApplicationsPerCandidate}</td>
                           <td className="p-3">
                             <button
                               onClick={() => openRecruiterDetail(recruiter)}

@@ -507,7 +507,7 @@ const CandidateManagement = () => {
     }
   }
 
-  // ✅ NEW: Edit candidate function - opens form with candidate data
+  // ✅ FIXED: Edit candidate function - opens form with candidate data
   const handleEditCandidate = (candidate: any) => {
     // Transform candidate data to match form structure
     const formattedCandidate = {
@@ -531,6 +531,12 @@ const CandidateManagement = () => {
         id: proj.id || Date.now() + Math.random(),
         technologies: proj.technologies || [],
       })) : initialFormState.projects,
+      
+      // ✅ FIX: Add default empty arrays for skills to prevent undefined error
+      technicalSkills: candidate.technicalSkills || [],
+      softSkills: candidate.softSkills || [],
+      languages: candidate.languages || [],
+      certifications: candidate.certifications || [],
     }
 
     setEditingCandidate(candidate)
