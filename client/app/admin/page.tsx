@@ -65,15 +65,35 @@ export default function AdminPage() {
                 const candidatesJson = await candidatesRes.json()
                 const candidates = Array.isArray(candidatesJson) ? candidatesJson : candidatesJson?.data || []
                 
-                // Calculate stats for this recruiter
+                // 🔥 Fetch all job applications for this recruiter
                 let totalJobApplications = 0
                 let candidatesWithJobs = 0
-                
-                candidates.forEach((candidate: any) => {
-                  const jobCount = candidate.applications?.length || candidate.jobsApplied?.length || 0
-                  totalJobApplications += jobCount
-                  if (jobCount > 0) candidatesWithJobs++
-                })
+
+                try {
+                  const jobsRes = await fetchWithAuth(
+                    `/api/v1/job-applications?recruiterId=${recruiterId}`
+                  )
+
+                  if (jobsRes.ok) {
+                    const jobsJson = await jobsRes.json()
+                    const jobs = jobsJson.jobs || jobsJson || []
+
+                    totalJobApplications = jobs.length
+
+                    // Count unique candidates that have jobs
+                    const uniqueCandidates = new Set(
+                      jobs.map((job: any) =>
+                        typeof job.candidateId === "object"
+                          ? job.candidateId._id
+                          : job.candidateId
+                      )
+                    )
+
+                    candidatesWithJobs = uniqueCandidates.size
+                  }
+                } catch (err) {
+                  console.error("Error loading recruiter jobs:", err)
+                }
 
                 return {
                   ...recruiter,
