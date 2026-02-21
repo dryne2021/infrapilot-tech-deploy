@@ -22,6 +22,59 @@ const openai = new OpenAI({
 });
 
 // ==========================================================
+// 🔥 EXPERIENCE CALCULATOR (NO OVERLAP COUNTING)
+// ==========================================================
+function calculateTotalExperienceYears(experience = []) {
+  if (!Array.isArray(experience) || experience.length === 0) return 0;
+
+  const ranges = experience
+    .filter((exp) => exp.startDate)
+    .map((exp) => {
+      const start = new Date(exp.startDate);
+      const end = exp.endDate ? new Date(exp.endDate) : new Date();
+      return [start.getTime(), end.getTime()];
+    })
+    .filter(([s, e]) => !isNaN(s) && !isNaN(e) && e > s)
+    .sort((a, b) => a[0] - b[0]);
+
+  const merged = [];
+  for (const range of ranges) {
+    if (!merged.length) {
+      merged.push(range);
+    } else {
+      const last = merged[merged.length - 1];
+      if (range[0] <= last[1]) {
+        last[1] = Math.max(last[1], range[1]);
+      } else {
+        merged.push(range);
+      }
+    }
+  }
+
+  let totalMonths = 0;
+  merged.forEach(([start, end]) => {
+    const s = new Date(start);
+    const e = new Date(end);
+    const months =
+      (e.getFullYear() - s.getFullYear()) * 12 +
+      (e.getMonth() - s.getMonth());
+    totalMonths += months > 0 ? months : 0;
+  });
+
+  return Math.round(totalMonths / 12);
+}
+
+// ==========================================================
+// 🔥 EXPERIENCE LEVEL DETECTOR
+// ==========================================================
+function getExperienceLevelLabel(years) {
+  if (years >= 8) return "Senior-Level";
+  if (years >= 4) return "Mid-Level";
+  if (years >= 1) return "Junior-Level";
+  return "Entry-Level";
+}
+
+// ==========================================================
 // 🔥 CAPITALIZATION HELPERS
 // ==========================================================
 function capitalizeWords(text = "") {
@@ -169,30 +222,6 @@ function makeBodyParagraph(text, spacingAfter = 80) {
 }
 
 function makeBulletParagraph(text) {
-  const colonIndex = text.indexOf(":");
-
-  if (text.toUpperCase().startsWith("TECHNOLOGIES USED:")) {
-    return new Paragraph({
-      children: [makeRun(text, { bold: true })],
-      spacing: { after: 60 },
-    });
-  }
-
-  if (colonIndex !== -1) {
-    const category = text.substring(0, colonIndex + 1);
-    const rest = text.substring(colonIndex + 1);
-
-    return new Paragraph({
-      children: [
-        makeRun(category, { bold: true }),
-        makeRun(rest),
-      ],
-      bullet: { level: 0 },
-      spacing: { after: 60 },
-      indent: { left: 360, hanging: 180 },
-    });
-  }
-
   return new Paragraph({
     children: [makeRun(text)],
     bullet: { level: 0 },
@@ -243,59 +272,6 @@ function parseHosTextToParagraphs(text) {
 }
 
 // ==========================================================
-// 🔥 FORMAT ENFORCER
-// ==========================================================
-function enforceHosFormat({
-  fullName = "",
-  email = "",
-  phone = "",
-  location = "",
-  resumeText = "",
-}) {
-  const cleaned = String(resumeText || "").replace(/```/g, "").trim();
-  const rawLines = cleaned.split("\n").map(normalizeLine).filter(Boolean);
-
-  const headerContact = [email, phone, location].filter(Boolean).join(" | ");
-
-  const targetOrder = [
-    "PROFESSIONAL SUMMARY",
-    "SKILLS",
-    "EXPERIENCE",
-    "EDUCATION",
-    "CERTIFICATIONS",
-  ];
-
-  const sections = {};
-  let current = null;
-
-  for (const line of rawLines) {
-    const upper = stripMarkdownBold(line).toUpperCase();
-
-    if (targetOrder.includes(upper) || upper === "SUMMARY") {
-      current = upper === "SUMMARY" ? "PROFESSIONAL SUMMARY" : upper;
-      if (!sections[current]) sections[current] = [];
-      continue;
-    }
-
-    if (!current) continue;
-    sections[current].push(line);
-  }
-
-  const out = [];
-  out.push(capitalizeWords(fullName));
-  out.push(headerContact);
-  out.push("");
-
-  for (const h of targetOrder) {
-    out.push(h);
-    (sections[h] || []).forEach((l) => out.push(l));
-    out.push("");
-  }
-
-  return out.join("\n").trim() + "\n";
-}
-
-// ==========================================================
 // 🚀 GENERATE RESUME
 // ==========================================================
 exports.generateResume = async (req, res) => {
@@ -316,66 +292,44 @@ exports.generateResume = async (req, res) => {
       });
     }
 
-    const experienceText = Array.isArray(experience)
-      ? experience
-          .map((exp) => {
-            const start = formatMonthYear(exp.startDate);
-            const end = exp.endDate
-              ? formatMonthYear(exp.endDate)
-              : "Present";
+    const totalExperienceYears = calculateTotalExperienceYears(experience);
+    const levelLabel = getExperienceLevelLabel(totalExperienceYears);
 
-            return `
+    const experienceText = experience
+      .map((exp) => {
+        const start = formatMonthYear(exp.startDate);
+        const end = exp.endDate
+          ? formatMonthYear(exp.endDate)
+          : "Present";
+
+        return `
 Company: ${exp.company || ""}
 Title: ${exp.title || ""}
 Dates: ${start} to ${end}
 `;
-          })
-          .join("\n")
-      : "";
+      })
+      .join("\n");
 
-    const educationText = Array.isArray(education)
-      ? education
-          .map((edu) => {
-            const degree = edu.degree || "";
-            const field = edu.field ? ` in ${edu.field}` : "";
-            const school = edu.school || "";
-            return `${degree}${field} | ${school}`;
-          })
-          .join("\n")
-      : "";
+    const educationText = education
+      .map((edu) => {
+        const degree = edu.degree || "";
+        const field = edu.field ? ` in ${edu.field}` : "";
+        const school = edu.school || "";
+        return `${degree}${field} | ${school}`;
+      })
+      .join("\n");
 
     const prompt = `
-You are a senior professional resume writer.
+STRICT EXPERIENCE RULES:
+- Candidate has EXACTLY ${totalExperienceYears} years of professional experience.
+- Candidate is ${levelLabel}.
+- DO NOT modify this number.
+- DO NOT use years from job description.
 
-IMPORTANT RULES:
-- TECHNOLOGIES USED must ALWAYS be generated based strictly on the JOB DESCRIPTION.
-- Extract relevant tools, frameworks, programming languages, platforms, and software mentioned in the job description.
-- If technologies are not explicitly listed, infer them logically from responsibilities.
-- CERTIFICATIONS must be professionally relevant to the JOB DESCRIPTION.
-- Generate exactly 3 certifications aligned with the job role.
-- Do NOT leave TECHNOLOGIES USED empty.
-- Do NOT leave CERTIFICATIONS empty.
+STRICT TITLE RULE:
+- Use titles EXACTLY as provided.
 
-PROFESSIONAL SUMMARY:
-- 8 bullet points tailored to the job description.
-
-SKILLS:
-- 12 skill categories relevant to the job.
-- Format: Front-End Development: React, Vue, HTML5
-
-EXPERIENCE:
-- For each job:
-  - First line formatted exactly:
-    Company — Title | Month Year to Month Year
-  - 12 detailed bullet points tailored to the job description.
-  - After the bullet points, add:
-    TECHNOLOGIES USED: <comma separated technologies derived from job description>
-
-CERTIFICATIONS:
-- 3 certifications aligned with the job description.
-
-FORMAT STRICTLY:
-
+FORMAT:
 PROFESSIONAL SUMMARY
 SKILLS
 EXPERIENCE
@@ -394,18 +348,11 @@ ${jobDescription}
 
     const resumeTextRaw = await generateWithOpenAI(prompt);
 
-    const hosText = enforceHosFormat({
-      fullName,
-      email,
-      phone,
-      location,
-      resumeText: resumeTextRaw,
-    });
-
     return res.status(200).json({
       success: true,
-      resumeText: hosText,
-      generatedAt: new Date().toISOString(),
+      resumeText: resumeTextRaw,
+      experienceYears: totalExperienceYears,
+      level: levelLabel,
     });
   } catch (error) {
     console.error("❌ Resume Generation Error:", error);
@@ -420,18 +367,10 @@ ${jobDescription}
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    const { name, text, email, phone, location } = req.body;
-
-    const hosText = enforceHosFormat({
-      fullName: name,
-      email,
-      phone,
-      location,
-      resumeText: text,
-    });
+    const { name, text } = req.body;
 
     const doc = new Document({
-      sections: [{ children: parseHosTextToParagraphs(hosText) }],
+      sections: [{ children: parseHosTextToParagraphs(text) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
