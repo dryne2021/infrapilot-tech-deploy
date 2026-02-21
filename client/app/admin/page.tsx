@@ -125,7 +125,7 @@ export default function AdminPage() {
           [candidateId]: {
             totalJobs: jobs.length,
             jobs: jobs,
-            status: jobs.reduce((acc: any, job: any) => {
+            status: jobs.reduce((acc: Record<string, number>, job: any) => {
               const status = job.status || 'applied'
               acc[status] = (acc[status] || 0) + 1
               return acc
@@ -479,10 +479,11 @@ export default function AdminPage() {
                             <div className="bg-blue-900/30 px-3 py-1 rounded-full">
                               <span className="text-xs text-blue-400">Jobs: {jobStats.totalJobs}</span>
                             </div>
+                            {/* FIXED: Type assertion for count */}
                             {jobStats.status && Object.entries(jobStats.status).map(([status, count]) => (
                               <div key={status} className="bg-gray-700 px-3 py-1 rounded-full">
                                 <span className="text-xs text-gray-300">
-                                  {status}: {count}
+                                  {status}: {count as number}
                                 </span>
                               </div>
                             ))}
@@ -490,7 +491,7 @@ export default function AdminPage() {
                         </div>
 
                         {/* Show job applications if any */}
-                        {jobStats.jobs.length > 0 && (
+                        {jobStats.jobs && jobStats.jobs.length > 0 && (
                           <div className="mt-3 pt-3 border-t border-gray-700">
                             <p className="text-xs text-gray-400 mb-2">Recent Applications:</p>
                             <div className="flex flex-wrap gap-2">
