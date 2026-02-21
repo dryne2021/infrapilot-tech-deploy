@@ -48,8 +48,8 @@ const CandidateManagement = () => {
   const [candidates, setCandidates] = useState<Candidate[]>([])
   const [recruiters, setRecruiters] = useState<Recruiter[]>([])
   const [showAddForm, setShowAddForm] = useState(false)
-  const [showEditForm, setShowEditForm] = useState(false) // ✅ New state for edit form
-  const [editingCandidate, setEditingCandidate] = useState<any>(null) // ✅ Store candidate being edited
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [editingCandidate, setEditingCandidate] = useState<any>(null)
   const [loading, setLoading] = useState(false)
 
   const [pageLoading, setPageLoading] = useState(true)
@@ -226,7 +226,7 @@ const CandidateManagement = () => {
 
   const recruiterById = useMemo(() => {
     const m = new Map<string, Recruiter>()
-    recruiters.forEach((r) => {
+    ;(recruiters || []).forEach((r) => {
       if (r?._id) m.set(String(r._id), r)
     })
     return m
@@ -358,12 +358,12 @@ const CandidateManagement = () => {
     const errors: Record<string, string> = {}
 
     // Required fields
-    if (!formData.firstName.trim()) errors.firstName = 'First name is required'
-    if (!formData.email.trim()) errors.email = 'Email is required'
+    if (!formData.firstName?.trim()) errors.firstName = 'First name is required'
+    if (!formData.email?.trim()) errors.email = 'Email is required'
 
     // Validate experience - at least one experience with Company, Title, and Start Date
-    const hasValidExperience = formData.experience.some((exp: any) => 
-      exp.company.trim() && exp.title.trim() && exp.startDate.trim()
+    const hasValidExperience = (formData.experience || []).some((exp: any) => 
+      exp.company?.trim() && exp.title?.trim() && exp.startDate?.trim()
     )
 
     if (!hasValidExperience) {
@@ -371,17 +371,17 @@ const CandidateManagement = () => {
     }
 
     // Validate each experience entry
-    formData.experience.forEach((exp: any, index: number) => {
-      if (!exp.company.trim() && !exp.title.trim() && !exp.startDate.trim()) {
+    (formData.experience || []).forEach((exp: any, index: number) => {
+      if (!exp.company?.trim() && !exp.title?.trim() && !exp.startDate?.trim()) {
         // Only show error if this is the first experience and it's incomplete
         if (index === 0 && formData.experience.length === 1) {
           // Error already shown by hasValidExperience check
         }
-      } else if (!exp.company.trim() || !exp.title.trim() || !exp.startDate.trim()) {
+      } else if (!exp.company?.trim() || !exp.title?.trim() || !exp.startDate?.trim()) {
         // If some fields are filled but not all
-        if (!exp.company.trim()) errors[`experience_${index}_company`] = 'Company is required'
-        if (!exp.title.trim()) errors[`experience_${index}_title`] = 'Title is required'
-        if (!exp.startDate.trim()) errors[`experience_${index}_startDate`] = 'Start date is required'
+        if (!exp.company?.trim()) errors[`experience_${index}_company`] = 'Company is required'
+        if (!exp.title?.trim()) errors[`experience_${index}_title`] = 'Title is required'
+        if (!exp.startDate?.trim()) errors[`experience_${index}_startDate`] = 'Start date is required'
       }
     })
 
@@ -420,27 +420,27 @@ const CandidateManagement = () => {
       const payload: any = {
         // identity
         firstName: formData.firstName,
-        lastName: formData.lastName,
-        fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+        lastName: formData.lastName || '',
+        fullName: `${formData.firstName || ''} ${formData.lastName || ''}`.trim(),
         email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
+        phone: formData.phone || '',
+        location: formData.location || '',
 
         // optional fields
-        ssn: formData.ssn,
-        visaStatus: formData.visaStatus,
-        dateOfBirth: formData.dateOfBirth,
-        nationality: formData.nationality,
-        linkedin: formData.linkedin,
-        github: formData.github,
-        portfolio: formData.portfolio,
-        website: formData.website,
+        ssn: formData.ssn || '',
+        visaStatus: formData.visaStatus || '',
+        dateOfBirth: formData.dateOfBirth || '',
+        nationality: formData.nationality || '',
+        linkedin: formData.linkedin || '',
+        github: formData.github || '',
+        portfolio: formData.portfolio || '',
+        website: formData.website || '',
 
-        currentCompany: formData.currentCompany,
-        currentPosition: formData.currentPosition,
-        targetRole: formData.targetRole,
-        noticePeriod: formData.noticePeriod,
-        availability: formData.availability,
+        currentCompany: formData.currentCompany || '',
+        currentPosition: formData.currentPosition || '',
+        targetRole: formData.targetRole || '',
+        noticePeriod: formData.noticePeriod || '',
+        availability: formData.availability || '',
 
         // numbers
         experienceYears: toNumberOrUndefined(formData.experienceYears),
@@ -452,7 +452,7 @@ const CandidateManagement = () => {
         languages: formData.languages || [],
         certifications: formData.certifications || [],
 
-        summary: formData.summary,
+        summary: formData.summary || '',
 
         // nested arrays
         experience: stripUiId(formData.experience || []),
@@ -460,12 +460,12 @@ const CandidateManagement = () => {
         projects: stripUiId(formData.projects || []),
 
         // additional
-        awards: formData.awards,
-        publications: formData.publications,
-        volunteerExperience: formData.volunteerExperience,
-        professionalMemberships: formData.professionalMemberships,
-        references: formData.references,
-        notes: formData.notes,
+        awards: formData.awards || '',
+        publications: formData.publications || '',
+        volunteerExperience: formData.volunteerExperience || '',
+        professionalMemberships: formData.professionalMemberships || '',
+        references: formData.references || '',
+        notes: formData.notes || '',
 
         // subscription
         subscriptionPlan: formData.subscriptionPlan,
@@ -561,27 +561,27 @@ const CandidateManagement = () => {
       const payload: any = {
         // identity
         firstName: formData.firstName,
-        lastName: formData.lastName,
-        fullName: `${formData.firstName} ${formData.lastName}`.trim(),
+        lastName: formData.lastName || '',
+        fullName: `${formData.firstName || ''} ${formData.lastName || ''}`.trim(),
         email: formData.email,
-        phone: formData.phone,
-        location: formData.location,
+        phone: formData.phone || '',
+        location: formData.location || '',
 
         // optional fields
-        ssn: formData.ssn,
-        visaStatus: formData.visaStatus,
-        dateOfBirth: formData.dateOfBirth,
-        nationality: formData.nationality,
-        linkedin: formData.linkedin,
-        github: formData.github,
-        portfolio: formData.portfolio,
-        website: formData.website,
+        ssn: formData.ssn || '',
+        visaStatus: formData.visaStatus || '',
+        dateOfBirth: formData.dateOfBirth || '',
+        nationality: formData.nationality || '',
+        linkedin: formData.linkedin || '',
+        github: formData.github || '',
+        portfolio: formData.portfolio || '',
+        website: formData.website || '',
 
-        currentCompany: formData.currentCompany,
-        currentPosition: formData.currentPosition,
-        targetRole: formData.targetRole,
-        noticePeriod: formData.noticePeriod,
-        availability: formData.availability,
+        currentCompany: formData.currentCompany || '',
+        currentPosition: formData.currentPosition || '',
+        targetRole: formData.targetRole || '',
+        noticePeriod: formData.noticePeriod || '',
+        availability: formData.availability || '',
 
         // numbers
         experienceYears: toNumberOrUndefined(formData.experienceYears),
@@ -593,7 +593,7 @@ const CandidateManagement = () => {
         languages: formData.languages || [],
         certifications: formData.certifications || [],
 
-        summary: formData.summary,
+        summary: formData.summary || '',
 
         // nested arrays
         experience: stripUiId(formData.experience || []),
@@ -601,12 +601,12 @@ const CandidateManagement = () => {
         projects: stripUiId(formData.projects || []),
 
         // additional
-        awards: formData.awards,
-        publications: formData.publications,
-        volunteerExperience: formData.volunteerExperience,
-        professionalMemberships: formData.professionalMemberships,
-        references: formData.references,
-        notes: formData.notes,
+        awards: formData.awards || '',
+        publications: formData.publications || '',
+        volunteerExperience: formData.volunteerExperience || '',
+        professionalMemberships: formData.professionalMemberships || '',
+        references: formData.references || '',
+        notes: formData.notes || '',
 
         // subscription
         subscriptionPlan: formData.subscriptionPlan,
@@ -701,20 +701,27 @@ const CandidateManagement = () => {
     )
   }
 
-  const filteredCandidates = candidates.filter((candidate: any) => {
-    const fullName = candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim()
+  // ✅ FIXED: filteredCandidates with safe checks
+  const filteredCandidates = (candidates || []).filter((candidate: any) => {
+    if (!candidate) return false;
+    
+    const fullName = candidate.fullName || 
+      (candidate.firstName && candidate.lastName ? `${candidate.firstName} ${candidate.lastName}`.trim() : 
+      candidate.firstName || candidate.lastName || '');
+    
+    const searchLower = searchTerm?.toLowerCase() || '';
+    
+    const matchesSearch = !searchTerm || 
+      (fullName?.toLowerCase()?.includes(searchLower)) ||
+      (candidate.email?.toLowerCase()?.includes(searchLower)) ||
+      (candidate.phone?.includes(searchTerm));
 
-    const matchesSearch =
-      fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      candidate.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      candidate.phone?.includes(searchTerm)
+    const matchesStatus = filterStatus === 'all' || candidate.status === filterStatus;
+    const matchesPlan = filterPlan === 'all' || candidate.subscriptionPlan === filterPlan;
+    const matchesPayment = filterPayment === 'all' || candidate.paymentStatus === filterPayment;
 
-    const matchesStatus = filterStatus === 'all' || candidate.status === filterStatus
-    const matchesPlan = filterPlan === 'all' || candidate.subscriptionPlan === filterPlan
-    const matchesPayment = filterPayment === 'all' || candidate.paymentStatus === filterPayment
-
-    return matchesSearch && matchesStatus && matchesPlan && matchesPayment
-  })
+    return matchesSearch && matchesStatus && matchesPlan && matchesPayment;
+  });
 
   const getPlanColor = (plan: string) => {
     const colors: any = {
@@ -738,6 +745,7 @@ const CandidateManagement = () => {
   }
 
   const calculateDaysRemaining = (candidate: any) => {
+    if (!candidate) return 0;
     if (candidate.daysRemaining !== undefined) return candidate.daysRemaining
 
     const created = new Date(candidate.createdAt || Date.now())
@@ -749,7 +757,7 @@ const CandidateManagement = () => {
     return Math.max(0, planDuration - diffDays)
   }
 
-  const getCandidateKey = (c: any) => c._id || c.id
+  const getCandidateKey = (c: any) => c?._id || c?.id || Math.random().toString()
 
   // -----------------------------
   // ✅ Credentials helpers
@@ -848,6 +856,7 @@ const CandidateManagement = () => {
 
   // ✅ Helper to detect if candidate has credentials
   const hasCredentials = (candidate: any) => {
+    if (!candidate) return false;
     return (
       candidate?.credentialsGenerated === true ||
       candidate?.hasCredentials === true ||
@@ -922,7 +931,7 @@ const CandidateManagement = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm text-gray-900">Total Candidates</p>
-              <p className="text-xl font-bold mt-1 text-gray-900">{candidates.length}</p>
+              <p className="text-xl font-bold mt-1 text-gray-900">{(candidates || []).length}</p>
             </div>
             <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
               <span className="text-blue-600 text-sm">👥</span>
@@ -935,7 +944,7 @@ const CandidateManagement = () => {
             <div>
               <p className="text-sm text-gray-900">Active Subscriptions</p>
               <p className="text-xl font-bold mt-1 text-gray-900">
-                {candidates.filter((c: any) => c.subscriptionStatus === 'active').length}
+                {(candidates || []).filter((c: any) => c?.subscriptionStatus === 'active').length}
               </p>
             </div>
             <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -949,7 +958,7 @@ const CandidateManagement = () => {
             <div>
               <p className="text-sm text-gray-900">Pending Payments</p>
               <p className="text-xl font-bold mt-1 text-gray-900">
-                {candidates.filter((c: any) => c.paymentStatus === 'pending').length}
+                {(candidates || []).filter((c: any) => c?.paymentStatus === 'pending').length}
               </p>
             </div>
             <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
@@ -963,7 +972,7 @@ const CandidateManagement = () => {
             <div>
               <p className="text-sm text-gray-900">With Login Access</p>
               <p className="text-xl font-bold mt-1 text-gray-900">
-                {candidates.filter((c: any) => hasCredentials(c)).length}
+                {(candidates || []).filter((c: any) => hasCredentials(c)).length}
               </p>
             </div>
             <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
@@ -1695,7 +1704,381 @@ const CandidateManagement = () => {
                   </button>
                 </div>
 
-                {/* Rest of the form sections remain exactly as they were */}
+                {/* Section 6: Projects */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-pink-100 text-pink-600 p-2 rounded-lg">🚀</span>
+                    Projects
+                  </h4>
+
+                  {formData.projects.map((proj: any, index: number) => (
+                    <div key={proj.id} className="mb-6 p-4 border border-gray-200 rounded-lg bg-white">
+                      <div className="flex justify-between items-center mb-4">
+                        <h5 className="font-medium text-gray-900">Project #{index + 1}</h5>
+                        {formData.projects.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeProject(index)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Project Name *</label>
+                          <input
+                            type="text"
+                            value={proj.name}
+                            onChange={(e) => handleArrayInputChange('projects', index, 'name', e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            placeholder="E-commerce Platform"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Your Role *</label>
+                          <input
+                            type="text"
+                            value={proj.role}
+                            onChange={(e) => handleArrayInputChange('projects', index, 'role', e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            placeholder="Lead Developer"
+                            required
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Project URL</label>
+                          <input
+                            type="url"
+                            value={proj.url}
+                            onChange={(e) => handleArrayInputChange('projects', index, 'url', e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                            placeholder="https://github.com/username/project"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Start Date</label>
+                          <input
+                            type="date"
+                            value={proj.startDate}
+                            onChange={(e) => handleArrayInputChange('projects', index, 'startDate', e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">End Date</label>
+                          <input
+                            type="date"
+                            value={proj.endDate}
+                            onChange={(e) => handleArrayInputChange('projects', index, 'endDate', e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Description *</label>
+                        <textarea
+                          value={proj.description}
+                          onChange={(e) => handleArrayInputChange('projects', index, 'description', e.target.value)}
+                          rows={3}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                          placeholder="Describe the project, your contributions, and the impact..."
+                          required
+                        />
+                      </div>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Technologies Used (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={proj.technologies.join(', ')}
+                          onChange={(e) => handleArrayInputChange('projects', index, 'technologies', e.target.value.split(',').map((t: string) => t.trim()).filter(Boolean))}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                          placeholder="React, Node.js, MongoDB, AWS"
+                        />
+                      </div>
+
+                      <div className="mt-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Impact/Results</label>
+                        <input
+                          type="text"
+                          value={proj.impact}
+                          onChange={(e) => handleArrayInputChange('projects', index, 'impact', e.target.value)}
+                          className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                          placeholder="Increased user engagement by 40%, reduced load time by 50%"
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={addProject}
+                    className="mt-4 px-4 py-2 border border-pink-600 text-pink-600 rounded-lg hover:bg-pink-50"
+                  >
+                    + Add Another Project
+                  </button>
+                </div>
+
+                {/* Section 7: Skills */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-teal-100 text-teal-600 p-2 rounded-lg">⚡</span>
+                    Skills & Expertise
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Technical Skills */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-2">Technical Skills</label>
+                      <div className="border border-gray-300 rounded-lg p-3 bg-white h-64 overflow-y-auto">
+                        {SKILLS_OPTIONS.technical.map((skill: string) => (
+                          <div key={skill} className="flex items-center mb-2">
+                            <input
+                              type="checkbox"
+                              id={`tech-${skill}`}
+                              checked={formData.technicalSkills.includes(skill)}
+                              onChange={() => handleSkillsChange('technicalSkills', skill)}
+                              className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                            />
+                            <label htmlFor={`tech-${skill}`} className="ml-2 text-sm text-gray-900">
+                              {skill}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Soft Skills */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-2">Soft Skills</label>
+                      <div className="border border-gray-300 rounded-lg p-3 bg-white h-64 overflow-y-auto">
+                        {SKILLS_OPTIONS.soft.map((skill: string) => (
+                          <div key={skill} className="flex items-center mb-2">
+                            <input
+                              type="checkbox"
+                              id={`soft-${skill}`}
+                              checked={formData.softSkills.includes(skill)}
+                              onChange={() => handleSkillsChange('softSkills', skill)}
+                              className="h-4 w-4 text-green-600 border-gray-300 rounded"
+                            />
+                            <label htmlFor={`soft-${skill}`} className="ml-2 text-sm text-gray-900">
+                              {skill}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Languages */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-2">Languages</label>
+                      <div className="border border-gray-300 rounded-lg p-3 bg-white h-64 overflow-y-auto">
+                        {SKILLS_OPTIONS.languages.map((language: string) => (
+                          <div key={language} className="flex items-center mb-2">
+                            <input
+                              type="checkbox"
+                              id={`lang-${language}`}
+                              checked={formData.languages.includes(language)}
+                              onChange={() => handleSkillsChange('languages', language)}
+                              className="h-4 w-4 text-purple-600 border-gray-300 rounded"
+                            />
+                            <label htmlFor={`lang-${language}`} className="ml-2 text-sm text-gray-900">
+                              {language}
+                            </label>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Certifications */}
+                  <div className="mt-4">
+                    <label className="block text-sm font-medium text-gray-900 mb-1">Certifications (comma-separated)</label>
+                    <input
+                      type="text"
+                      name="certifications"
+                      value={formData.certifications.join(', ')}
+                      onChange={(e) => setFormData((prev: any) => ({
+                        ...prev,
+                        certifications: e.target.value.split(',').map((c: string) => c.trim()).filter(Boolean)
+                      }))}
+                      className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      placeholder="AWS Certified, PMP, Google Analytics"
+                    />
+                  </div>
+                </div>
+
+                {/* Section 8: Professional Summary */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-amber-100 text-amber-600 p-2 rounded-lg">📝</span>
+                    Professional Summary
+                  </h4>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-900 mb-1">Summary / Objective</label>
+                    <textarea
+                      name="summary"
+                      value={formData.summary}
+                      onChange={handleInputChange}
+                      rows={4}
+                      className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      placeholder="Write a brief professional summary highlighting your experience, skills, and career goals..."
+                    />
+                    <p className="text-xs text-gray-600 mt-1">
+                      A well-written summary helps generate better resumes and improves candidate matching.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Section 9: Additional Information */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-cyan-100 text-cyan-600 p-2 rounded-lg">📌</span>
+                    Additional Information
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Awards & Honors</label>
+                      <textarea
+                        name="awards"
+                        value={formData.awards}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="List any awards, honors, or recognitions..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Publications</label>
+                      <textarea
+                        name="publications"
+                        value={formData.publications}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="List any publications, articles, or research papers..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Volunteer Experience</label>
+                      <textarea
+                        name="volunteerExperience"
+                        value={formData.volunteerExperience}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Describe volunteer work, community involvement..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Professional Memberships</label>
+                      <textarea
+                        name="professionalMemberships"
+                        value={formData.professionalMemberships}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="List professional organizations, associations..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">References</label>
+                      <textarea
+                        name="references"
+                        value={formData.references}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Provide references or 'Available upon request'..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Internal Notes</label>
+                      <textarea
+                        name="notes"
+                        value={formData.notes}
+                        onChange={handleInputChange}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                        placeholder="Private notes for admin use only..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section 10: Subscription & Assignment */}
+                <div className="bg-gray-50 p-6 rounded-xl">
+                  <h4 className="font-bold text-gray-900 text-lg mb-4 flex items-center gap-2">
+                    <span className="bg-red-100 text-red-600 p-2 rounded-lg">🔑</span>
+                    Subscription & Assignment
+                  </h4>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Subscription Plan</label>
+                      <select
+                        name="subscriptionPlan"
+                        value={formData.subscriptionPlan}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        {SUBSCRIPTION_PLANS.map((plan) => (
+                          <option key={plan.id} value={plan.id} className="text-gray-900">
+                            {plan.name} - ${plan.price} / {plan.duration} days
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Payment Status</label>
+                      <select
+                        name="paymentStatus"
+                        value={formData.paymentStatus}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        <option value="paid" className="text-gray-900">Paid ✅</option>
+                        <option value="pending" className="text-gray-900">Pending ⏳</option>
+                        <option value="failed" className="text-gray-900">Failed ❌</option>
+                        <option value="refunded" className="text-gray-900">Refunded ↩️</option>
+                      </select>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-900 mb-1">Assign Recruiter</label>
+                      <select
+                        name="assignedRecruiter"
+                        value={formData.assignedRecruiter || ''}
+                        onChange={handleInputChange}
+                        className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
+                      >
+                        <option value="" className="text-gray-900">Unassigned</option>
+                        {(recruiters || []).map((recruiter) => (
+                          <option key={recruiter._id} value={recruiter._id} className="text-gray-900">
+                            {recruiter.name} ({recruiter.email}) - Workload: {recruiter.assignedCandidatesCount || 0}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="mt-8 flex justify-end gap-3">
@@ -2706,7 +3089,7 @@ const CandidateManagement = () => {
                         className="w-full p-3 border border-gray-300 rounded-lg text-gray-900 bg-white"
                       >
                         <option value="" className="text-gray-900">Unassigned</option>
-                        {recruiters.map((recruiter) => (
+                        {(recruiters || []).map((recruiter) => (
                           <option key={recruiter._id} value={recruiter._id} className="text-gray-900">
                             {recruiter.name} ({recruiter.email}) - Workload: {recruiter.assignedCandidatesCount || 0}
                           </option>

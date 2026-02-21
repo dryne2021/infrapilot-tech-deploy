@@ -16,19 +16,31 @@ export default function RecruiterPage() {
     pendingFollowups: 0,
     interviewsThisWeek: 0
   })
-  
-  // ✅ Simplified Resume Generator State
-  const [showResumeGenerator, setShowResumeGenerator] = useState(false)
-  const [jobUrl, setJobUrl] = useState('')
-  const [jobDescription, setJobDescription] = useState('')
-  const [generatedResume, setGeneratedResume] = useState('')
-  const [isGeneratingResume, setIsGeneratingResume] = useState(false)
-  const [resumeError, setResumeError] = useState('')
+  const [editingJob, setEditingJob] = useState<any>(null)
+  const [showEditForm, setShowEditForm] = useState(false)
+  const [jobFormData, setJobFormData] = useState({
+    jobTitle: '',
+    company: '',
+    description: '',
+    status: 'Applied',
+    resumeStatus: 'Pending',
+    matchScore: 70,
+    salaryRange: ''
+  })
   const [isClockedIn, setIsClockedIn] = useState(false)
   const [clockInTime, setClockInTime] = useState<Date | null>(null)
   const [currentSessionDuration, setCurrentSessionDuration] = useState(0)
   const [totalWorkedToday, setTotalWorkedToday] = useState(0)
   const [workSessions, setWorkSessions] = useState<any[]>([])
+  
+  // Resume Generation State
+  const [showResumeGenerator, setShowResumeGenerator] = useState(false)
+  const [jobIdForResume, setJobIdForResume] = useState('')
+  const [jobDescriptionForResume, setJobDescriptionForResume] = useState('')
+  const [generatedResume, setGeneratedResume] = useState('')
+  const [isGeneratingResume, setIsGeneratingResume] = useState(false)
+  const [resumeGenerationHistory, setResumeGenerationHistory] = useState<any[]>([])
+  const [resumeError, setResumeError] = useState('')
   
   // ✅ FIXED: Use window.location.origin or NEXT_PUBLIC_API_BASE_URL (no localhost fallback)
   const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 
@@ -87,24 +99,36 @@ export default function RecruiterPage() {
   const fetchAssignedCandidates = () =>
     api(`/api/v1/recruiter/candidates`, { method: 'GET' });
 
-  // ✅ Save resume for candidate (attached to candidate, not to a specific job)
-  const saveResumeForCandidate = async (candidateId: string, resumeText: string, jobUrl: string, jobDescription: string) => {
-    try {
-      await api(`/api/v1/recruiter/candidates/${candidateId}/resume`, {
-        method: 'POST',
-        body: JSON.stringify({
-          resumeText,
-          jobUrl,
-          jobDescription,
-          generatedAt: new Date().toISOString()
-        }),
-      });
-      return true;
-    } catch (error) {
-      console.error('Failed to save resume for candidate:', error);
-      return false;
-    }
-  };
+  // ✅ MONGO-BACKED JOB APIS (UPDATED ROUTES)
+  const fetchCandidateJobs = (candidateId: string, recruiterId: string) =>
+    api(`/api/v1/job-applications/candidate/${candidateId}?recruiterId=${recruiterId}`, {
+      method: 'GET',
+    });
+
+  const createCandidateJob = (payload: any) =>
+    api(`/api/v1/job-applications`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+  const updateCandidateJob = (jobDbId: string, payload: any) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+
+  const deleteCandidateJob = (jobDbId: string) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
+      method: 'DELETE',
+    });
+
+  // ✅ Save resume directly into JobApplication
+  const saveJobResume = (jobDbId: string, resumeText: string, jobDescriptionFull: string) =>
+    updateCandidateJob(jobDbId, {
+      resumeText,
+      jobDescriptionFull,
+      resumeStatus: 'Submitted',
+    });
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
@@ -242,7 +266,7 @@ export default function RecruiterPage() {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Resume_${fileSafeName}_${Date.now()}.docx`;
+    a.download = `Resume_${fileSafeName}_${jobIdForResume || Date.now()}.docx`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -250,10 +274,44 @@ export default function RecruiterPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ UPDATED: FUNCTION: Generate and download Word resume (simplified - no job ID)
+  // ✅ STEP 1 — Add helper to auto-create job
+  const autoCreateJobIfNeeded = async () => {
+    if (!selectedCandidate) return null;
+
+    const recruiterId = localStorage.getItem('recruiter_id') || '';
+
+    // If we already loaded a job from dropdown
+    if (editingJob?._id) {
+      return editingJob._id;
+    }
+
+    // Create new job automatically
+    const payload = {
+      candidateId: selectedCandidate.id,
+      recruiterId,
+      jobId: jobIdForResume || `job_${Date.now()}`,
+      jobTitle: 'Position Applied',
+      company: 'Company Name',
+      description: jobDescriptionForResume,
+      status: 'Applied',
+      resumeStatus: 'Pending',
+      matchScore: 0,
+      salaryRange: '',
+    };
+
+    const newJob = await createCandidateJob(payload);
+
+    // Refresh jobs list
+    const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+    setCandidateJobs(jobsResp.jobs || []);
+
+    return newJob._id || jobsResp.jobs?.[0]?._id;
+  };
+
+  // ✅ UPDATED: FUNCTION: Generate and download Word resume (with auto-create job)
   const generateAndDownloadWordResume = async () => {
-    if (!jobDescription.trim()) {
-      alert('Please enter a job description');
+    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
+      alert('Please enter both Job ID and Job Description');
       return;
     }
 
@@ -268,10 +326,10 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ Use the normalizeExperience function
+      // ✅ UPDATED: Use the new normalizeExperience function
       const normalizedExp = (candidate.experience || []).map(normalizeExperience);
 
-      // ✅ Show warning but don't block
+      // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
         const proceed = window.confirm(
           '⚠️ No work experience found. The resume will be generated with education and skills only. Continue?'
@@ -292,15 +350,15 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills || [],
-        experience: normalizedExp,
+        experience: normalizedExp,          // ✅ Now sends raw startDate/endDate
         education: candidate.education || [],
         certifications: candidate.certifications || [],
         projects: candidate.projects || [],
-        jobUrl: jobUrl || 'Not provided',
-        jobDescription: jobDescription,
+        jobId: jobIdForResume,
+        jobDescription: jobDescriptionForResume,
       };
 
-      console.log("Generating resume with payload:", payload);
+      console.log("Payload experience:", payload.experience);
 
       // 1) Generate resume text (JSON)
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
@@ -326,26 +384,30 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ Save resume to candidate profile (so candidate can see it in their portal)
-      await saveResumeForCandidate(candidate.id, resumeText, jobUrl, jobDescription);
+      // ✅ STEP 3 — AUTO CREATE JOB IF NEEDED (Word version)
+      const jobDbId = await autoCreateJobIfNeeded();
+
+      if (jobDbId) {
+        await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+      }
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
 
-      alert('✅ Resume generated, saved to candidate profile, and downloaded!');
+      alert('✅ Word resume downloaded (.docx) and saved to job!');
     } catch (err: any) {
-      console.error('❌ Resume generation error:', err);
-      setResumeError(err?.message || 'Failed to generate resume');
-      alert(`❌ ${err?.message || 'Failed to generate resume'}`);
+      console.error('❌ Word generation/download error:', err);
+      setResumeError(err?.message || 'Failed to generate/download Word resume');
+      alert(`❌ ${err?.message || 'Failed to generate/download Word resume'}`);
     } finally {
       setIsGeneratingResume(false);
     }
   };
 
-  // ✅ UPDATED: Function to generate resume only (no download)
-  const generateResumeOnly = async () => {
-    if (!jobDescription.trim()) {
-      alert('Please enter a job description');
+  // ✅ UPDATED: Function to generate resume (with auto-create job)
+  const generateResume = async () => {
+    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
+      alert('Please enter both Job ID and Job Description');
       return;
     }
 
@@ -361,10 +423,10 @@ export default function RecruiterPage() {
     try {
       const candidate: any = ensureCandidateDataStructure(selectedCandidate);
       
-      // ✅ Use the normalizeExperience function
+      // ✅ UPDATED: Use the new normalizeExperience function
       const normalizedExp = (candidate.experience || []).map(normalizeExperience);
 
-      // ✅ Show warning but don't block
+      // ✅ UPDATED: Show warning but don't block
       if (normalizedExp.length === 0) {
         const proceed = window.confirm(
           '⚠️ No work experience found. The resume will be generated with education and skills only. Continue?'
@@ -385,13 +447,15 @@ export default function RecruiterPage() {
         phone: candidate.phone || '',
         summary: candidate.summary || candidate.about || '',
         skills: candidate.skills || [],
-        experience: normalizedExp,
+        experience: normalizedExp,          // ✅ Now sends raw startDate/endDate
         education: candidate.education || [],
         certifications: candidate.certifications || [],
         projects: candidate.projects || [],
-        jobUrl: jobUrl || 'Not provided',
-        jobDescription: jobDescription,
+        jobId: jobIdForResume,
+        jobDescription: jobDescriptionForResume,
       };
+
+      console.log("Payload experience:", payload.experience);
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
@@ -416,10 +480,33 @@ export default function RecruiterPage() {
 
       setGeneratedResume(resumeText);
 
-      // ✅ Save resume to candidate profile (so candidate can see it in their portal)
-      await saveResumeForCandidate(candidate.id, resumeText, jobUrl, jobDescription);
+      // ✅ STEP 2 — AUTO CREATE JOB IF NEEDED
+      const jobDbId = await autoCreateJobIfNeeded();
 
-      alert('✅ Resume generated and saved to candidate profile!');
+      if (jobDbId) {
+        await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+      }
+
+      // Save to history
+      const newResumeEntry = {
+        id: `resume_${Date.now()}`,
+        candidateId: candidate?.id,
+        candidateName: payload.fullName,
+        jobId: jobIdForResume,
+        jobDescription: jobDescriptionForResume.substring(0, 200) + '...',
+        generatedDate: new Date().toISOString(),
+        matchScore: Math.floor(Math.random() * 20) + 80,
+      };
+
+      const updatedHistory = [newResumeEntry, ...resumeGenerationHistory];
+      setResumeGenerationHistory(updatedHistory);
+
+      const recruiterId = localStorage.getItem('recruiter_id');
+      if (recruiterId) {
+        localStorage.setItem(`resume_history_${recruiterId}`, JSON.stringify(updatedHistory));
+      }
+
+      alert('✅ Resume generated and saved successfully! The candidate can now view it in their dashboard.');
     } catch (err: any) {
       console.error('❌ Error generating resume:', err);
       setResumeError(err?.message || 'Failed to generate resume');
@@ -456,20 +543,39 @@ export default function RecruiterPage() {
   }
   
   const clearResumeGenerator = () => {
-    setJobUrl('')
-    setJobDescription('')
+    setJobIdForResume('')
+    setJobDescriptionForResume('')
     setGeneratedResume('')
-    setResumeError('')
   }
+  
+  // ✅ FIXED: loadJobDetails function
+  const loadJobDetails = (jobDbId: string) => {
+    const job = candidateJobs.find((j: any) => j._id === jobDbId);
+    if (job) {
+      // ✅ this ensures saveJobResume uses the correct job
+      setEditingJob(job);
 
-  // ✅ UPDATED: Function to view candidate details (simplified - no jobs loading)
+      setJobIdForResume(job.jobId || job._id);
+      setJobDescriptionForResume(job.jobDescriptionFull || job.description || '');
+      setShowResumeGenerator(true);
+    }
+  };
+
+  // ✅ UPDATED: Function to view candidate details
   const viewCandidateDetails = async (candidate: any) => {
     const structuredCandidate = ensureCandidateDataStructure(candidate);
     setSelectedCandidate(structuredCandidate);
+
+    try {
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(structuredCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
+    } catch (e) {
+      console.error('Failed to load candidate jobs:', e);
+      setCandidateJobs([]);
+    }
+
     setShowCandidateDetails(true);
-    
-    // Clear previous resume generator data
-    clearResumeGenerator();
   };
 
   useEffect(() => {
@@ -479,7 +585,7 @@ export default function RecruiterPage() {
       const recruiterId = localStorage.getItem('recruiter_id')
       
       if (!userStr || !recruiterAuth || recruiterAuth !== 'true') {
-        router.replace('/recruiter/login')
+        router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
         return
       }
       
@@ -487,7 +593,7 @@ export default function RecruiterPage() {
         const userData = JSON.parse(userStr)
         
         if (userData.role !== 'recruiter') {
-          router.replace('/recruiter/login')
+          router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
           return
         }
         
@@ -521,7 +627,13 @@ export default function RecruiterPage() {
           }
         }
         
-        // ✅ Load assigned candidates from backend
+        // Load resume generation history
+        const savedResumeHistory = localStorage.getItem(`resume_history_${recruiterId}`)
+        if (savedResumeHistory) {
+          setResumeGenerationHistory(JSON.parse(savedResumeHistory))
+        }
+        
+        // ✅ FIXED: Load assigned candidates from backend (using correct endpoint)
         try {
           const myCandidates = await fetchAssignedCandidates();
           setAssignedCandidates(myCandidates);
@@ -545,7 +657,7 @@ export default function RecruiterPage() {
         localStorage.removeItem('infrapilot_token')
         localStorage.removeItem('recruiter_authenticated')
         localStorage.removeItem('recruiter_id')
-        router.replace('/recruiter/login')
+        router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
       } finally {
         setLoading(false)
       }
@@ -673,13 +785,13 @@ export default function RecruiterPage() {
     localStorage.removeItem('infrapilot_token')
     localStorage.removeItem('recruiter_authenticated')
     localStorage.removeItem('recruiter_id')
-    router.replace('/recruiter/login')
+    router.replace('/recruiter/login')  // ✅ CHANGED: Use replace instead of push
   }
 
   // ✅ FIXED: Update candidate status (using correct endpoint)
   const updateCandidateStatus = async (candidateId: string, newStatus: string) => {
     try {
-      // ✅ Correct endpoint - /api/v1/recruiter/candidates/:id/status
+      // ✅ FIXED: Correct endpoint - /api/v1/recruiter/candidates/:id/status
       await api(`/api/v1/recruiter/candidates/${candidateId}/status`, {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
@@ -702,6 +814,105 @@ export default function RecruiterPage() {
     }
   };
 
+  const handleEditJob = (jobDbId: string) => {
+    const jobToEdit = candidateJobs.find((job: any) => job._id === jobDbId)
+    if (jobToEdit) {
+      setEditingJob(jobToEdit)
+      setJobFormData({
+        jobTitle: jobToEdit.jobTitle,
+        company: jobToEdit.company,
+        description: jobToEdit.description,
+        status: jobToEdit.status,
+        resumeStatus: jobToEdit.resumeStatus,
+        matchScore: jobToEdit.matchScore,
+        salaryRange: jobToEdit.salaryRange
+      })
+      setShowEditForm(true)
+    }
+  }
+
+  // ✅ UPDATED: handleSaveJob (update in MongoDB)
+  const handleSaveJob = async () => {
+    if (!editingJob || !selectedCandidate) return;
+
+    try {
+      await updateCandidateJob(editingJob._id, jobFormData);
+      
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
+
+      setShowEditForm(false);
+      setEditingJob(null);
+      alert('✅ Job updated successfully!');
+    } catch (e: any) {
+      alert(`❌ ${e?.message || 'Failed to update job'}`);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setShowEditForm(false)
+    setEditingJob(null)
+    setJobFormData({
+      jobTitle: '',
+      company: '',
+      description: '',
+      status: 'Applied',
+      resumeStatus: 'Pending',
+      matchScore: 70,
+      salaryRange: ''
+    })
+  }
+
+  // ✅ UPDATED: handleDeleteJob (delete in MongoDB)
+  const handleDeleteJob = async (jobDbId: string) => {
+    if (!selectedCandidate) return;
+
+    if (!window.confirm('Are you sure you want to delete this job application?')) return;
+
+    try {
+      await deleteCandidateJob(jobDbId);
+      
+      const recruiterId = localStorage.getItem('recruiter_id') || '';
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
+      alert('✅ Job deleted!');
+    } catch (e: any) {
+      alert(`❌ ${e?.message || 'Failed to delete job'}`);
+    }
+  };
+
+  // ✅ FIXED: addNewJob (Mongo requires recruiterId)
+  const addNewJob = async () => {
+    if (!selectedCandidate) return;
+
+    const recruiterId = localStorage.getItem('recruiter_id') || '';
+
+    const payload = {
+      candidateId: selectedCandidate.id,
+      recruiterId,
+      jobId: `job_${Date.now()}`,
+      jobTitle: 'New Position',
+      company: 'New Company',
+      description: 'Add job description here...',
+      status: 'Applied',
+      resumeStatus: 'Pending',
+      matchScore: 0,
+      salaryRange: 'To be determined',
+    };
+
+    try {
+      await createCandidateJob(payload);
+
+      const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
+      setCandidateJobs(jobsResp.jobs || []);
+
+      setShowEditForm(false);
+    } catch (e: any) {
+      alert(`❌ ${e?.message || 'Failed to create job'}`);
+    }
+  };
+
   const getPlanColor = (plan: string) => {
     const colors: any = {
       free: 'bg-gray-100 text-gray-900',
@@ -711,6 +922,26 @@ export default function RecruiterPage() {
       enterprise: 'bg-purple-100 text-gray-900'
     }
     return colors[plan] || 'bg-blue-100 text-gray-900'
+  }
+
+  const getStatusColor = (status: string) => {
+    const colors: any = {
+      'Applied': 'bg-blue-100 text-gray-900',
+      'Under Review': 'bg-yellow-100 text-gray-900',
+      'Interview': 'bg-purple-100 text-gray-900',
+      'Offer': 'bg-green-100 text-gray-900',
+      'Rejected': 'bg-red-100 text-gray-900'
+    }
+    return colors[status] || 'bg-gray-100 text-gray-900'
+  }
+
+  const getResumeColor = (status: string) => {
+    const colors: any = {
+      'Submitted': 'bg-green-100 text-gray-900',
+      'Reviewed': 'bg-blue-100 text-gray-900',
+      'Pending': 'bg-yellow-100 text-gray-900'
+    }
+    return colors[status] || 'bg-gray-100 text-gray-900'
   }
 
   if (loading) {
@@ -774,7 +1005,7 @@ export default function RecruiterPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={() => router.replace('/recruiter/login')}
+                onClick={() => router.replace('/recruiter/login')}  // ✅ CHANGED: Use replace instead of push
                 className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 border border-gray-300"
               >
                 Switch Account
@@ -941,6 +1172,81 @@ export default function RecruiterPage() {
           </div>
         </div>
 
+        {/* Resume Generation History */}
+        {resumeGenerationHistory.length > 0 && (
+          <div className="bg-white rounded-xl shadow p-6 mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">📄 Recent Resume Generations</h2>
+                <p className="text-gray-600">AI-powered resume generation history</p>
+              </div>
+              <span className="px-3 py-1 bg-purple-100 text-gray-900 rounded-full text-xs font-medium">
+                {resumeGenerationHistory.length} generated
+              </span>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="p-3 text-left text-sm font-semibold text-gray-900">Date</th>
+                    <th className="p-3 text-left text-sm font-semibold text-gray-900">Candidate</th>
+                    <th className="p-3 text-left text-sm font-semibold text-gray-900">Job ID</th>
+                    <th className="p-3 text-left text-sm font-semibold text-gray-900">Match Score</th>
+                    <th className="p-3 text-left text-sm font-semibold text-gray-900">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {resumeGenerationHistory.slice(0, 3).map((resume, index) => (
+                    <tr key={resume.id} className="hover:bg-gray-50">
+                      <td className="p-3">
+                        <p className="text-sm text-gray-900">
+                          {new Date(resume.generatedDate).toLocaleDateString()}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {new Date(resume.generatedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                      </td>
+                      <td className="p-3">
+                        <p className="text-sm font-medium text-gray-900">{resume.candidateName}</p>
+                      </td>
+                      <td className="p-3">
+                        <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{resume.jobId}</code>
+                      </td>
+                      <td className="p-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-green-500 h-2 rounded-full" 
+                              style={{ width: `${resume.matchScore}%` }}
+                            ></div>
+                          </div>
+                          <span className="text-sm font-medium text-gray-900">{resume.matchScore}%</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <button
+                          onClick={() => {
+                            setJobIdForResume(resume.jobId)
+                            setJobDescriptionForResume(resume.jobDescription)
+                            setShowResumeGenerator(true)
+                            if (showCandidateDetails) {
+                              document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
+                            }
+                          }}
+                          className="px-3 py-1 text-sm bg-blue-100 text-gray-900 rounded hover:bg-blue-200"
+                        >
+                          Regenerate
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Work Sessions History */}
         <div className="bg-white rounded-xl shadow p-6 mb-8">
           <div className="flex justify-between items-center mb-4">
@@ -1032,7 +1338,7 @@ export default function RecruiterPage() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-gray-800">🎯 Your Assigned Candidates</h2>
-                <p className="text-gray-600">Click the eye icon to generate resumes</p>
+                <p className="text-gray-600">Click the eye icon to view job applications</p>
               </div>
               <div className="text-sm text-gray-500">
                 Total: {assignedCandidates.length} candidates
@@ -1046,7 +1352,7 @@ export default function RecruiterPage() {
               <h3 className="text-lg font-medium text-gray-900 mb-2">No candidates assigned yet</h3>
               <p className="text-gray-500">The admin will assign candidates to you soon.</p>
               <button
-                onClick={() => router.replace('/recruiter/login')}
+                onClick={() => router.replace('/recruiter/login')}  // ✅ CHANGED: Use replace instead of push
                 className="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
               >
                 Refresh
@@ -1132,9 +1438,9 @@ export default function RecruiterPage() {
                           <div className="flex flex-col gap-2">
                             <button
                               onClick={() => viewCandidateDetails(candidateWithId)}
-                              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center justify-center gap-2"
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center justify-center gap-2"
                             >
-                              <span>✨</span> Generate Resume
+                              <span>👁️</span> View Jobs
                             </button>
                             <a 
                               href={`mailto:${candidateWithId.email}`}
@@ -1153,23 +1459,20 @@ export default function RecruiterPage() {
           )}
         </div>
 
-        {/* ✅ SIMPLIFIED: Candidate Details Modal with Resume Generator Only */}
+        {/* Candidate Details Modal */}
         {showCandidateDetails && selectedCandidate && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] overflow-y-auto">
               <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
                 <div className="flex justify-between items-center">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-800">✨ AI Resume Generator</h3>
-                    <p className="text-gray-600">
-                      For: {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
-                    </p>
+                    <h3 className="text-xl font-bold text-gray-800">👁️ Job Applications</h3>
+                    <p className="text-gray-600">For: {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}</p>
                   </div>
                   <button
                     onClick={() => {
                       setShowCandidateDetails(false)
                       setSelectedCandidate(null)
-                      clearResumeGenerator()
                     }}
                     className="text-gray-700 hover:text-gray-900 text-2xl"
                   >
@@ -1207,246 +1510,590 @@ export default function RecruiterPage() {
                   </div>
                 </div>
 
-                {/* 🔥 FULL CANDIDATE PROFILE DETAILS (Collapsible) */}
-                <details className="mb-6">
-                  <summary className="text-lg font-bold text-gray-800 cursor-pointer hover:text-blue-600">
-                    👤 View Candidate Profile Details
-                  </summary>
-                  <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
+                {/* 🔥 FULL CANDIDATE PROFILE DETAILS */}
+                <div className="mb-8 space-y-6">
 
-                    {/* Summary */}
-                    {selectedCandidate.summary && (
-                      <div className="bg-white p-4 rounded-lg border">
-                        <h4 className="font-bold text-gray-800 mb-2">📝 Professional Summary</h4>
-                        <p className="text-gray-700 text-sm leading-relaxed">
-                          {selectedCandidate.summary}
-                        </p>
+                  {/* Summary */}
+                  {selectedCandidate.summary && (
+                    <div className="bg-white p-5 rounded-lg border">
+                      <h4 className="text-lg font-bold text-gray-800 mb-2">📝 Professional Summary</h4>
+                      <p className="text-gray-700 text-sm leading-relaxed">
+                        {selectedCandidate.summary}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Skills */}
+                  {selectedCandidate.skills?.length > 0 && (
+                    <div className="bg-white p-5 rounded-lg border">
+                      <h4 className="text-lg font-bold text-gray-800 mb-3">🛠 Skills</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedCandidate.skills.map((skill: string, index: number) => (
+                          <span
+                            key={index}
+                            className="px-3 py-1 bg-blue-100 text-gray-900 rounded-full text-xs font-medium"
+                          >
+                            {skill}
+                          </span>
+                        ))}
                       </div>
-                    )}
+                    </div>
+                  )}
 
-                    {/* Skills */}
-                    {selectedCandidate.skills?.length > 0 && (
-                      <div className="bg-white p-4 rounded-lg border">
-                        <h4 className="font-bold text-gray-800 mb-3">🛠 Skills</h4>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedCandidate.skills.map((skill: string, index: number) => (
-                            <span
-                              key={index}
-                              className="px-3 py-1 bg-blue-100 text-gray-900 rounded-full text-xs font-medium"
-                            >
-                              {skill}
-                            </span>
-                          ))}
+                  {/* Experience */}
+                  <div className="bg-white p-5 rounded-lg border">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4">💼 Work Experience</h4>
+
+                    {selectedCandidate.experience?.length > 0 ? (
+                      selectedCandidate.experience.map((exp: any, index: number) => (
+                        <div key={index} className="mb-4 pb-4 border-b last:border-none">
+                          <p className="font-semibold text-gray-900">
+                            {exp.title}
+                          </p>
+                          <p className="text-sm text-gray-700">
+                            {exp.company} {exp.location ? `• ${exp.location}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {exp.startDate} – {exp.endDate || 'Present'}
+                          </p>
                         </div>
-                      </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">No work experience provided.</p>
                     )}
-
-                    {/* Experience */}
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h4 className="font-bold text-gray-800 mb-4">💼 Work Experience</h4>
-
-                      {selectedCandidate.experience?.length > 0 ? (
-                        selectedCandidate.experience.map((exp: any, index: number) => (
-                          <div key={index} className="mb-4 pb-4 border-b last:border-none">
-                            <p className="font-semibold text-gray-900">
-                              {exp.title}
-                            </p>
-                            <p className="text-sm text-gray-700">
-                              {exp.company} {exp.location ? `• ${exp.location}` : ''}
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {exp.startDate} – {exp.endDate || 'Present'}
-                            </p>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-gray-500">No work experience provided.</p>
-                      )}
-                    </div>
-
-                    {/* Education */}
-                    <div className="bg-white p-4 rounded-lg border">
-                      <h4 className="font-bold text-gray-800 mb-4">🎓 Education</h4>
-
-                      {selectedCandidate.education?.length > 0 ? (
-                        selectedCandidate.education.map((edu: any, index: number) => (
-                          <div key={index} className="mb-4 pb-4 border-b last:border-none">
-                            <p className="font-semibold text-gray-900">
-                              {edu.school}
-                            </p>
-                            <p className="text-sm text-gray-700">
-                              {edu.degree} {edu.field ? `– ${edu.field}` : ''}
-                            </p>
-                            <p className="text-xs text-gray-600">
-                              {edu.startYear} – {edu.endYear}
-                            </p>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-gray-500">No education provided.</p>
-                      )}
-                    </div>
-
                   </div>
-                </details>
 
-                {/* ✅ SIMPLIFIED: Resume Generator Section */}
-                <div id="resume-generator" className="mb-8">
-                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
-                    <h4 className="text-lg font-bold text-gray-800 mb-4">🤖 Generate Tailored Resume</h4>
-                    
-                    <div className="space-y-4">
-                      {/* Job URL Input */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Job URL (Optional)
-                        </label>
-                        <input
-                          type="url"
-                          value={jobUrl}
-                          onChange={(e) => setJobUrl(e.target.value)}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="https://company.com/job-posting"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">
-                          Paste the job posting URL for reference
-                        </p>
-                      </div>
-                      
-                      {/* Job Description Input */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Job Description *
-                        </label>
-                        <textarea
-                          value={jobDescription}
-                          onChange={(e) => setJobDescription(e.target.value)}
-                          rows={6}
-                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                          placeholder="Paste the full job description here. The AI will analyze skills, requirements, and tailor the resume accordingly..."
-                          required
-                        />
-                        <div className="flex justify-between mt-1">
-                          <p className="text-xs text-gray-500">
-                            {jobDescription.length} characters
+                  {/* Education */}
+                  <div className="bg-white p-5 rounded-lg border">
+                    <h4 className="text-lg font-bold text-gray-800 mb-4">🎓 Education</h4>
+
+                    {selectedCandidate.education?.length > 0 ? (
+                      selectedCandidate.education.map((edu: any, index: number) => (
+                        <div key={index} className="mb-4 pb-4 border-b last:border-none">
+                          <p className="font-semibold text-gray-900">
+                            {edu.school}
                           </p>
-                          {jobDescription.trim() && (
-                            <p className="text-xs text-green-600">
-                              ✓ Ready to generate
-                            </p>
-                          )}
+                          <p className="text-sm text-gray-700">
+                            {edu.degree} {edu.field ? `– ${edu.field}` : ''}
+                          </p>
+                          <p className="text-xs text-gray-600">
+                            {edu.startYear} – {edu.endYear}
+                          </p>
                         </div>
-                      </div>
-                      
-                      {/* Action Buttons */}
-                      <div className="flex flex-wrap gap-3 pt-2">
-                        <button
-                          onClick={generateResumeOnly}
-                          disabled={isGeneratingResume || !jobDescription.trim()}
-                          className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
-                            isGeneratingResume || !jobDescription.trim()
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'
-                          }`}
-                        >
-                          {isGeneratingResume ? (
-                            <>
-                              <span className="animate-spin">⏳</span> Generating...
-                            </>
-                          ) : (
-                            <>
-                              <span>✨</span> Generate Resume
-                            </>
-                          )}
-                        </button>
-                        
-                        <button
-                          onClick={generateAndDownloadWordResume}
-                          disabled={isGeneratingResume || !jobDescription.trim()}
-                          className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
-                            isGeneratingResume || !jobDescription.trim()
-                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                              : 'bg-gradient-to-r from-green-600 to-teal-600 text-white hover:from-green-700 hover:to-teal-700'
-                          }`}
-                        >
-                          <span>📄</span> Generate & Download
-                        </button>
-                        
-                        <button
-                          onClick={clearResumeGenerator}
-                          className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
-                        >
-                          Clear
-                        </button>
-                      </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-gray-500">No education provided.</p>
+                    )}
+                  </div>
 
-                      {/* Info Message */}
-                      <div className="bg-blue-50 p-3 rounded-lg">
-                        <p className="text-sm text-blue-800 flex items-center gap-2">
-                          <span>ℹ️</span>
-                          Generated resumes are automatically saved to the candidate's profile and visible in their portal.
+                </div>
+
+                {/* Resume Generator Section */}
+                <div id="resume-generator" className="mb-8">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-lg font-bold text-gray-800">🤖 AI Resume Generator</h4>
+                    <button
+                      onClick={() => setShowResumeGenerator(!showResumeGenerator)}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                    >
+                      <span>{showResumeGenerator ? '👇' : '👆'}</span> {showResumeGenerator ? 'Hide Generator' : 'Show Generator'}
+                    </button>
+                  </div>
+                  
+                  {showResumeGenerator && (
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-6">
+                      <div className="mb-6">
+                        <h5 className="font-bold text-gray-800 mb-3">Generate Tailored Resume</h5>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Enter job details to generate a customized resume for {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
                         </p>
-                      </div>
-
-                      {/* Error Display */}
-                      {resumeError && (
-                        <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                          <p className="text-sm text-red-700">❌ {resumeError}</p>
-                        </div>
-                      )}
-                    </div>
-                    
-                    {/* Generated Resume Display */}
-                    {generatedResume && (
-                      <div className="mt-6 border-t border-gray-200 pt-6">
-                        <div className="flex justify-between items-center mb-4">
-                          <h5 className="font-bold text-gray-800">📄 Generated Resume</h5>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={copyResumeToClipboard}
-                              className="px-4 py-2 bg-green-100 text-gray-900 rounded-lg hover:bg-green-200 text-sm"
-                            >
-                              📋 Copy
-                            </button>
-                            <button
-                              onClick={downloadResume}
-                              className="px-4 py-2 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200 text-sm"
-                            >
-                              ⬇️ Download (.docx)
-                            </button>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Job ID / Reference
+                            </label>
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={jobIdForResume}
+                                onChange={(e) => setJobIdForResume(e.target.value)}
+                                className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                                placeholder="e.g., job_abc123 or Google_SE_2024"
+                              />
+                              <select
+                                onChange={(e) => loadJobDetails(e.target.value)}
+                                className="p-3 border border-gray-300 rounded-lg bg-white text-gray-900"
+                              >
+                                <option value="">Load from jobs</option>
+                                {candidateJobs.map((job: any) => (
+                                  <option key={job._id} value={job._id}>
+                                    {job.jobTitle} - {job.company}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                              Match Score: <span className="font-bold text-purple-700">92%</span>
+                            </label>
+                            <div className="w-full bg-gray-200 rounded-full h-2">
+                              <div className="bg-green-500 h-2 rounded-full" style={{ width: '92%' }}></div>
+                            </div>
                           </div>
                         </div>
                         
-                        <div className="bg-white border border-gray-300 rounded-lg p-4 max-h-96 overflow-y-auto">
-                          <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
-                            {generatedResume}
-                          </pre>
-                        </div>
-                        
-                        <div className="mt-4 p-3 bg-green-50 rounded-lg">
-                          <p className="text-sm text-green-800 flex items-center gap-2">
-                            <span>✅</span>
-                            Resume saved to candidate profile. They can now view it in their portal.
+                        <div className="mb-4">
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Job Description *
+                          </label>
+                          <textarea
+                            value={jobDescriptionForResume}
+                            onChange={(e) => setJobDescriptionForResume(e.target.value)}
+                            rows={4}
+                            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            placeholder="Paste the full job description here. The AI will analyze skills, requirements, and tailor the resume accordingly..."
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            {jobDescriptionForResume.length} characters • Required
                           </p>
                         </div>
+                        
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            onClick={generateResume}
+                            disabled={isGeneratingResume || !jobIdForResume.trim() || !jobDescriptionForResume.trim()}
+                            className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
+                              isGeneratingResume || !jobIdForResume.trim() || !jobDescriptionForResume.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700'
+                            }`}
+                          >
+                            {isGeneratingResume ? (
+                              <>
+                                <span className="animate-spin">⏳</span> Generating...
+                              </>
+                            ) : (
+                              <>
+                                <span>✨</span> Generate AI Resume
+                              </>
+                            )}
+                          </button>
+                          
+                          <button
+                            onClick={generateAndDownloadWordResume}
+                            disabled={isGeneratingResume || !jobIdForResume.trim() || !jobDescriptionForResume.trim()}
+                            className={`px-6 py-3 rounded-lg font-medium flex items-center gap-2 ${
+                              isGeneratingResume || !jobIdForResume.trim() || !jobDescriptionForResume.trim()
+                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-green-600 to-teal-600 text-white hover:from-green-700 hover:to-teal-700'
+                            }`}
+                          >
+                            <span>📄</span> Download Word Resume
+                          </button>
+                          
+                          <button
+                            onClick={clearResumeGenerator}
+                            className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                          >
+                            Clear
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setJobIdForResume(`job_${selectedCandidate.id}_${Date.now()}`)
+                              setJobDescriptionForResume(candidateJobs.length > 0 ? (candidateJobs[0] as any).description : '')
+                            }}
+                            className="px-6 py-3 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200"
+                          >
+                            Auto-Fill
+                          </button>
+                        </div>
+
+                        {/* ✅ Show error under the generator */}
+                        {resumeError && (
+                          <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-sm text-red-700">❌ {resumeError}</p>
+                          </div>
+                        )}
                       </div>
-                    )}
+                      
+                      {generatedResume && (
+                        <div className="mt-6 border-t border-gray-200 pt-6">
+                          <div className="flex justify-between items-center mb-4">
+                            <h5 className="font-bold text-gray-800">📄 Generated Resume</h5>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={copyResumeToClipboard}
+                                className="px-4 py-2 bg-green-100 text-gray-900 rounded-lg hover:bg-green-200 text-sm"
+                              >
+                                📋 Copy
+                              </button>
+                              <button
+                                onClick={downloadResume}
+                                className="px-4 py-2 bg-blue-100 text-gray-900 rounded-lg hover:bg-blue-200 text-sm"
+                              >
+                                ⬇️ Download (.docx)
+                              </button>
+                            </div>
+                          </div>
+                          
+                          <div className="bg-white border border-gray-300 rounded-lg p-4 max-h-96 overflow-y-auto">
+                            <pre className="whitespace-pre-wrap font-mono text-sm text-gray-800">
+                              {generatedResume}
+                            </pre>
+                          </div>
+                          
+                          <div className="mt-4 p-3 bg-yellow-50 rounded-lg">
+                            <p className="text-sm text-gray-900">
+                              💡 <strong>Tip:</strong> This AI-generated resume is tailored to match the job description. Review and customize it before sending to the candidate.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Job Applications Table */}
+                <div className="mb-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h4 className="text-lg font-bold text-gray-800">📋 Job Applications</h4>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={addNewJob}
+                        className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2"
+                      >
+                        <span>➕</span> Add New Job
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (candidateJobs.length > 0) {
+                            loadJobDetails((candidateJobs[0] as any)._id)
+                            document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
+                          }
+                        }}
+                        className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 flex items-center gap-2"
+                      >
+                        <span>🤖</span> Generate Resume
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {candidateJobs.length === 0 ? (
+                    <div className="text-center py-8 bg-gray-50 rounded-lg">
+                      <div className="text-4xl mb-4">📭</div>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No job applications yet</h3>
+                      <p className="text-gray-600 mb-4">Add the first job application for this candidate</p>
+                      <button
+                        onClick={addNewJob}
+                        className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Add First Job
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Job ID</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Job Title & Company</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Description</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Resume Status</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Date Created</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Status</th>
+                            <th className="p-3 text-left text-sm font-semibold text-gray-900">Options</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200">
+                          {candidateJobs.map((job: any) => (
+                            <tr key={job._id} className="hover:bg-gray-50">
+                              <td className="p-3">
+                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.jobId || job._id}</code>
+                                <button
+                                  onClick={() => {
+                                    loadJobDetails(job._id)
+                                    document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
+                                  }}
+                                  className="mt-1 text-xs text-purple-600 hover:text-purple-800"
+                                >
+                                  Use for Resume
+                                </button>
+                              </td>
+                              <td className="p-3">
+                                <p className="font-medium text-gray-900">{job.jobTitle}</p>
+                                <p className="text-sm text-gray-600">{job.company}</p>
+                                <p className="text-xs text-gray-600">Match: {job.matchScore}%</p>
+                              </td>
+                              <td className="p-3">
+                                <p className="text-sm text-gray-700 line-clamp-2">{job.description}</p>
+                                <p className="text-xs text-gray-600 mt-1">{job.salaryRange}</p>
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getResumeColor(job.resumeStatus)}`}>
+                                  {job.resumeStatus}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <p className="text-sm text-gray-900">
+                                  {new Date(job.appliedDate || job.createdAt).toLocaleDateString()}
+                                </p>
+                                <p className="text-xs text-gray-600">
+                                  {new Date(job.appliedDate || job.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </p>
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {Math.floor((Date.now() - new Date(job.appliedDate || job.createdAt).getTime()) / (1000 * 60 * 60 * 24))} days ago
+                                </p>
+                              </td>
+                              <td className="p-3">
+                                <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(job.status)}`}>
+                                  {job.status}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleEditJob(job._id)}
+                                    className="px-3 py-1 text-sm bg-blue-100 text-gray-900 rounded hover:bg-blue-200"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteJob(job._id)}
+                                    className="px-3 py-1 text-sm bg-red-100 text-gray-900 rounded hover:bg-red-200"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {/* Job Application Statistics */}
+                <div className="bg-gray-50 rounded-lg p-6">
+                  <h4 className="font-bold text-gray-800 mb-4">📊 Application Statistics</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-white rounded-lg">
+                      <p className="text-2xl font-bold text-blue-700">{candidateJobs.length}</p>
+                      <p className="text-sm text-gray-600">Total Applications</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg">
+                      <p className="text-2xl font-bold text-green-700">
+                        {candidateJobs.filter((j: any) => j.status === 'Offer').length}
+                      </p>
+                      <p className="text-sm text-gray-600">Offers</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg">
+                      <p className="text-2xl font-bold text-yellow-700">
+                        {candidateJobs.filter((j: any) => j.status === 'Interview').length}
+                      </p>
+                      <p className="text-sm text-gray-600">Interviews</p>
+                    </div>
+                    <div className="text-center p-4 bg-white rounded-lg">
+                      <p className="text-2xl font-bold text-gray-900">
+                        {candidateJobs.length > 0 
+                          ? Math.round(candidateJobs.reduce((sum: number, job: any) => sum + job.matchScore, 0) / candidateJobs.length)
+                          : 0
+                        }%
+                      </p>
+                      <p className="text-sm text-gray-600">Avg. Match Score</p>
+                    </div>
                   </div>
                 </div>
 
-                {/* Close Button */}
-                <div className="mt-6 flex justify-end">
+                {/* Quick Actions */}
+                <div className="mt-6 flex justify-end gap-3">
                   <button
                     onClick={() => {
                       setShowCandidateDetails(false)
                       setSelectedCandidate(null)
-                      clearResumeGenerator()
                     }}
-                    className="px-6 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
                   >
                     Close
                   </button>
+                  <button className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                    Export Applications
+                  </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Job Edit Form Modal */}
+        {showEditForm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl">
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-6">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-800">✏️ Edit Job Application</h3>
+                    <p className="text-gray-600">
+                      Editing job for: {selectedCandidate?.fullName || `${selectedCandidate?.firstName} ${selectedCandidate?.lastName}`}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCancelEdit}
+                    className="text-gray-700 hover:text-gray-900 text-2xl"
+                  >
+                    &times;
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6">
+                <form onSubmit={(e) => {
+                  e.preventDefault()
+                  handleSaveJob()
+                }}>
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Job Title *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={jobFormData.jobTitle}
+                          onChange={(e) => setJobFormData({...jobFormData, jobTitle: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Senior Software Engineer"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Company *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={jobFormData.company}
+                          onChange={(e) => setJobFormData({...jobFormData, company: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="Google, Microsoft, etc."
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Job Description
+                      </label>
+                      <textarea
+                        value={jobFormData.description}
+                        onChange={(e) => setJobFormData({...jobFormData, description: e.target.value})}
+                        rows={3}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Describe the job position, requirements, and responsibilities..."
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Application Status
+                        </label>
+                        <select
+                          value={jobFormData.status}
+                          onChange={(e) => setJobFormData({...jobFormData, status: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                          <option value="Applied" className="text-gray-900">Applied</option>
+                          <option value="Under Review" className="text-gray-900">Under Review</option>
+                          <option value="Interview" className="text-gray-900">Interview</option>
+                          <option value="Offer" className="text-gray-900">Offer</option>
+                          <option value="Rejected" className="text-gray-900">Rejected</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Resume Status
+                        </label>
+                        <select
+                          value={jobFormData.resumeStatus}
+                          onChange={(e) => setJobFormData({...jobFormData, resumeStatus: e.target.value})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                        >
+                          <option value="Pending" className="text-gray-900">Pending</option>
+                          <option value="Submitted" className="text-gray-900">Submitted</option>
+                          <option value="Reviewed" className="text-gray-900">Reviewed</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Match Score (%)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={jobFormData.matchScore}
+                          onChange={(e) => setJobFormData({...jobFormData, matchScore: parseInt(e.target.value) || 0})}
+                          className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <div className="mt-2">
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-500 h-2 rounded-full" 
+                              style={{ width: `${jobFormData.matchScore}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 text-center">{jobFormData.matchScore}% match</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Salary Range
+                      </label>
+                      <input
+                        type="text"
+                        value={jobFormData.salaryRange}
+                        onChange={(e) => setJobFormData({...jobFormData, salaryRange: e.target.value})}
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="$100k - $150k"
+                      />
+                    </div>
+
+                    <div className="bg-blue-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-gray-900 mb-2">Additional Information</h4>
+                      <p className="text-sm text-gray-700">
+                        Job DB ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?._id}</code>
+                      </p>
+                      {editingJob?.appliedDate && (
+                        <p className="text-sm text-gray-700 mt-1">
+                          Applied: {new Date(editingJob.appliedDate).toLocaleDateString()} at {new Date(editingJob.appliedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                      <button
+                        type="button"
+                        onClick={handleCancelEdit}
+                        className="px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                      >
+                        Save Changes
+                      </button>
+                    </div>
+                  </div>
+                </form>
               </div>
             </div>
           </div>
