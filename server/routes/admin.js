@@ -80,6 +80,11 @@ router.get(
   adminController.getUnassignedCandidates
 );
 
+router.get(
+  "/candidates/:candidateId/applications",
+  adminController.getCandidateApplications
+);
+
 router
   .route("/candidates/:id")
   .put(adminController.updateCandidate)

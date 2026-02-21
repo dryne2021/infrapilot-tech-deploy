@@ -6,6 +6,7 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 const Candidate = require("../models/Candidate");
 const Recruiter = require("../models/Recruiter");
+const JobApplication = require("../models/JobApplication"); // ✅ STEP 1: Added this import
 const ErrorResponse = require("../utils/ErrorResponse");
 
 /* =========================================================
@@ -1145,6 +1146,33 @@ exports.resetRecruiterPassword = async (req, res, next) => {
 
     return res.status(200).json({ success: true, newPassword });
   } catch (error) {
+    next(error);
+  }
+};
+
+/* =========================================================
+   GET JOB APPLICATIONS FOR A CANDIDATE (ADMIN)
+   GET /api/v1/admin/candidates/:candidateId/applications
+========================================================= */
+exports.getCandidateApplications = async (req, res, next) => {
+  try {
+    const { candidateId } = req.params;
+
+    if (!candidateId) {
+      return res.status(400).json({ message: "candidateId is required" });
+    }
+
+    const jobs = await JobApplication.find({
+      candidateId: mongoose.Types.ObjectId.isValid(candidateId)
+        ? new mongoose.Types.ObjectId(candidateId)
+        : candidateId,
+    })
+      .populate("recruiterId", "name email")
+      .sort({ appliedDate: -1 });
+
+    return res.status(200).json(jobs);
+  } catch (error) {
+    console.error("❌ getCandidateApplications error:", error);
     next(error);
   }
 };
