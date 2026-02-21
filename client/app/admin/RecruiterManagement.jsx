@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 /**
- * RecruiterManagement.jsx (UI + Add Recruiter + Assign/Unassign + Delete)
+ * RecruiterManagement.jsx (UI + Add Recruiter + Edit Recruiter + Assign/Unassign + Delete)
  * - REAL backend (MongoDB)
  * - NO localhost fallback
  * - Reads NEXT_PUBLIC_API_BASE_URL correctly
@@ -65,6 +65,7 @@ const Btn = ({ children, onClick, variant = 'ghost', disabled, type = 'button' }
     ghost: 'bg-white hover:bg-gray-50 text-gray-800 border border-gray-200',
     primary: 'bg-blue-600 hover:bg-blue-700 text-white border border-blue-600',
     danger: 'bg-red-600 hover:bg-red-700 text-white border border-red-600',
+    warning: 'bg-amber-600 hover:bg-amber-700 text-white border border-amber-600',
   }
   return (
     <button
@@ -89,6 +90,8 @@ export default function RecruiterManagement() {
 
   const [showAssignCandidates, setShowAssignCandidates] = useState(false)
   const [showAddRecruiter, setShowAddRecruiter] = useState(false)
+  const [showEditRecruiter, setShowEditRecruiter] = useState(false) // ✅ New state for edit form
+  const [editingRecruiter, setEditingRecruiter] = useState(null) // ✅ Store recruiter being edited
 
   const [loading, setLoading] = useState(false)
 
@@ -106,6 +109,20 @@ export default function RecruiterManagement() {
     phone: '',
     username: '',
     password: '',
+    department: 'Technical',
+    specialization: 'IT/Software',
+    maxCandidates: 20,
+    isActive: true,
+  })
+
+  // ✅ Edit Recruiter form (will be populated when editing)
+  const [editFormData, setEditFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    username: '',
+    password: '', // Optional for editing
     department: 'Technical',
     specialization: 'IT/Software',
     maxCandidates: 20,
@@ -297,6 +314,75 @@ export default function RecruiterManagement() {
     }
   }
 
+  // ✅ NEW: Edit recruiter function - opens form with recruiter data
+  const handleEditRecruiter = (recruiter) => {
+    setEditingRecruiter(recruiter)
+    setEditFormData({
+      firstName: recruiter.firstName || '',
+      lastName: recruiter.lastName || '',
+      email: recruiter.email || '',
+      phone: recruiter.phone || '',
+      username: recruiter.username || '',
+      password: '', // Password field is left empty for security
+      department: recruiter.department || 'Technical',
+      specialization: recruiter.specialization || 'IT/Software',
+      maxCandidates: recruiter.maxCandidates || 20,
+      isActive: recruiter.isActive !== undefined ? recruiter.isActive : true,
+    })
+    setShowEditRecruiter(true)
+  }
+
+  // ✅ NEW: Handle update recruiter
+  const handleUpdateRecruiter = async (e) => {
+    e.preventDefault()
+
+    if (!editFormData.email) {
+      alert('Email is required')
+      return
+    }
+
+    const recruiterId = normalizeId(editingRecruiter)
+    if (!recruiterId) return
+
+    setLoading(true)
+    try {
+      // Create payload - only include password if it was changed
+      const payload = { ...editFormData }
+      if (!payload.password) {
+        delete payload.password // Don't send empty password
+      }
+
+      await api(`/api/v1/admin/recruiters/${recruiterId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      })
+
+      alert('✅ Recruiter updated successfully')
+      setShowEditRecruiter(false)
+      setEditingRecruiter(null)
+
+      // Reset edit form
+      setEditFormData({
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        username: '',
+        password: '',
+        department: 'Technical',
+        specialization: 'IT/Software',
+        maxCandidates: 20,
+        isActive: true,
+      })
+
+      await loadRecruiters()
+    } catch (e2) {
+      alert(e2.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   /* ============================
      FILTERS
   ============================ */
@@ -353,7 +439,7 @@ export default function RecruiterManagement() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Recruiter Management</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Add recruiters, assign candidates, and manage workloads.
+            Add recruiters, edit their details, assign candidates, and manage workloads.
           </p>
           <p className="text-xs text-gray-600 mt-2">
             API Base:{' '}
@@ -495,6 +581,15 @@ export default function RecruiterManagement() {
                         disabled={loading}
                       >
                         + Assign Candidate
+                      </Btn>
+
+                      {/* ✅ NEW: Edit Recruiter Button */}
+                      <Btn
+                        variant="warning"
+                        onClick={() => handleEditRecruiter(r)}
+                        disabled={loading}
+                      >
+                        ✏️ Edit
                       </Btn>
 
                       <Btn
@@ -671,10 +766,11 @@ export default function RecruiterManagement() {
                 <div className="flex items-center gap-2 mt-6">
                   <input
                     type="checkbox"
+                    id="isActive"
                     checked={!!formData.isActive}
                     onChange={(e) => setFormData((p) => ({ ...p, isActive: e.target.checked }))}
                   />
-                  <label className="text-sm text-gray-700">Active</label>
+                  <label htmlFor="isActive" className="text-sm text-gray-700">Active</label>
                 </div>
               </div>
 
@@ -684,6 +780,159 @@ export default function RecruiterManagement() {
                 </Btn>
                 <Btn variant="primary" type="submit" disabled={loading}>
                   Create Recruiter
+                </Btn>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ NEW: Edit Recruiter Modal */}
+      {showEditRecruiter && editingRecruiter && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
+              <div>
+                <p className="text-base font-semibold text-gray-900">Edit Recruiter</p>
+                <p className="text-sm text-gray-600">
+                  Editing: {editingRecruiter.firstName || ''} {editingRecruiter.lastName || ''} ({editingRecruiter.email})
+                </p>
+              </div>
+              <Btn onClick={() => {
+                setShowEditRecruiter(false)
+                setEditingRecruiter(null)
+              }}>Close</Btn>
+            </div>
+
+            <form onSubmit={handleUpdateRecruiter} className="p-5 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">First name</label>
+                  <input
+                    value={editFormData.firstName}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, firstName: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Last name</label>
+                  <input
+                    value={editFormData.lastName}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, lastName: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                  <input
+                    type="email"
+                    required
+                    value={editFormData.email}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, email: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                  <input
+                    value={editFormData.phone}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, phone: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+                  <input
+                    value={editFormData.username}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, username: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Password (leave blank to keep current)</label>
+                  <input
+                    type="password"
+                    value={editFormData.password}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, password: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Enter new password to change"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
+                  <select
+                    value={editFormData.department}
+                    onChange={(e) =>
+                      setEditFormData((p) => ({
+                        ...p,
+                        department: e.target.value,
+                        specialization: specializations[e.target.value]?.[0] || '',
+                      }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {departments.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Specialization</label>
+                  <select
+                    value={editFormData.specialization}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, specialization: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    {(specializations[editFormData.department] || []).map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Max candidates</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editFormData.maxCandidates}
+                    onChange={(e) =>
+                      setEditFormData((p) => ({ ...p, maxCandidates: Number(e.target.value) }))
+                    }
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2 mt-6">
+                  <input
+                    type="checkbox"
+                    id="editIsActive"
+                    checked={!!editFormData.isActive}
+                    onChange={(e) => setEditFormData((p) => ({ ...p, isActive: e.target.checked }))}
+                  />
+                  <label htmlFor="editIsActive" className="text-sm text-gray-700">Active</label>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Btn onClick={() => {
+                  setShowEditRecruiter(false)
+                  setEditingRecruiter(null)
+                }} disabled={loading}>
+                  Cancel
+                </Btn>
+                <Btn variant="warning" type="submit" disabled={loading}>
+                  Update Recruiter
                 </Btn>
               </div>
             </form>
