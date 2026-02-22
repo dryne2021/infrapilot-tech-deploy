@@ -135,121 +135,124 @@ export default function CandidateDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-white">
         <div className="text-gray-600">Loading candidate dashboard…</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">
-              Welcome, {candidateName}
-            </h1>
-            <p className="text-gray-500 text-sm">
-              Track your applications and download your resumes
-            </p>
+      <div className="bg-[#1a4978] text-white px-6 py-4">
+        <div className="max-w-7xl mx-auto">
+          <h1 className="text-2xl font-bold mb-2">Zero2Hire</h1>
+          <div className="flex items-center justify-between">
+            <div className="text-sm">
+              Welcome back, {candidateName}
+            </div>
+            <button
+              onClick={handleLogout}
+              className="bg-white text-[#1a4978] px-4 py-1.5 rounded text-sm font-medium hover:bg-gray-100 transition-colors"
+            >
+              LOGOUT
+            </button>
           </div>
-
-          <button
-            onClick={handleLogout}
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            Logout
-          </button>
         </div>
       </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 mb-6">
+          <div className="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-sm mb-6">
             {error}
           </div>
         )}
 
-        {/* Latest Application Card */}
-        {latestApplication && (
-          <div className="bg-blue-50 border border-blue-100 rounded-lg p-5 mb-6">
-            <h2 className="text-lg font-semibold text-blue-800 mb-3">
-              Latest Application
-            </h2>
+        {/* Applications Section */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">Applications</h2>
+          <div className="bg-gray-50 p-4 rounded border border-gray-200 text-sm space-y-1">
+            <div><span className="font-medium">FULL NAME:</span> {candidateName}</div>
+            <div><span className="font-medium">EMAIL ADDRESS:</span> {candidateId || 'Not available'}</div>
+            <div><span className="font-medium">PHONE NUMBER:</span> Not available</div>
+            <div><span className="font-medium">JOB ROLE:</span> Not available</div>
+            <div><span className="font-medium">SUBSCRIPTION TYPE:</span> Not available</div>
+            <div><span className="font-medium">SUBSCRIPTION EXPIRY DATE:</span> Not available</div>
+          </div>
+        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Job ID</span>
-                <div className="font-medium text-gray-900">
-                  {latestApplication.jobId || '-'}
-                </div>
-              </div>
+        <hr className="my-6 border-gray-300" />
 
-              <div className="md:col-span-2">
-                <span className="text-xs text-gray-500 uppercase tracking-wider">Job Description</span>
-                <div className="text-sm text-gray-700 mt-1 line-clamp-2">
-                  {latestApplication.description ||
-                    latestApplication.jobDescriptionFull ||
-                    '-'}
-                </div>
-              </div>
+        {/* Generate Resume Section */}
+        <div className="mb-8">
+          <h2 className="text-lg font-semibold mb-3">Generate Resume</h2>
+          <div className="bg-gray-50 p-4 rounded border border-gray-200">
+            <div className="mb-3">
+              <label className="block text-sm font-medium mb-1">
+                Job ID<span className="text-red-500">*</span>:
+              </label>
+              <input 
+                type="text" 
+                placeholder="Enter or paste the Job ID"
+                className="w-full p-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#1a4978]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">
+                Job Description:
+              </label>
+              <textarea 
+                rows={3}
+                className="w-full p-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#1a4978]"
+              ></textarea>
             </div>
           </div>
-        )}
+        </div>
 
-        {/* Applications Table */}
-        <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200 bg-gray-50">
-            <h2 className="font-semibold text-gray-900">Application History</h2>
-          </div>
+        <hr className="my-6 border-gray-300" />
 
+        {/* Job Applications Table */}
+        <div>
+          <h2 className="text-lg font-semibold mb-3">Job Applications</h2>
+          
           {sortedApplications.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="text-center py-8 text-gray-500 border border-gray-200 rounded">
               No applications found.
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto border border-gray-200 rounded">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 text-left text-gray-600">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-5 py-3 font-medium">Job Title</th>
-                    <th className="px-5 py-3 font-medium">Job ID</th>
-                    <th className="px-5 py-3 font-medium">Description</th>
-                    <th className="px-5 py-3 font-medium">Status</th>
-                    <th className="px-5 py-3 font-medium">Applied</th>
-                    <th className="px-5 py-3 font-medium">Resume</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Job ID</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Job Description</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Resumé Status</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Created</th>
+                    <th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>
                   </tr>
                 </thead>
-
                 <tbody className="divide-y divide-gray-200">
                   {sortedApplications.map((app) => {
                     const fullText =
                       app.description || app.jobDescriptionFull || '-'
-
+                    
                     const isExpanded = expandedId === app._id
+                    
+                    // Truncate description to first ~100 characters for preview
+                    const previewText = fullText.length > 100 
+                      ? fullText.substring(0, 100) + '...' 
+                      : fullText
 
                     return (
                       <tr key={app._id} className="hover:bg-gray-50">
-                        <td className="px-5 py-3">
-                          <div className="font-medium text-gray-900">
-                            {app.jobTitle}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {app.companyName}
-                          </div>
-                        </td>
-
-                        <td className="px-5 py-3 text-gray-600">
+                        <td className="px-4 py-3 text-gray-800">
                           {app.jobId || '-'}
                         </td>
-
-                        <td className="px-5 py-3 max-w-xs">
-                          <div className={`text-gray-600 ${isExpanded ? '' : 'line-clamp-2'}`}>
-                            {fullText}
+                        <td className="px-4 py-3 max-w-md">
+                          <div className="text-gray-600">
+                            {isExpanded ? fullText : previewText}
                           </div>
-
                           {fullText.length > 100 && (
                             <button
                               onClick={() =>
@@ -257,39 +260,36 @@ export default function CandidateDashboard() {
                                   isExpanded ? null : app._id
                                 )
                               }
-                              className="text-blue-600 text-xs mt-1 hover:text-blue-800 font-medium"
+                              className="text-[#1a4978] text-xs mt-1 hover:underline"
                             >
                               {isExpanded ? 'Show less' : 'Read more'}
                             </button>
                           )}
                         </td>
-
-                        <td className="px-5 py-3">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize
-                            ${app.status === 'applied' ? 'bg-blue-100 text-blue-800' : ''}
-                            ${app.status === 'reviewed' ? 'bg-purple-100 text-purple-800' : ''}
-                            ${app.status === 'interviewed' ? 'bg-green-100 text-green-800' : ''}
-                            ${app.status === 'rejected' ? 'bg-red-100 text-red-800' : ''}
-                            ${app.status === 'hired' ? 'bg-emerald-100 text-emerald-800' : ''}
-                          `}>
-                            {app.status}
+                        <td className="px-4 py-3">
+                          <span className="text-green-600 font-medium">
+                            Generated
                           </span>
                         </td>
-
-                        <td className="px-5 py-3 text-gray-600 whitespace-nowrap">
+                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
                           {new Date(app.appliedDate).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
                             year: 'numeric'
+                          })}, {new Date(app.appliedDate).toLocaleTimeString('en-US', {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit',
+                            hour12: true
                           })}
                         </td>
-
-                        <td className="px-5 py-3">
+                        <td className="px-4 py-3">
                           <button
                             onClick={() => downloadResume(app?.resumeText)}
-                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-xs font-medium transition-colors whitespace-nowrap"
+                            className="text-[#1a4978] hover:text-[#0f2d4a] text-lg"
+                            title="Download Resume"
                           >
-                            Download
+                            🔗
                           </button>
                         </td>
                       </tr>
