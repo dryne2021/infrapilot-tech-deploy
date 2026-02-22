@@ -12,6 +12,8 @@ export default function CandidateDashboard() {
   const [applications, setApplications] = useState<any[]>([])
   const [candidateName, setCandidateName] = useState('Candidate')
   const [candidateId, setCandidateId] = useState<string | null>(null)
+
+  // 🔥 NEW: Track expanded job description
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const redirectToLogin = () => {
@@ -135,124 +137,110 @@ export default function CandidateDashboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="text-gray-600">Loading candidate dashboard…</div>
+      <div className="min-h-screen flex items-center justify-center bg-gray-900 text-white">
+        Loading candidate dashboard…
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* Header */}
-      <div className="bg-[#1a4978] text-white px-6 py-4">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold mb-2">Zero2Hire</h1>
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              Welcome back, {candidateName}
-            </div>
-            <button
-              onClick={handleLogout}
-              className="bg-white text-[#1a4978] px-4 py-1.5 rounded text-sm font-medium hover:bg-gray-100 transition-colors"
-            >
-              LOGOUT
-            </button>
-          </div>
+    <div className="min-h-screen bg-gray-900 text-white">
+      <div className="bg-gray-800 border-b border-gray-700 px-6 py-4 flex justify-between items-center">
+        <div>
+          <h1 className="text-2xl font-bold">
+            Welcome, {candidateName}
+          </h1>
+          <p className="text-gray-400 text-sm">
+            Track your applications and download the resume used
+          </p>
         </div>
+
+        <button
+          onClick={handleLogout}
+          className="bg-red-600 hover:bg-red-500 px-4 py-2 rounded text-sm font-semibold"
+        >
+          Logout
+        </button>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      <div className="px-6 py-6">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded p-3 text-red-700 text-sm mb-6">
+          <div className="bg-red-900/30 border border-red-700 rounded-xl p-4 text-red-200 mb-4">
             {error}
           </div>
         )}
 
-        {/* Applications Section */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">Applications</h2>
-          <div className="bg-gray-50 p-4 rounded border border-gray-200 text-sm space-y-1">
-            <div><span className="font-medium">FULL NAME:</span> {candidateName}</div>
-            <div><span className="font-medium">EMAIL ADDRESS:</span> {candidateId || 'Not available'}</div>
-            <div><span className="font-medium">PHONE NUMBER:</span> Not available</div>
-            <div><span className="font-medium">JOB ROLE:</span> Not available</div>
-            <div><span className="font-medium">SUBSCRIPTION TYPE:</span> Not available</div>
-            <div><span className="font-medium">SUBSCRIPTION EXPIRY DATE:</span> Not available</div>
-          </div>
-        </div>
+        {/* Latest Highlight */}
+        {latestApplication && (
+          <div className="bg-blue-900/30 border border-blue-700 rounded-xl p-6 mb-6">
+            <h2 className="text-xl font-bold mb-3 text-blue-300">
+              Latest Application
+            </h2>
 
-        <hr className="my-6 border-gray-300" />
-
-        {/* Generate Resume Section */}
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold mb-3">Generate Resume</h2>
-          <div className="bg-gray-50 p-4 rounded border border-gray-200">
-            <div className="mb-3">
-              <label className="block text-sm font-medium mb-1">
-                Job ID<span className="text-red-500">*</span>:
-              </label>
-              <input 
-                type="text" 
-                placeholder="Enter or paste the Job ID"
-                className="w-full p-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#1a4978]"
-              />
+            <div className="mb-4">
+              <span className="text-gray-400 text-sm">Job ID:</span>
+              <div className="text-lg font-semibold">
+                {latestApplication.jobId || '-'}
+              </div>
             </div>
+
             <div>
-              <label className="block text-sm font-medium mb-1">
-                Job Description:
-              </label>
-              <textarea 
-                rows={3}
-                className="w-full p-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-[#1a4978]"
-              ></textarea>
+              <span className="text-gray-400 text-sm">Job Description:</span>
+              <div className="text-sm mt-1">
+                {latestApplication.description ||
+                  latestApplication.jobDescriptionFull ||
+                  '-'}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        <hr className="my-6 border-gray-300" />
+        <div className="bg-gray-800 border border-gray-700 rounded-xl overflow-hidden">
+          <div className="p-4 border-b border-gray-700">
+            <h2 className="text-lg font-bold">My Applications</h2>
+          </div>
 
-        {/* Job Applications Table */}
-        <div>
-          <h2 className="text-lg font-semibold mb-3">Job Applications</h2>
-          
           {sortedApplications.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 border border-gray-200 rounded">
+            <div className="p-8 text-center text-gray-400">
               No applications found.
             </div>
           ) : (
-            <div className="overflow-x-auto border border-gray-200 rounded">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-900 text-left">
                   <tr>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Job ID</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Job Description</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Resumé Status</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Created</th>
-                    <th className="px-4 py-3 text-left font-medium text-gray-700">Actions</th>
+                    <th className="p-4">Job Title</th>
+                    <th className="p-4">Job ID</th>
+                    <th className="p-4">Description</th>
+                    <th className="p-4">Status</th>
+                    <th className="p-4">Applied</th>
+                    <th className="p-4">Resume</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-200">
+
+                <tbody className="divide-y divide-gray-700">
                   {sortedApplications.map((app) => {
                     const fullText =
                       app.description || app.jobDescriptionFull || '-'
-                    
+
                     const isExpanded = expandedId === app._id
-                    
-                    // Truncate description to first ~100 characters for preview
-                    const previewText = fullText.length > 100 
-                      ? fullText.substring(0, 100) + '...' 
-                      : fullText
 
                     return (
-                      <tr key={app._id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 text-gray-800">
-                          {app.jobId || '-'}
-                        </td>
-                        <td className="px-4 py-3 max-w-md">
-                          <div className="text-gray-600">
-                            {isExpanded ? fullText : previewText}
+                      <tr key={app._id}>
+                        <td className="p-4 font-semibold">
+                          {app.jobTitle}
+                          <div className="text-xs text-gray-400">
+                            {app.companyName}
                           </div>
+                        </td>
+
+                        <td className="p-4">{app.jobId || '-'}</td>
+
+                        <td className="p-4 text-sm max-w-xs">
+                          <div className={isExpanded ? '' : 'truncate'}>
+                            {fullText}
+                          </div>
+
                           {fullText.length > 100 && (
                             <button
                               onClick={() =>
@@ -260,36 +248,35 @@ export default function CandidateDashboard() {
                                   isExpanded ? null : app._id
                                 )
                               }
-                              className="text-[#1a4978] text-xs mt-1 hover:underline"
+                              className="text-blue-400 text-xs mt-1 hover:underline"
                             >
-                              {isExpanded ? 'Show less' : 'Read more'}
+                              {isExpanded
+                                ? 'Show Less'
+                                : 'View Full'}
                             </button>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="text-green-600 font-medium">
-                            Generated
-                          </span>
+
+                        <td className="p-4 capitalize">
+                          {app.status}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                          {new Date(app.appliedDate).toLocaleDateString('en-US', {
-                            month: '2-digit',
-                            day: '2-digit',
-                            year: 'numeric'
-                          })}, {new Date(app.appliedDate).toLocaleTimeString('en-US', {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                            hour12: true
-                          })}
+
+                        <td className="p-4">
+                          {new Date(
+                            app.appliedDate
+                          ).toLocaleDateString()}
                         </td>
-                        <td className="px-4 py-3">
+
+                        <td className="p-4">
                           <button
-                            onClick={() => downloadResume(app?.resumeText)}
-                            className="text-[#1a4978] hover:text-[#0f2d4a] text-lg"
-                            title="Download Resume"
+                            onClick={() =>
+                              downloadResume(
+                                app?.resumeText
+                              )
+                            }
+                            className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
                           >
-                            🔗
+                            Download
                           </button>
                         </td>
                       </tr>
@@ -303,4 +290,4 @@ export default function CandidateDashboard() {
       </div>
     </div>
   )
-}
+}                         
