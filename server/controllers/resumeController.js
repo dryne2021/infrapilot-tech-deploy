@@ -90,16 +90,20 @@ function getExperienceLevelLabel(years) {
 }
 
 // ==========================================================
-// 🔥 OPENAI GENERATOR
+// 🔥 OPENAI GENERATOR (Optimized for Stable Speed)
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
+  console.log("⏳ Calling OpenAI...");
+
   const response = await openai.responses.create({
     model,
     input: prompt,
-    max_output_tokens: 4096,
+    max_output_tokens: 1000, // ✅ LIMIT OUTPUT SIZE
   });
+
+  console.log("✅ OpenAI Finished");
 
   return response.output_text || "";
 }
