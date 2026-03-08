@@ -473,18 +473,23 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-   const recruiterId = req.body.recruiterId || (req.user ? req.user.id : null);
+   const recruiterId = req.user?._id || req.body.recruiterId;
+const candidateId = req.body.candidateId;
 
-if (recruiterId && req.body.candidateId) {
-  await ResumeLog.create({
-    recruiterId,
-    candidateId: req.body.candidateId,
-    generatedAt: new Date()
-  });
+if (recruiterId && candidateId) {
+  try {
+    await ResumeLog.create({
+      recruiterId,
+      candidateId,
+      generatedAt: new Date(),
+    });
 
-  console.log("Resume log saved:", recruiterId, req.body.candidateId);
+    console.log("✅ Resume log saved:", recruiterId, candidateId);
+  } catch (logError) {
+    console.error("⚠️ Resume log failed:", logError.message);
+  }
 } else {
-  console.log("⚠️ Resume log skipped - recruiterId missing");
+  console.warn("⚠️ Resume log skipped - missing recruiterId or candidateId");
 }
 
 
