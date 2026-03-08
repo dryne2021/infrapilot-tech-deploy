@@ -3,7 +3,7 @@ const mongoose = require("mongoose");
 const ResumeLogSchema = new mongoose.Schema({
   recruiterId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User"
+    ref: "Recruiter"
   },
   candidateId: {
     type: mongoose.Schema.Types.ObjectId,
