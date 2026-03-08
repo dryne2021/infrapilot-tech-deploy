@@ -473,13 +473,14 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-    if (req.user && req.body.candidateId) {
-  await ResumeLog.create({
-    recruiterId: req.user.id,
-    candidateId: req.body.candidateId,
-    generatedAt: new Date()
-  });
-}
+    await ResumeLog.create({
+  recruiterId: req.user ? req.user.id : null,
+  candidateId: req.body.candidateId,
+  generatedAt: new Date()
+});
+
+console.log("Resume log saved:", req.body.candidateId);
+
 
 
     return res.status(200).json({
