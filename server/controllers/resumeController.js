@@ -473,11 +473,16 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-   const recruiterId = req.user?._id || req.body.recruiterId;
-const candidateId = req.body.candidateId;
+   // ==========================================================
+// SAVE RESUME LOG (SAFE VERSION)
+// ==========================================================
+const recruiterId = req.user?._id || req.body.recruiterId || null;
+const candidateId = req.body.candidateId || null;
 
-if (recruiterId && candidateId) {
-  try {
+try {
+  if (!candidateId) {
+    console.warn("⚠️ Missing candidateId, skipping resume log.");
+  } else {
     await ResumeLog.create({
       recruiterId,
       candidateId,
@@ -485,11 +490,9 @@ if (recruiterId && candidateId) {
     });
 
     console.log("✅ Resume log saved:", recruiterId, candidateId);
-  } catch (logError) {
-    console.error("⚠️ Resume log failed:", logError.message);
   }
-} else {
-  console.warn("⚠️ Resume log skipped - missing recruiterId or candidateId");
+} catch (logError) {
+  console.error("⚠️ Resume log failed:", logError.message);
 }
 
 

@@ -3,13 +3,11 @@ const mongoose = require("mongoose");
 const ResumeLogSchema = new mongoose.Schema({
   recruiterId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true
+    ref: "User"
   },
   candidateId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Candidate",
-    required: true
+    ref: "Candidate"
   },
   generatedAt: {
     type: Date,
