@@ -473,13 +473,19 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-    await ResumeLog.create({
-  recruiterId: req.user ? req.user.id : null,
-  candidateId: req.body.candidateId,
-  generatedAt: new Date()
-});
+   const recruiterId = req.body.recruiterId || (req.user ? req.user.id : null);
 
-console.log("Resume log saved:", req.body.candidateId);
+if (recruiterId && req.body.candidateId) {
+  await ResumeLog.create({
+    recruiterId,
+    candidateId: req.body.candidateId,
+    generatedAt: new Date()
+  });
+
+  console.log("Resume log saved:", recruiterId, req.body.candidateId);
+} else {
+  console.log("⚠️ Resume log skipped - recruiterId missing");
+}
 
 
 
