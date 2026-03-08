@@ -39,16 +39,63 @@ router.post("/generate-word", (req, res, next) => {
 });
 
 // ==========================================================
-// GET RESUME GENERATION LOGS
+// DAILY RESUME REPORT (Recruiter + Candidate + Count)
 // ==========================================================
 router.get("/logs", async (req, res) => {
   try {
-    const logs = await ResumeLog.find()
-      .populate("recruiterId", "firstName lastName email")
-      .populate("candidateId", "fullName email")
-      .sort({ generatedAt: -1 });
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0,0,0,0);
+
+    const logs = await ResumeLog.aggregate([
+      {
+        $match: {
+          generatedAt: { $gte: startOfDay }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            recruiterId: "$recruiterId",
+            candidateId: "$candidateId"
+          },
+          totalResumes: { $sum: 1 },
+          lastGenerated: { $max: "$generatedAt" }
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "_id.recruiterId",
+          foreignField: "_id",
+          as: "recruiter"
+        }
+      },
+      { $unwind: "$recruiter" },
+      {
+        $lookup: {
+          from: "candidates",
+          localField: "_id.candidateId",
+          foreignField: "_id",
+          as: "candidate"
+        }
+      },
+      { $unwind: "$candidate" },
+      {
+        $project: {
+          recruiter: {
+            $concat: ["$recruiter.firstName", " ", "$recruiter.lastName"]
+          },
+          candidate: "$candidate.fullName",
+          totalResumes: 1,
+          generatedAt: "$lastGenerated"
+        }
+      },
+      { $sort: { generatedAt: -1 } }
+    ]);
 
     res.json(logs);
+
   } catch (error) {
     console.error("❌ Failed to fetch resume logs:", error);
     res.status(500).json({ message: "Failed to fetch logs" });
