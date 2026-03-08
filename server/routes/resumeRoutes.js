@@ -68,13 +68,13 @@ router.get("/logs", async (req, res) => {
 
       // JOIN RECRUITER
       {
-        $lookup: {
-          from: "users",
-          localField: "_id.recruiterId",
-          foreignField: "_id",
-          as: "recruiter"
-        }
-      },
+  $lookup: {
+    from: "recruiters",
+    localField: "_id.recruiterId",
+    foreignField: "userId",
+    as: "recruiter"
+  }
+},
 
       // JOIN CANDIDATE
       {
