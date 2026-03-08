@@ -4,6 +4,7 @@ const express = require("express");
 const router = express.Router();
 
 console.log("✅ resumeRoutes.js loaded");
+const ResumeLog = require("../models/ResumeLog");
 
 // Import controller functions
 const {
@@ -37,4 +38,20 @@ router.post("/generate-word", (req, res, next) => {
   return generateResumeAsWord(req, res, next);
 });
 
+// ==========================================================
+// GET RESUME GENERATION LOGS
+// ==========================================================
+router.get("/logs", async (req, res) => {
+  try {
+    const logs = await ResumeLog.find()
+      .populate("recruiterId", "firstName lastName email")
+      .populate("candidateId", "fullName email")
+      .sort({ generatedAt: -1 });
+
+    res.json(logs);
+  } catch (error) {
+    console.error("❌ Failed to fetch resume logs:", error);
+    res.status(500).json({ message: "Failed to fetch logs" });
+  }
+});
 module.exports = router;
