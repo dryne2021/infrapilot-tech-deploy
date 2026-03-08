@@ -315,8 +315,11 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      const payload = {
-  candidateId: candidate.id,   // ⭐ NEW
+      const recruiterId = localStorage.getItem('recruiter_id');
+
+const payload = {
+  recruiterId,   // ⭐ ADD THIS
+  candidateId: candidate.id,
   fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
   targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
   location: candidate.location || '',
@@ -413,8 +416,11 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      const payload = {
-  candidateId: candidate.id,   // ⭐ NEW
+      const recruiterId = localStorage.getItem('recruiter_id');
+
+const payload = {
+  recruiterId,   // ⭐ ADD THIS
+  candidateId: candidate.id,
   fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
   targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
   location: candidate.location || '',
