@@ -1199,13 +1199,13 @@ exports.getDailyResumeReport = async (req, res, next) => {
 
       // Join recruiters
       {
-        $lookup: {
-          from: "recruiters",
-          localField: "recruiterId",
-          foreignField: "_id",
-          as: "recruiter"
-        }
-      },
+  $lookup: {
+    from: "recruiters",
+    localField: "recruiterId",
+    foreignField: "userId",
+    as: "recruiter"
+  }
+},
 
       {
         $unwind: {
