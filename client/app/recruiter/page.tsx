@@ -487,7 +487,7 @@ const payload = {
       const updatedHistory = [newResumeEntry, ...resumeGenerationHistory];
       setResumeGenerationHistory(updatedHistory);
 
-      const recruiterId = localStorage.getItem('recruiter_id');
+      
       if (recruiterId) {
         localStorage.setItem(`resume_history_${recruiterId}`, JSON.stringify(updatedHistory));
       }
