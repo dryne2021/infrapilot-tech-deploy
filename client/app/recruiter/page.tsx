@@ -316,20 +316,21 @@ export default function RecruiterPage() {
       const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
-        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
-        targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
-        location: candidate.location || '',
-        email: candidate.email || '',
-        phone: candidate.phone || '',
-        summary: candidate.summary || candidate.about || '',
-        skills: candidate.skills || [],
-        experience: normalizedExp,
-        education: candidate.education || [],
-        certifications: candidate.certifications || [],
-        projects: candidate.projects || [],
-        jobId: jobIdForResume,
-        jobDescription: jobDescriptionForResume,
-      };
+  candidateId: candidate.id,   // ⭐ NEW
+  fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+  targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
+  location: candidate.location || '',
+  email: candidate.email || '',
+  phone: candidate.phone || '',
+  summary: candidate.summary || candidate.about || '',
+  skills: candidate.skills || [],
+  experience: normalizedExp,
+  education: candidate.education || [],
+  certifications: candidate.certifications || [],
+  projects: candidate.projects || [],
+  jobId: jobIdForResume,
+  jobDescription: jobDescriptionForResume,
+};
 
       console.log("Payload experience:", payload.experience);
 
@@ -413,20 +414,21 @@ export default function RecruiterPage() {
       const token = localStorage.getItem('infrapilot_token');
 
       const payload = {
-        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
-        targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
-        location: candidate.location || '',
-        email: candidate.email || '',
-        phone: candidate.phone || '',
-        summary: candidate.summary || candidate.about || '',
-        skills: candidate.skills || [],
-        experience: normalizedExp,
-        education: candidate.education || [],
-        certifications: candidate.certifications || [],
-        projects: candidate.projects || [],
-        jobId: jobIdForResume,
-        jobDescription: jobDescriptionForResume,
-      };
+  candidateId: candidate.id,   // ⭐ NEW
+  fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+  targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
+  location: candidate.location || '',
+  email: candidate.email || '',
+  phone: candidate.phone || '',
+  summary: candidate.summary || candidate.about || '',
+  skills: candidate.skills || [],
+  experience: normalizedExp,
+  education: candidate.education || [],
+  certifications: candidate.certifications || [],
+  projects: candidate.projects || [],
+  jobId: jobIdForResume,
+  jobDescription: jobDescriptionForResume,
+};
 
       console.log("Payload experience:", payload.experience);
 
