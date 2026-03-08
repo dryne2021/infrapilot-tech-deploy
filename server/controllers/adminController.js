@@ -1184,13 +1184,16 @@ exports.getCandidateApplications = async (req, res, next) => {
 exports.getDailyResumeReport = async (req, res, next) => {
   try {
 
-    const today = new Date();
-    today.setHours(0,0,0,0);
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0,0,0,0);
+
+    const endOfDay = new Date();
+    endOfDay.setUTCHours(23,59,59,999);
 
     const report = await ResumeLog.aggregate([
       {
         $match: {
-          generatedAt: { $gte: today }
+          generatedAt: { $gte: startOfDay, $lte: endOfDay }
         }
       },
       {
