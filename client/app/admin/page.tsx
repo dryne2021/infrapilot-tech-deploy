@@ -274,7 +274,7 @@ export default function AdminPage() {
           <button
             onClick={() => setActiveTab('recruiters')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-md ${
-              activeTab === 'recruiters' ? colors.purple : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              activeTab === 'recruiters' ? colors.secondary : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
             }`}
           >
             Recruiters
