@@ -1190,12 +1190,14 @@ exports.getDailyResumeReport = async (req, res, next) => {
     const endOfDay = new Date();
     endOfDay.setUTCHours(23,59,59,999);
 
-    const report = await ResumeLog.aggregate([
+    const logs = await ResumeLog.aggregate([
       {
         $match: {
           generatedAt: { $gte: startOfDay, $lte: endOfDay }
         }
       },
+
+      // Join recruiters
       {
         $lookup: {
           from: "recruiters",
@@ -1204,8 +1206,15 @@ exports.getDailyResumeReport = async (req, res, next) => {
           as: "recruiter"
         }
       },
-      { $unwind: "$recruiter" },
 
+      {
+        $unwind: {
+          path: "$recruiter",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // Join candidates
       {
         $lookup: {
           from: "candidates",
@@ -1214,39 +1223,36 @@ exports.getDailyResumeReport = async (req, res, next) => {
           as: "candidate"
         }
       },
-      { $unwind: "$candidate" },
 
       {
-        $group: {
-          _id: {
-            recruiter: "$recruiter.name",
-            candidate: "$candidate.fullName"
-          },
-          totalResumes: { $sum: 1 }
+        $unwind: {
+          path: "$candidate",
+          preserveNullAndEmptyArrays: true
         }
       },
 
       {
         $project: {
-          recruiter: "$_id.recruiter",
-          candidate: "$_id.candidate",
-          totalResumes: 1,
-          _id: 0
+          recruiter: "$recruiter.name",
+          candidate: "$candidate.fullName",
+          generatedAt: 1
         }
       },
 
-      { $sort: { recruiter: 1 } }
+      { $sort: { generatedAt: -1 } }
+
     ]);
 
     return res.status(200).json({
       success: true,
-      data: report
+      data: logs
     });
 
   } catch (error) {
     next(error);
   }
 };
+
 /* =========================================================
    DATA MIGRATION UTILITY (Optional - run once to fix existing data)
    POST /api/v1/admin/migrate-user-ids
