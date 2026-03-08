@@ -43,10 +43,12 @@ function classNames(...arr) {
 const Chip = ({ children, tone = 'gray' }) => {
   const tones = {
     gray: 'bg-gray-100 text-gray-700 border-gray-200',
-    blue: 'bg-blue-50 text-blue-700 border-blue-200',
-    green: 'bg-green-50 text-green-700 border-green-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    amber: 'bg-amber-50 text-amber-800 border-amber-200',
+    blue: 'bg-blue-100 text-blue-700 border-blue-200',
+    green: 'bg-green-100 text-green-700 border-green-200',
+    red: 'bg-red-100 text-red-700 border-red-200',
+    amber: 'bg-amber-100 text-amber-700 border-amber-200',
+    purple: 'bg-purple-100 text-purple-700 border-purple-200',
+    indigo: 'bg-indigo-100 text-indigo-700 border-indigo-200',
   }
   return (
     <span
@@ -62,10 +64,11 @@ const Chip = ({ children, tone = 'gray' }) => {
 
 const Btn = ({ children, onClick, variant = 'ghost', disabled, type = 'button' }) => {
   const variants = {
-    ghost: 'bg-white hover:bg-gray-50 text-gray-800 border border-gray-200',
-    primary: 'bg-blue-600 hover:bg-blue-700 text-white border border-blue-600',
-    danger: 'bg-red-600 hover:bg-red-700 text-white border border-red-600',
-    warning: 'bg-amber-600 hover:bg-amber-700 text-white border border-amber-600',
+    ghost: 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 shadow-sm',
+    primary: 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white border border-transparent shadow-md',
+    danger: 'bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white border border-transparent shadow-md',
+    warning: 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white border border-transparent shadow-md',
+    success: 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white border border-transparent shadow-md',
   }
   return (
     <button
@@ -73,7 +76,7 @@ const Btn = ({ children, onClick, variant = 'ghost', disabled, type = 'button' }
       onClick={onClick}
       disabled={disabled}
       className={classNames(
-        'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition disabled:opacity-60 disabled:cursor-not-allowed',
+        'inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition-all disabled:opacity-60 disabled:cursor-not-allowed',
         variants[variant] || variants.ghost
       )}
     >
@@ -90,8 +93,8 @@ export default function RecruiterManagement() {
 
   const [showAssignCandidates, setShowAssignCandidates] = useState(false)
   const [showAddRecruiter, setShowAddRecruiter] = useState(false)
-  const [showEditRecruiter, setShowEditRecruiter] = useState(false) // ✅ New state for edit form
-  const [editingRecruiter, setEditingRecruiter] = useState(null) // ✅ Store recruiter being edited
+  const [showEditRecruiter, setShowEditRecruiter] = useState(false)
+  const [editingRecruiter, setEditingRecruiter] = useState(null)
 
   const [loading, setLoading] = useState(false)
 
@@ -101,7 +104,7 @@ export default function RecruiterManagement() {
 
   const [candidateSearch, setCandidateSearch] = useState('')
 
-  // ✅ Add Recruiter form (POST to DB)
+  // Add Recruiter form
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -115,14 +118,14 @@ export default function RecruiterManagement() {
     isActive: true,
   })
 
-  // ✅ Edit Recruiter form (will be populated when editing)
+  // Edit Recruiter form
   const [editFormData, setEditFormData] = useState({
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
     username: '',
-    password: '', // Optional for editing
+    password: '',
     department: 'Technical',
     specialization: 'IT/Software',
     maxCandidates: 20,
@@ -247,7 +250,7 @@ export default function RecruiterManagement() {
     }
   }
 
-  // ✅ DELETE recruiter
+  // DELETE recruiter
   const handleDeleteRecruiter = async (recruiterId) => {
     const confirmDelete = confirm(
       "Are you sure you want to permanently delete this recruiter?\n\nThis action cannot be undone."
@@ -262,10 +265,7 @@ export default function RecruiterManagement() {
       })
 
       alert('✅ Recruiter deleted successfully')
-
-      // Reload recruiters
       await loadRecruiters()
-
     } catch (e) {
       alert(e.message)
     } finally {
@@ -273,7 +273,7 @@ export default function RecruiterManagement() {
     }
   }
 
-  // ✅ CREATE recruiter in MongoDB via backend
+  // CREATE recruiter
   const handleCreateRecruiter = async (e) => {
     e.preventDefault()
 
@@ -292,7 +292,6 @@ export default function RecruiterManagement() {
       alert('✅ Recruiter created successfully')
       setShowAddRecruiter(false)
 
-      // reset form
       setFormData({
         firstName: '',
         lastName: '',
@@ -314,7 +313,7 @@ export default function RecruiterManagement() {
     }
   }
 
-  // ✅ NEW: Edit recruiter function - opens form with recruiter data
+  // Edit recruiter function
   const handleEditRecruiter = (recruiter) => {
     setEditingRecruiter(recruiter)
     setEditFormData({
@@ -323,7 +322,7 @@ export default function RecruiterManagement() {
       email: recruiter.email || '',
       phone: recruiter.phone || '',
       username: recruiter.username || '',
-      password: '', // Password field is left empty for security
+      password: '',
       department: recruiter.department || 'Technical',
       specialization: recruiter.specialization || 'IT/Software',
       maxCandidates: recruiter.maxCandidates || 20,
@@ -332,7 +331,7 @@ export default function RecruiterManagement() {
     setShowEditRecruiter(true)
   }
 
-  // ✅ NEW: Handle update recruiter
+  // Handle update recruiter
   const handleUpdateRecruiter = async (e) => {
     e.preventDefault()
 
@@ -346,10 +345,9 @@ export default function RecruiterManagement() {
 
     setLoading(true)
     try {
-      // Create payload - only include password if it was changed
       const payload = { ...editFormData }
       if (!payload.password) {
-        delete payload.password // Don't send empty password
+        delete payload.password
       }
 
       await api(`/api/v1/admin/recruiters/${recruiterId}`, {
@@ -361,7 +359,6 @@ export default function RecruiterManagement() {
       setShowEditRecruiter(false)
       setEditingRecruiter(null)
 
-      // Reset edit form
       setEditFormData({
         firstName: '',
         lastName: '',
@@ -433,17 +430,20 @@ export default function RecruiterManagement() {
      UI
   ============================ */
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 bg-white p-6 rounded-xl">
       {/* Header + Add Button */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Recruiter Management</h2>
+          <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
+            <span className="bg-purple-100 p-2 rounded-lg text-purple-600">👥</span>
+            Recruiter Management
+          </h2>
           <p className="text-sm text-gray-600 mt-1">
             Add recruiters, edit their details, assign candidates, and manage workloads.
           </p>
-          <p className="text-xs text-gray-600 mt-2">
+          <p className="text-xs text-gray-500 mt-2">
             API Base:{' '}
-            <code className="bg-gray-100 px-2 py-1 rounded border border-gray-200">
+            <code className="bg-gray-100 px-2 py-1 rounded border border-gray-200 text-gray-700">
               {API_BASE || 'NOT SET'}
             </code>
           </p>
@@ -451,17 +451,18 @@ export default function RecruiterManagement() {
 
         <div className="flex gap-2">
           <Btn variant="ghost" onClick={loadRecruiters} disabled={loading}>
-            Refresh
+            <span>🔄</span> Refresh
           </Btn>
           <Btn variant="primary" onClick={() => setShowAddRecruiter(true)} disabled={loading}>
-            + Add Recruiter
+            <span>➕</span> Add Recruiter
           </Btn>
         </div>
       </div>
 
       {loading && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl shadow-sm">
-          Working…
+        <div className="bg-amber-50 border border-amber-200 text-amber-700 p-3 rounded-xl shadow-sm flex items-center gap-2">
+          <div className="w-4 h-4 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+          Working...
         </div>
       )}
 
@@ -469,29 +470,32 @@ export default function RecruiterManagement() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               Search recruiter (name / email)
             </label>
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="e.g. John, john@company.com"
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-            />
+            <div className="relative">
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="e.g. John, john@company.com"
+                className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+              <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+            </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               Department
             </label>
             <select
               value={filterDepartment}
               onChange={(e) => setFilterDepartment(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             >
-              <option value="all">All departments</option>
+              <option value="all" className="text-gray-800">All departments</option>
               {departments.map((d) => (
-                <option key={d} value={d}>
+                <option key={d} value={d} className="text-gray-800">
                   {d}
                 </option>
               ))}
@@ -499,17 +503,17 @@ export default function RecruiterManagement() {
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">
+            <label className="block text-xs font-medium text-gray-600 mb-1">
               Status
             </label>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
             >
-              <option value="all">All statuses</option>
-              <option value="active">Active only</option>
-              <option value="inactive">Inactive only</option>
+              <option value="all" className="text-gray-800">All statuses</option>
+              <option value="active" className="text-gray-800">Active only</option>
+              <option value="inactive" className="text-gray-800">Inactive only</option>
             </select>
           </div>
         </div>
@@ -517,15 +521,16 @@ export default function RecruiterManagement() {
 
       {/* Recruiters list */}
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
-          <p className="text-sm font-semibold text-gray-800">
+        <div className="px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+          <p className="text-sm font-semibold text-gray-700">
             Recruiters ({filteredRecruiters.length})
           </p>
         </div>
 
         {filteredRecruiters.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-gray-900 font-semibold">No recruiters found</p>
+            <div className="text-4xl mb-3">👥</div>
+            <p className="text-gray-800 font-semibold">No recruiters found</p>
             <p className="text-sm text-gray-600 mt-1">Try changing your filters.</p>
           </div>
         ) : (
@@ -536,11 +541,14 @@ export default function RecruiterManagement() {
               const isActive = !!r.isActive
 
               return (
-                <div key={rid} className="p-4">
+                <div key={rid} className="p-4 hover:bg-gray-50 transition-colors">
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-gray-900 truncate">
+                        <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-indigo-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {r.firstName?.[0]?.toUpperCase() || r.lastName?.[0]?.toUpperCase() || 'R'}
+                        </div>
+                        <p className="font-semibold text-gray-800 truncate">
                           {(r.firstName || r.lastName)
                             ? `${r.firstName || ''} ${r.lastName || ''}`.trim()
                             : (r.username || r.email || 'Recruiter')}
@@ -550,7 +558,7 @@ export default function RecruiterManagement() {
                         </Chip>
                         {r.department ? <Chip tone="blue">{r.department}</Chip> : null}
                         {typeof r.maxCandidates === 'number' ? (
-                          <Chip tone="gray">Max: {r.maxCandidates}</Chip>
+                          <Chip tone="purple">Max: {r.maxCandidates}</Chip>
                         ) : null}
                       </div>
 
@@ -563,13 +571,13 @@ export default function RecruiterManagement() {
                         <button
                           type="button"
                           onClick={() => loadCandidatesForRecruiter(rid)}
-                          className="text-gray-700 hover:underline"
+                          className="text-purple-600 hover:text-purple-800 font-medium"
                         >
                           Load assigned candidates
                         </button>
-                        <span className="text-gray-400">•</span>
+                        <span className="text-gray-300">•</span>
                         <span className="text-gray-600">
-                          Assigned: <span className="font-semibold">{assigned.length}</span>
+                          Assigned: <span className="font-semibold text-indigo-600">{assigned.length}</span>
                         </span>
                       </div>
                     </div>
@@ -580,10 +588,9 @@ export default function RecruiterManagement() {
                         onClick={() => openAssignModal(r)}
                         disabled={loading}
                       >
-                        + Assign Candidate
+                        + Assign
                       </Btn>
 
-                      {/* ✅ NEW: Edit Recruiter Button */}
                       <Btn
                         variant="warning"
                         onClick={() => handleEditRecruiter(r)}
@@ -604,26 +611,26 @@ export default function RecruiterManagement() {
 
                   {assigned.length > 0 && (
                     <div className="mt-4">
-                      <p className="text-sm font-semibold text-gray-800 mb-2">
-                        Assigned candidates
+                      <p className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1">
+                        <span className="text-indigo-600">📋</span> Assigned candidates
                       </p>
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                         {assigned.map((c) => (
                           <div
                             key={normalizeId(c)}
-                            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm"
+                            className="rounded-xl border border-gray-200 bg-white p-3 shadow-sm hover:shadow-md transition-shadow"
                           >
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0">
-                                <p className="text-sm font-semibold text-gray-900 truncate">
+                                <p className="text-sm font-semibold text-gray-800 truncate">
                                   {c.fullName || c.email || 'Candidate'}
                                 </p>
-                                <p className="text-xs text-gray-600 truncate">{c.email || ''}</p>
+                                <p className="text-xs text-gray-500 truncate">{c.email || ''}</p>
                               </div>
                               <button
                                 type="button"
                                 onClick={() => handleUnassignCandidate(rid, normalizeId(c))}
-                                className="text-xs font-semibold text-red-700 hover:underline"
+                                className="text-xs font-semibold text-red-600 hover:text-red-800 hover:underline"
                               >
                                 Unassign
                               </button>
@@ -640,82 +647,91 @@ export default function RecruiterManagement() {
         )}
       </div>
 
-      {/* ✅ Add Recruiter Modal */}
+      {/* Add Recruiter Modal */}
       {showAddRecruiter && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div>
-                <p className="text-base font-semibold text-gray-900">Add Recruiter</p>
-                <p className="text-sm text-gray-600">
-                  This will be saved in MongoDB via the backend.
-                </p>
+            <div className="px-5 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-white flex items-center gap-2">
+                    <span>➕</span> Add Recruiter
+                  </p>
+                  <p className="text-sm text-blue-100">
+                    This will be saved in MongoDB via the backend.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAddRecruiter(false)}
+                  className="text-white hover:text-gray-200 text-2xl"
+                >
+                  &times;
+                </button>
               </div>
-              <Btn onClick={() => setShowAddRecruiter(false)}>Close</Btn>
             </div>
 
             <form onSubmit={handleCreateRecruiter} className="p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">First name</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">First name</label>
                   <input
                     value={formData.firstName}
                     onChange={(e) => setFormData((p) => ({ ...p, firstName: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Last name</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Last name</label>
                   <input
                     value={formData.lastName}
                     onChange={(e) => setFormData((p) => ({ ...p, lastName: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
                   <input
                     type="email"
                     required
                     value={formData.email}
                     onChange={(e) => setFormData((p) => ({ ...p, email: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
                   <input
                     value={formData.phone}
                     onChange={(e) => setFormData((p) => ({ ...p, phone: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Username</label>
                   <input
                     value={formData.username}
                     onChange={(e) => setFormData((p) => ({ ...p, username: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Password *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Password *</label>
                   <input
                     type="password"
                     required
                     value={formData.password}
                     onChange={(e) => setFormData((p) => ({ ...p, password: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
                   <select
                     value={formData.department}
                     onChange={(e) =>
@@ -725,10 +741,10 @@ export default function RecruiterManagement() {
                         specialization: specializations[e.target.value]?.[0] || '',
                       }))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     {departments.map((d) => (
-                      <option key={d} value={d}>
+                      <option key={d} value={d} className="text-gray-800">
                         {d}
                       </option>
                     ))}
@@ -736,14 +752,14 @@ export default function RecruiterManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Specialization</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Specialization</label>
                   <select
                     value={formData.specialization}
                     onChange={(e) => setFormData((p) => ({ ...p, specialization: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     {(specializations[formData.department] || []).map((s) => (
-                      <option key={s} value={s}>
+                      <option key={s} value={s} className="text-gray-800">
                         {s}
                       </option>
                     ))}
@@ -751,7 +767,7 @@ export default function RecruiterManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Max candidates</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Max candidates</label>
                   <input
                     type="number"
                     min={1}
@@ -759,7 +775,7 @@ export default function RecruiterManagement() {
                     onChange={(e) =>
                       setFormData((p) => ({ ...p, maxCandidates: Number(e.target.value) }))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
@@ -769,103 +785,128 @@ export default function RecruiterManagement() {
                     id="isActive"
                     checked={!!formData.isActive}
                     onChange={(e) => setFormData((p) => ({ ...p, isActive: e.target.checked }))}
+                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                   />
                   <label htmlFor="isActive" className="text-sm text-gray-700">Active</label>
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Btn onClick={() => setShowAddRecruiter(false)} disabled={loading}>
+                <button
+                  type="button"
+                  onClick={() => setShowAddRecruiter(false)}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
                   Cancel
-                </Btn>
-                <Btn variant="primary" type="submit" disabled={loading}>
-                  Create Recruiter
-                </Btn>
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-semibold rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 flex items-center gap-2 shadow-md"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Recruiter'
+                  )}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ✅ NEW: Edit Recruiter Modal */}
+      {/* Edit Recruiter Modal */}
       {showEditRecruiter && editingRecruiter && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div>
-                <p className="text-base font-semibold text-gray-900">Edit Recruiter</p>
-                <p className="text-sm text-gray-600">
-                  Editing: {editingRecruiter.firstName || ''} {editingRecruiter.lastName || ''} ({editingRecruiter.email})
-                </p>
+            <div className="px-5 py-4 border-b border-gray-200 bg-gradient-to-r from-amber-500 to-orange-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-base font-semibold text-white flex items-center gap-2">
+                    <span>✏️</span> Edit Recruiter
+                  </p>
+                  <p className="text-sm text-amber-100">
+                    Editing: {editingRecruiter.firstName || ''} {editingRecruiter.lastName || ''} ({editingRecruiter.email})
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowEditRecruiter(false)
+                    setEditingRecruiter(null)
+                  }}
+                  className="text-white hover:text-gray-200 text-2xl"
+                >
+                  &times;
+                </button>
               </div>
-              <Btn onClick={() => {
-                setShowEditRecruiter(false)
-                setEditingRecruiter(null)
-              }}>Close</Btn>
             </div>
 
             <form onSubmit={handleUpdateRecruiter} className="p-5 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">First name</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">First name</label>
                   <input
                     value={editFormData.firstName}
                     onChange={(e) => setEditFormData((p) => ({ ...p, firstName: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Last name</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Last name</label>
                   <input
                     value={editFormData.lastName}
                     onChange={(e) => setEditFormData((p) => ({ ...p, lastName: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Email *</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Email *</label>
                   <input
                     type="email"
                     required
                     value={editFormData.email}
                     onChange={(e) => setEditFormData((p) => ({ ...p, email: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Phone</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Phone</label>
                   <input
                     value={editFormData.phone}
                     onChange={(e) => setEditFormData((p) => ({ ...p, phone: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Username</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Username</label>
                   <input
                     value={editFormData.username}
                     onChange={(e) => setEditFormData((p) => ({ ...p, username: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Password (leave blank to keep current)</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Password (leave blank to keep current)</label>
                   <input
                     type="password"
                     value={editFormData.password}
                     onChange={(e) => setEditFormData((p) => ({ ...p, password: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                     placeholder="Enter new password to change"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Department</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Department</label>
                   <select
                     value={editFormData.department}
                     onChange={(e) =>
@@ -875,10 +916,10 @@ export default function RecruiterManagement() {
                         specialization: specializations[e.target.value]?.[0] || '',
                       }))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   >
                     {departments.map((d) => (
-                      <option key={d} value={d}>
+                      <option key={d} value={d} className="text-gray-800">
                         {d}
                       </option>
                     ))}
@@ -886,14 +927,14 @@ export default function RecruiterManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Specialization</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Specialization</label>
                   <select
                     value={editFormData.specialization}
                     onChange={(e) => setEditFormData((p) => ({ ...p, specialization: e.target.value }))}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   >
                     {(specializations[editFormData.department] || []).map((s) => (
-                      <option key={s} value={s}>
+                      <option key={s} value={s} className="text-gray-800">
                         {s}
                       </option>
                     ))}
@@ -901,7 +942,7 @@ export default function RecruiterManagement() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Max candidates</label>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">Max candidates</label>
                   <input
                     type="number"
                     min={1}
@@ -909,7 +950,7 @@ export default function RecruiterManagement() {
                     onChange={(e) =>
                       setEditFormData((p) => ({ ...p, maxCandidates: Number(e.target.value) }))
                     }
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-amber-500 focus:border-transparent"
                   />
                 </div>
 
@@ -919,21 +960,37 @@ export default function RecruiterManagement() {
                     id="editIsActive"
                     checked={!!editFormData.isActive}
                     onChange={(e) => setEditFormData((p) => ({ ...p, isActive: e.target.checked }))}
+                    className="h-4 w-4 text-amber-600 border-gray-300 rounded focus:ring-amber-500"
                   />
                   <label htmlFor="editIsActive" className="text-sm text-gray-700">Active</label>
                 </div>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
-                <Btn onClick={() => {
-                  setShowEditRecruiter(false)
-                  setEditingRecruiter(null)
-                }} disabled={loading}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowEditRecruiter(false)
+                    setEditingRecruiter(null)
+                  }}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
                   Cancel
-                </Btn>
-                <Btn variant="warning" type="submit" disabled={loading}>
-                  Update Recruiter
-                </Btn>
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white font-semibold rounded-lg hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 flex items-center gap-2 shadow-md"
+                >
+                  {loading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Updating...
+                    </>
+                  ) : (
+                    'Update Recruiter'
+                  )}
+                </button>
               </div>
             </form>
           </div>
@@ -942,67 +999,78 @@ export default function RecruiterManagement() {
 
       {/* Assign Modal */}
       {showAssignCandidates && selectedRecruiter && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="w-full max-w-5xl rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-              <div className="min-w-0">
-                <p className="text-base font-semibold text-gray-900 truncate">
-                  Assign candidates
-                </p>
-                <p className="text-sm text-gray-600 truncate">
-                  Recruiter:{' '}
-                  <span className="font-semibold">
-                    {selectedRecruiter.firstName || selectedRecruiter.username || 'Recruiter'}{' '}
-                    {selectedRecruiter.lastName || ''}
-                  </span>{' '}
-                  <span className="text-gray-400">•</span>{' '}
-                  <span className="text-gray-700">{selectedRecruiter.email}</span>
-                </p>
+            <div className="px-5 py-4 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600">
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <p className="text-base font-semibold text-white flex items-center gap-2">
+                    <span>📋</span> Assign candidates
+                  </p>
+                  <p className="text-sm text-blue-100 truncate">
+                    Recruiter:{' '}
+                    <span className="font-semibold">
+                      {selectedRecruiter.firstName || selectedRecruiter.username || 'Recruiter'}{' '}
+                      {selectedRecruiter.lastName || ''}
+                    </span>{' '}
+                    <span className="text-blue-200">•</span>{' '}
+                    <span className="text-blue-100">{selectedRecruiter.email}</span>
+                  </p>
+                </div>
+                <button
+                  onClick={closeAssignModal}
+                  className="text-white hover:text-gray-200 text-2xl"
+                >
+                  &times;
+                </button>
               </div>
-              <Btn onClick={closeAssignModal}>Close</Btn>
             </div>
 
             <div className="p-5">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="w-full md:max-w-md">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
                     Search candidates (name / email / phone)
                   </label>
-                  <input
-                    value={candidateSearch}
-                    onChange={(e) => setCandidateSearch(e.target.value)}
-                    placeholder="Search unassigned candidates..."
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                  <div className="relative">
+                    <input
+                      value={candidateSearch}
+                      onChange={(e) => setCandidateSearch(e.target.value)}
+                      placeholder="Search unassigned candidates..."
+                      className="w-full rounded-lg border border-gray-300 pl-9 pr-3 py-2 text-sm text-gray-800 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                  </div>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
                   <Chip tone="blue">Unassigned: {availableCandidates.length}</Chip>
-                  <Chip tone="gray">Showing: {modalCandidates.length}</Chip>
+                  <Chip tone="purple">Showing: {modalCandidates.length}</Chip>
                 </div>
               </div>
 
               <div className="mt-4">
                 {availableCandidates.length === 0 ? (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-8 text-center">
-                    <p className="font-semibold text-gray-900">No unassigned candidates</p>
+                    <div className="text-4xl mb-3">📭</div>
+                    <p className="font-semibold text-gray-800">No unassigned candidates</p>
                     <p className="text-sm text-gray-600 mt-1">
                       Everyone is already assigned.
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 max-h-96 overflow-y-auto p-1">
                     {modalCandidates.map((c) => (
                       <div
                         key={normalizeId(c)}
-                        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm"
+                        className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm hover:shadow-md transition-shadow"
                       >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">
+                            <p className="text-sm font-semibold text-gray-800 truncate">
                               {c.fullName || c.email || 'Candidate'}
                             </p>
-                            <p className="text-xs text-gray-600 truncate">
+                            <p className="text-xs text-gray-500 truncate">
                               {c.email || ''}
                             </p>
                           </div>
@@ -1011,7 +1079,7 @@ export default function RecruiterManagement() {
                             type="button"
                             disabled={loading}
                             onClick={() => handleAssignCandidate(normalizeId(c))}
-                            className="shrink-0 rounded-lg border border-blue-600 bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                            className="shrink-0 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:from-blue-700 hover:to-indigo-700 disabled:opacity-60 shadow-sm"
                           >
                             Assign
                           </button>
@@ -1023,7 +1091,12 @@ export default function RecruiterManagement() {
               </div>
 
               <div className="mt-6 flex items-center justify-end">
-                <Btn onClick={closeAssignModal}>Close</Btn>
+                <button
+                  onClick={closeAssignModal}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                >
+                  Close
+                </button>
               </div>
             </div>
           </div>
