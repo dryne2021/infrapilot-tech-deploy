@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import ReportsManagement from './ReportsManagement'
 
 import { fetchWithAuth } from '@/utils/fetchWithAuth'
 
@@ -296,6 +297,14 @@ export default function AdminPage() {
           >
             Plans
           </button>
+          <button
+  onClick={() => setActiveTab('reports')}
+  className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all shadow-md ${
+    activeTab === 'reports' ? colors.indigo : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+  }`}
+>
+  Reports
+</button>
         </div>
 
         {activeTab === 'dashboard' && (
@@ -483,6 +492,7 @@ export default function AdminPage() {
         {activeTab === 'candidates' && <CandidateManagement />}
         {activeTab === 'recruiters' && <RecruiterManagement />}
         {activeTab === 'plans' && <PlanManagement />}
+        {activeTab === 'reports' && <ReportsManagement />}
       </div>
 
       {/* Recruiter Detail Modal */}
