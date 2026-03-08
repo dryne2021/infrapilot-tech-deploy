@@ -53,6 +53,7 @@ router.get("/logs", async (req, res) => {
           generatedAt: { $gte: startOfDay }
         }
       },
+
       {
         $group: {
           _id: {
@@ -63,6 +64,7 @@ router.get("/logs", async (req, res) => {
           lastGenerated: { $max: "$generatedAt" }
         }
       },
+
       {
         $lookup: {
           from: "users",
@@ -71,7 +73,7 @@ router.get("/logs", async (req, res) => {
           as: "recruiter"
         }
       },
-      { $unwind: "$recruiter" },
+
       {
         $lookup: {
           from: "candidates",
@@ -80,21 +82,41 @@ router.get("/logs", async (req, res) => {
           as: "candidate"
         }
       },
+
+      { $unwind: "$recruiter" },
       { $unwind: "$candidate" },
+
       {
         $project: {
           recruiter: {
-            $concat: ["$recruiter.firstName", " ", "$recruiter.lastName"]
+            $concat: ["$recruiter.firstName"," ","$recruiter.lastName"]
           },
           candidate: "$candidate.fullName",
           totalResumes: 1,
           generatedAt: "$lastGenerated"
         }
       },
+
       { $sort: { generatedAt: -1 } }
     ]);
 
-    res.json(logs);
+    // ---------- Analytics ----------
+    const totalResumes = logs.reduce((sum,l)=>sum+l.totalResumes,0)
+
+    let topRecruiter = "-"
+    let topCandidate = "-"
+
+    if(logs.length){
+      topRecruiter = logs.reduce((a,b)=>a.totalResumes>b.totalResumes?a:b).recruiter
+      topCandidate = logs.reduce((a,b)=>a.totalResumes>b.totalResumes?a:b).candidate
+    }
+
+    res.json({
+      totalResumes,
+      topRecruiter,
+      topCandidate,
+      logs
+    });
 
   } catch (error) {
     console.error("❌ Failed to fetch resume logs:", error);
