@@ -1,5 +1,5 @@
 // server/controllers/adminController.js
-
+const ResumeLog = require("../models/ResumeLog");
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
@@ -1177,6 +1177,73 @@ exports.getCandidateApplications = async (req, res, next) => {
   }
 };
 
+/* =========================================================
+   DAILY RESUME GENERATION REPORT
+   GET /api/v1/admin/reports/resumes/daily
+========================================================= */
+exports.getDailyResumeReport = async (req, res, next) => {
+  try {
+
+    const today = new Date();
+    today.setHours(0,0,0,0);
+
+    const report = await ResumeLog.aggregate([
+      {
+        $match: {
+          generatedAt: { $gte: today }
+        }
+      },
+      {
+        $lookup: {
+          from: "recruiters",
+          localField: "recruiterId",
+          foreignField: "_id",
+          as: "recruiter"
+        }
+      },
+      { $unwind: "$recruiter" },
+
+      {
+        $lookup: {
+          from: "candidates",
+          localField: "candidateId",
+          foreignField: "_id",
+          as: "candidate"
+        }
+      },
+      { $unwind: "$candidate" },
+
+      {
+        $group: {
+          _id: {
+            recruiter: "$recruiter.name",
+            candidate: "$candidate.fullName"
+          },
+          totalResumes: { $sum: 1 }
+        }
+      },
+
+      {
+        $project: {
+          recruiter: "$_id.recruiter",
+          candidate: "$_id.candidate",
+          totalResumes: 1,
+          _id: 0
+        }
+      },
+
+      { $sort: { recruiter: 1 } }
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: report
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
 /* =========================================================
    DATA MIGRATION UTILITY (Optional - run once to fix existing data)
    POST /api/v1/admin/migrate-user-ids

@@ -157,4 +157,12 @@ router.post("/assignments/auto-assign", adminController.autoAssignCandidates);
 ======================= */
 router.get("/activity", adminController.getRecentActivity);
 
+/* =======================
+   REPORTS
+======================= */
+router.get(
+  "/reports/resumes/daily",
+  adminController.getDailyResumeReport
+);
+
 module.exports = router;

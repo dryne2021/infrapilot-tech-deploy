@@ -1,5 +1,5 @@
 // server/controllers/resumeController.js
-
+const ResumeLog = require("../models/ResumeLog");
 const OpenAI = require("openai");
 const {
   Document,
@@ -472,6 +472,15 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
+
+    if (req.user && req.body.candidateId) {
+  await ResumeLog.create({
+    recruiterId: req.user.id,
+    candidateId: req.body.candidateId,
+    generatedAt: new Date()
+  });
+}
+
 
     return res.status(200).json({
       success: true,

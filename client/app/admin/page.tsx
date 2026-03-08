@@ -25,6 +25,7 @@ export default function AdminPage() {
     candidatesWithCredentials: 0,
   })
   const [recentActivity, setRecentActivity] = useState<any[]>([])
+  const [resumeReport, setResumeReport] = useState<any[]>([])
 
   // New state for recruiter data
   const [recruiterDetails, setRecruiterDetails] = useState<any[]>([])
@@ -171,6 +172,14 @@ export default function AdminPage() {
         if (activityRes.ok) {
           const activityJson = await activityRes.json()
           setRecentActivity(Array.isArray(activityJson) ? activityJson : activityJson?.data || [])
+        }
+
+        // Load daily resume generation report
+        const reportRes = await fetchWithAuth('/api/v1/admin/reports/resumes/daily')
+        if (reportRes.ok) {
+          const reportJson = await reportRes.json()
+          const reportData = reportJson?.data ?? reportJson
+          setResumeReport(Array.isArray(reportData) ? reportData : [])
         }
 
         // Load recruiter details
@@ -423,6 +432,51 @@ export default function AdminPage() {
                 </div>
               )}
             </div>
+
+            {/* Daily Resume Generation Report */}
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
+                📄 Daily Resume Generation Report
+              </h2>
+
+              {resumeReport.length === 0 ? (
+                <p className="text-gray-500">No resumes generated today</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="p-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                          Recruiter
+                        </th>
+                        <th className="p-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                          Candidate
+                        </th>
+                        <th className="p-3 text-left text-xs font-semibold text-gray-600 uppercase">
+                          Resumes Generated Today
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody className="divide-y divide-gray-200">
+                      {resumeReport.map((row, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="p-3 font-semibold text-gray-800">
+                            {row.recruiter}
+                          </td>
+                          <td className="p-3 text-gray-600">
+                            {row.candidate}
+                          </td>
+                          <td className="p-3 font-bold text-purple-600">
+                            {row.totalResumes}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -450,6 +504,7 @@ export default function AdminPage() {
                 &times;
               </button>
             </div>
+            
 
             <div className="p-6">
               {/* Recruiter Summary Stats */}
@@ -473,6 +528,7 @@ export default function AdminPage() {
                   </p>
                 </div>
               </div>
+              
 
               {/* Candidates List with Job Stats */}
               <h4 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
