@@ -48,6 +48,7 @@ router.get("/logs", async (req, res) => {
     startOfDay.setHours(0,0,0,0);
 
     const logs = await ResumeLog.aggregate([
+
       {
         $match: {
           generatedAt: { $gte: startOfDay }
@@ -65,6 +66,7 @@ router.get("/logs", async (req, res) => {
         }
       },
 
+      // JOIN RECRUITER
       {
         $lookup: {
           from: "users",
@@ -74,6 +76,7 @@ router.get("/logs", async (req, res) => {
         }
       },
 
+      // JOIN CANDIDATE
       {
         $lookup: {
           from: "candidates",
@@ -83,33 +86,61 @@ router.get("/logs", async (req, res) => {
         }
       },
 
-      { $unwind: "$recruiter" },
-      { $unwind: "$candidate" },
+      {
+        $unwind: {
+          path: "$recruiter",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      {
+        $unwind: {
+          path: "$candidate",
+          preserveNullAndEmptyArrays: true
+        }
+      },
 
       {
         $project: {
           recruiter: {
-            $concat: ["$recruiter.firstName"," ","$recruiter.lastName"]
+            $concat: [
+              { $ifNull: ["$recruiter.firstName",""] },
+              " ",
+              { $ifNull: ["$recruiter.lastName",""] }
+            ]
           },
-          candidate: "$candidate.fullName",
+          candidate: {
+            $ifNull: ["$candidate.fullName","Unknown Candidate"]
+          },
           totalResumes: 1,
           generatedAt: "$lastGenerated"
         }
       },
 
-      { $sort: { generatedAt: -1 } }
+      {
+        $sort: { generatedAt: -1 }
+      }
+
     ]);
 
-    // ---------- Analytics ----------
-    const totalResumes = logs.reduce((sum,l)=>sum+l.totalResumes,0)
+    // ---------- ANALYTICS ----------
+    const totalResumes = logs.reduce((sum,l)=>sum + l.totalResumes,0)
 
     let topRecruiter = "-"
     let topCandidate = "-"
+    let maxResumes = 0
 
-    if(logs.length){
-      topRecruiter = logs.reduce((a,b)=>a.totalResumes>b.totalResumes?a:b).recruiter
-      topCandidate = logs.reduce((a,b)=>a.totalResumes>b.totalResumes?a:b).candidate
-    }
+    logs.forEach(log => {
+
+      if(log.totalResumes > maxResumes){
+
+        maxResumes = log.totalResumes
+        topRecruiter = log.recruiter
+        topCandidate = log.candidate
+
+      }
+
+    })
 
     res.json({
       totalResumes,
