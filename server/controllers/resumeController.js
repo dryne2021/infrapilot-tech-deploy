@@ -10,6 +10,7 @@ const {
   AlignmentType,
 } = require("docx");
 const JobApplication = require("../models/JobApplication");
+const mongoose = require("mongoose");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
@@ -472,23 +473,31 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
     // ✅ Save generated resume into JobApplication
-if (jobApplicationId) {
+if (jobApplicationId && mongoose.Types.ObjectId.isValid(jobApplicationId)) {
   try {
-    await JobApplication.findByIdAndUpdate(jobApplicationId, {
-      resumeText: hosText,
-      resumeStatus: "Submitted",
-      updatedAt: new Date(),
-    });
+    const updated = await JobApplication.findByIdAndUpdate(
+      jobApplicationId,
+      {
+        resumeText: hosText,
+        resumeStatus: "Submitted",
+        updatedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!updated) {
+      console.warn("⚠️ JobApplication not found:", jobApplicationId);
+    }
   } catch (dbError) {
     console.error("❌ Failed to save resume:", dbError);
   }
 }
-
     return res.status(200).json({
       success: true,
       resumeText: hosText,
       generatedAt: new Date().toISOString(),
     });
+
   } catch (error) {
     console.error("❌ Resume Generation Error:", error);
     return res.status(500).json({
@@ -496,7 +505,6 @@ if (jobApplicationId) {
     });
   }
 };
-
 // ==========================================================
 // WORD DOWNLOAD
 // ==========================================================
