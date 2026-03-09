@@ -9,6 +9,7 @@ const {
   BorderStyle,
   AlignmentType,
 } = require("docx");
+const JobApplication = require("../models/JobApplication");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
@@ -487,14 +488,30 @@ ${jobDescription}
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    const { name, text, email, phone, location } = req.body;
+    const { applicationId } = req.body;
+
+    if (!applicationId) {
+      return res.status(400).json({
+        success: false,
+        message: "Application ID is required",
+      });
+    }
+
+    const app = await JobApplication.findById(applicationId);
+
+    if (!app || !app.resumeText) {
+      return res.status(404).json({
+        success: false,
+        message: "Resume not found",
+      });
+    }
 
     const hosText = enforceHosFormat({
-      fullName: name,
-      email,
-      phone,
-      location,
-      resumeText: text,
+      fullName: app.candidateName || "Candidate",
+      email: app.email || "",
+      phone: app.phone || "",
+      location: app.location || "",
+      resumeText: app.resumeText,
     });
 
     const doc = new Document({
@@ -503,7 +520,7 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const buffer = await Packer.toBuffer(doc);
 
-    const safeName = (name || "Resume").replace(/\s+/g, "_");
+    const safeName = (app.candidateName || "Resume").replace(/\s+/g, "_");
 
     res.setHeader(
       "Content-Type",
@@ -518,6 +535,7 @@ exports.downloadResumeAsWord = async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error("❌ Word generation failed:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to generate Word document",
