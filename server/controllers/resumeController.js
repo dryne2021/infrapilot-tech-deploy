@@ -1,5 +1,5 @@
 // server/controllers/resumeController.js
-const ResumeLog = require("../models/ResumeLog");
+
 const OpenAI = require("openai");
 const {
   Document,
@@ -90,20 +90,16 @@ function getExperienceLevelLabel(years) {
 }
 
 // ==========================================================
-// 🔥 OPENAI GENERATOR (Optimized for Stable Speed)
+// 🔥 OPENAI GENERATOR
 // ==========================================================
 async function generateWithOpenAI(prompt) {
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
 
-  console.log("⏳ Calling OpenAI...");
-
   const response = await openai.responses.create({
     model,
     input: prompt,
-    max_output_tokens: 1000, // ✅ LIMIT OUTPUT SIZE
+    max_output_tokens: 4096,
   });
-
-  console.log("✅ OpenAI Finished");
 
   return response.output_text || "";
 }
@@ -472,30 +468,6 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
-
-   // ==========================================================
-// SAVE RESUME LOG (SAFE VERSION)
-// ==========================================================
-const recruiterId = req.user?._id || req.body.recruiterId || null;
-const candidateId = req.body.candidateId || null;
-
-try {
-  if (!candidateId) {
-    console.warn("⚠️ Missing candidateId, skipping resume log.");
-  } else {
-    await ResumeLog.create({
-      recruiterId,
-      candidateId,
-      generatedAt: new Date(),
-    });
-
-    console.log("✅ Resume log saved:", recruiterId, candidateId);
-  }
-} catch (logError) {
-  console.error("⚠️ Resume log failed:", logError.message);
-}
-
-
 
     return res.status(200).json({
       success: true,
