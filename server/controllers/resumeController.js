@@ -488,30 +488,21 @@ ${jobDescription}
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    const { applicationId } = req.body;
+    const { text, name, email, phone, location } = req.body;
 
-    if (!applicationId) {
+    if (!text) {
       return res.status(400).json({
         success: false,
-        message: "Application ID is required",
-      });
-    }
-
-    const app = await JobApplication.findById(applicationId);
-
-    if (!app || !app.resumeText) {
-      return res.status(404).json({
-        success: false,
-        message: "Resume not found",
+        message: "Resume text required",
       });
     }
 
     const hosText = enforceHosFormat({
-      fullName: app.candidateName || "Candidate",
-      email: app.email || "",
-      phone: app.phone || "",
-      location: app.location || "",
-      resumeText: app.resumeText,
+      fullName: name || "Candidate",
+      email: email || "",
+      phone: phone || "",
+      location: location || "",
+      resumeText: text,
     });
 
     const doc = new Document({
@@ -520,7 +511,7 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const buffer = await Packer.toBuffer(doc);
 
-    const safeName = (app.candidateName || "Resume").replace(/\s+/g, "_");
+    const safeName = (name || "Resume").replace(/\s+/g, "_");
 
     res.setHeader(
       "Content-Type",
