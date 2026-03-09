@@ -1231,12 +1231,19 @@ exports.getDailyResumeReport = async (req, res, next) => {
       },
 
       {
-        $project: {
-          recruiter: "$recruiter.name",
-          candidate: "$candidate.fullName",
-          generatedAt: 1
-        }
-      },
+  $project: {
+    recruiter: {
+      $ifNull: [
+        "$recruiter.name",
+        { $ifNull: ["$recruiter.email", "Unknown Recruiter"] }
+      ]
+    },
+    candidate: {
+      $ifNull: ["$candidate.fullName", "Unknown Candidate"]
+    },
+    generatedAt: 1
+  }
+},
 
       { $sort: { generatedAt: -1 } }
 
