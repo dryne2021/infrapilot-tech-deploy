@@ -1,19 +1,20 @@
 const { Pool } = require("pg");
 
 const pool = new Pool({
-  user: "postgres",
-  host: "localhost",
-  database: "infrapilot_platform",
-  password: "12345678",
-  port: 5432,
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production"
+    ? { rejectUnauthorized: false }
+    : false,
 });
 
-pool.connect()
-  .then(() => {
-    console.log("✅ PostgreSQL Connected Successfully");
-  })
-  .catch((err) => {
-    console.error("❌ PostgreSQL Connection Error:", err);
-  });
+// Log when connected
+pool.on("connect", () => {
+  console.log("✅ PostgreSQL connected");
+});
+
+// Log connection errors
+pool.on("error", (err) => {
+  console.error("❌ PostgreSQL connection error:", err);
+});
 
 module.exports = pool;
