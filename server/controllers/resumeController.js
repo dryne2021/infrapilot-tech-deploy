@@ -9,8 +9,6 @@ const {
   BorderStyle,
   AlignmentType,
 } = require("docx");
-const JobApplication = require("../models/JobApplication");
-const mongoose = require("mongoose");
 
 // ---------- ATS styling constants ----------
 const FONT_FAMILY = "Times New Roman";
@@ -353,19 +351,17 @@ function enforceHosFormat({
 // ==========================================================
 // 🚀 GENERATE RESUME
 // ==========================================================
-
 exports.generateResume = async (req, res) => {
   try {
     const {
-  fullName,
-  location,
-  email,
-  phone,
-  experience = [],
-  education = [],
-  jobDescription,
-  jobApplicationId
-} = req.body;
+      fullName,
+      location,
+      email,
+      phone,
+      experience = [],
+      education = [],
+      jobDescription,
+    } = req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -472,32 +468,12 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
-    // ✅ Save generated resume into JobApplication
-if (jobApplicationId && mongoose.Types.ObjectId.isValid(jobApplicationId)) {
-  try {
-    const updated = await JobApplication.findByIdAndUpdate(
-      jobApplicationId,
-      {
-        resumeText: hosText,
-        resumeStatus: "Submitted",
-        updatedAt: new Date(),
-      },
-      { new: true }
-    );
 
-    if (!updated) {
-      console.warn("⚠️ JobApplication not found:", jobApplicationId);
-    }
-  } catch (dbError) {
-    console.error("❌ Failed to save resume:", dbError);
-  }
-}
     return res.status(200).json({
       success: true,
       resumeText: hosText,
       generatedAt: new Date().toISOString(),
     });
-
   } catch (error) {
     console.error("❌ Resume Generation Error:", error);
     return res.status(500).json({
@@ -505,25 +481,19 @@ if (jobApplicationId && mongoose.Types.ObjectId.isValid(jobApplicationId)) {
     });
   }
 };
+
 // ==========================================================
 // WORD DOWNLOAD
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    const { text, name, email, phone, location } = req.body;
-
-    if (!text) {
-      return res.status(400).json({
-        success: false,
-        message: "Resume text required",
-      });
-    }
+    const { name, text, email, phone, location } = req.body;
 
     const hosText = enforceHosFormat({
-      fullName: name || "Candidate",
-      email: email || "",
-      phone: phone || "",
-      location: location || "",
+      fullName: name,
+      email,
+      phone,
+      location,
       resumeText: text,
     });
 
@@ -548,7 +518,6 @@ exports.downloadResumeAsWord = async (req, res) => {
     res.send(buffer);
   } catch (error) {
     console.error("❌ Word generation failed:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to generate Word document",
