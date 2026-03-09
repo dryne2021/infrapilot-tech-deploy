@@ -88,12 +88,10 @@ exports.getJobsByCandidate = async (req, res) => {
     const filter = { candidateId };
     if (recruiterId) filter.recruiterId = recruiterId;
 
-    const jobs = await JobApplication.find(filter)
-  .select("+resumeText")
-  .sort({
-    appliedDate: -1,
-    createdAt: -1,
-  });
+    const jobs = await JobApplication.find(filter).sort({
+      appliedDate: -1,
+      createdAt: -1,
+    });
 
     return res.status(200).json({ success: true, jobs });
   } catch (err) {
@@ -111,16 +109,7 @@ exports.updateJobApplication = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const updates = {
-  ...req.body,
-  updatedAt: Date.now(),
-};
-
-// ✅ Ensure resume text is saved properly
-if (req.body.resumeText) {
-  updates.resumeText = req.body.resumeText;
-  updates.resumeStatus = "Submitted";
-}
+    const updates = { ...req.body, updatedAt: Date.now() };
 
     // 🔥 Normalize status if being updated
     if (updates.status) {
