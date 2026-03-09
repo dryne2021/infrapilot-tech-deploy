@@ -1,5 +1,5 @@
 // server/controllers/adminController.js
-const ResumeLog = require("../models/ResumeLog");
+
 const bcrypt = require("bcryptjs");
 const mongoose = require("mongoose");
 
@@ -1173,76 +1173,6 @@ exports.getCandidateApplications = async (req, res, next) => {
     return res.status(200).json(jobs);
   } catch (error) {
     console.error("❌ getCandidateApplications error:", error);
-    next(error);
-  }
-};
-
-/* =========================================================
-   DAILY RESUME GENERATION REPORT
-   GET /api/v1/admin/reports/resumes/daily
-========================================================= */
-exports.getDailyResumeReport = async (req, res, next) => {
-  try {
-
-    const startOfDay = new Date();
-    startOfDay.setUTCHours(0,0,0,0);
-
-    const endOfDay = new Date();
-    endOfDay.setUTCHours(23,59,59,999);
-
-    const logs = await ResumeLog.aggregate([
-  {
-    $match: {
-      generatedAt: { $gte: startOfDay, $lte: endOfDay }
-    }
-  },
-
-  {
-    $lookup: {
-      from: "recruiters",
-      localField: "recruiterId",
-      foreignField: "_id",
-      as: "recruiter"
-    }
-  },
-
-  {
-    $lookup: {
-      from: "candidates",
-      localField: "candidateId",
-      foreignField: "_id",
-      as: "candidate"
-    }
-  },
-
-  {
-    $addFields: {
-      recruiter: { $arrayElemAt: ["$recruiter", 0] },
-      candidate: { $arrayElemAt: ["$candidate", 0] }
-    }
-  },
-
-  {
-    $project: {
-      recruiter: {
-        $ifNull: ["$recruiter.email", "$recruiter.name"]
-      },
-      candidate: {
-        $ifNull: ["$candidate.fullName", "Unknown Candidate"]
-      },
-      generatedAt: 1
-    }
-  },
-
-  { $sort: { generatedAt: -1 } }
-]);
-
-    return res.status(200).json({
-      success: true,
-      data: logs
-    });
-
-  } catch (error) {
     next(error);
   }
 };
