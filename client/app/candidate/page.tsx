@@ -78,13 +78,22 @@ export default function CandidateDashboard() {
 
   const downloadResume = async (app: any) => {
   try {
+    if (!app.resumeText) {
+      alert('Resume not generated yet for this job.')
+      return
+    }
+
     const res = await fetchWithAuth('/api/v1/resume/download', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        applicationId: app._id
+        name: candidateName,
+        email: app.email || '',
+        phone: app.phone || '',
+        location: app.location || '',
+        text: app.resumeText,
       }),
     })
 
@@ -98,18 +107,18 @@ export default function CandidateDashboard() {
 
     const a = document.createElement('a')
     a.href = url
-    a.download = `Resume_${Date.now()}.docx`
+    a.download = `Resume_${app.jobId || Date.now()}.docx`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
 
     window.URL.revokeObjectURL(url)
+
   } catch (err) {
     console.error(err)
     alert('Error downloading resume')
   }
 }
-
   useEffect(() => {
     ;(async () => {
       const cid = await loadProfile()
