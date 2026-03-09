@@ -1202,11 +1202,10 @@ exports.getDailyResumeReport = async (req, res, next) => {
   $lookup: {
     from: "recruiters",
     localField: "recruiterId",
-    foreignField: "userId",
+    foreignField: "_id",
     as: "recruiter"
   }
 },
-
       {
         $unwind: {
           path: "$recruiter",
