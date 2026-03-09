@@ -207,13 +207,11 @@ export default function RecruiterPage() {
       (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
         .replace(/\s+/g, '_');
 
-    const payload = {
-      name: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim(),
-      email: candidate?.email || '',
-      phone: candidate?.phone || '',
-      location: candidate?.location || '',
-      text: resumeText,
-    };
+    const jobDbId = await autoCreateJobIfNeeded();
+
+const payload = {
+  applicationId: jobDbId
+};
 
     const res = await fetch(`${apiBaseUrl}/api/v1/resume/download`, {
       method: 'POST',
