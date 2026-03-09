@@ -352,17 +352,19 @@ function enforceHosFormat({
 // ==========================================================
 // 🚀 GENERATE RESUME
 // ==========================================================
+
 exports.generateResume = async (req, res) => {
   try {
     const {
-      fullName,
-      location,
-      email,
-      phone,
-      experience = [],
-      education = [],
-      jobDescription,
-    } = req.body;
+  fullName,
+  location,
+  email,
+  phone,
+  experience = [],
+  education = [],
+  jobDescription,
+  jobApplicationId
+} = req.body;
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -469,6 +471,18 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
+    // ✅ Save generated resume into JobApplication
+if (jobApplicationId) {
+  try {
+    await JobApplication.findByIdAndUpdate(jobApplicationId, {
+      resumeText: hosText,
+      resumeStatus: "Submitted",
+      updatedAt: new Date(),
+    });
+  } catch (dbError) {
+    console.error("❌ Failed to save resume:", dbError);
+  }
+}
 
     return res.status(200).json({
       success: true,
