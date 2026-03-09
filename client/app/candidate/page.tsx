@@ -76,45 +76,48 @@ export default function CandidateDashboard() {
     }
   }
 
-  const downloadResume = async (resumeText?: string) => {
-    if (!resumeText) {
-      alert('No resume available')
+  const downloadResume = async (resumeText?: string, app?: any) => {
+  if (!resumeText) {
+    alert('No resume available')
+    return
+  }
+
+  try {
+    const res = await fetchWithAuth('/api/v1/resume/download', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text: resumeText,
+        name: candidateName,
+        email: app?.candidateEmail || '',
+        phone: app?.candidatePhone || '',
+        location: app?.candidateLocation || ''
+      }),
+    })
+
+    if (!res.ok) {
+      alert('Failed to generate resume file')
       return
     }
 
-    try {
-      const res = await fetchWithAuth('/api/v1/resume/download', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: resumeText,
-          name: candidateName,
-        }),
-      })
+    const blob = await res.blob()
+    const url = window.URL.createObjectURL(blob)
 
-      if (!res.ok) {
-        alert('Failed to generate resume file')
-        return
-      }
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `Resume_${Date.now()}.docx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
 
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `Resume_${Date.now()}.docx`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-
-      window.URL.revokeObjectURL(url)
-    } catch (err) {
-      console.error(err)
-      alert('Error downloading resume')
-    }
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error(err)
+    alert('Error downloading resume')
   }
+}
 
   useEffect(() => {
     ;(async () => {
@@ -269,11 +272,12 @@ export default function CandidateDashboard() {
 
                         <td className="p-4">
                           <button
-                            onClick={() =>
-                              downloadResume(
-                                app?.resumeText
-                              )
-                            }
+                           onClick={() =>
+                          downloadResume(
+                            app?.resumeText,
+                            app
+                          )
+                        }
                             className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
                           >
                             Download
