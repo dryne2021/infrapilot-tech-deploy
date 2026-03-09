@@ -408,3 +408,39 @@ exports.getDashboardStats = async (req, res, next) => {
   }
 
 };
+// ======================================================
+// ADD NOTE TO APPLICATION
+// ======================================================
+exports.addApplicationNote = async (req, res, next) => {
+  try {
+
+    const { note } = req.body;
+
+    if (!note) {
+      return next(new ErrorResponse("Note is required", 400));
+    }
+
+    const recruiter = await getRecruiterOrThrow(req.user.id, next);
+    if (!recruiter) return;
+
+    const application = await pool.query(
+      `UPDATE job_applications
+       SET notes = COALESCE(notes, '') || $1
+       WHERE id = $2 AND recruiter_id = $3
+       RETURNING *`,
+      [`\n${note}`, req.params.id, recruiter.id]
+    );
+
+    if (application.rows.length === 0) {
+      return next(new ErrorResponse("Application not found", 404));
+    }
+
+    res.status(200).json({
+      success: true,
+      data: application.rows[0]
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
