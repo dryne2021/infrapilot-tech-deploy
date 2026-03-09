@@ -1,16 +1,13 @@
 // server/controllers/authController.js
 
 const bcrypt = require("bcryptjs");
-const User = require("../models/User");
-const Candidate = require("../models/Candidate");
-const Recruiter = require("../models/Recruiter");
+const pool = require("../config/db");
 const ErrorResponse = require("../utils/ErrorResponse");
 const { sendTokenResponse } = require("../utils/generateToken");
 
 // helpers
 const normalizeEmail = (v) => (v || "").toString().trim().toLowerCase();
 const normalizeName = (v) => (v || "").toString().trim();
-// ✅ IMPORTANT: normalize username same way as schema (lowercase + trim)
 const normalizeUsername = (v) => (v || "").toString().trim().toLowerCase();
 
 const looksLikeEmail = (v) => {
@@ -23,58 +20,51 @@ const looksLikeEmail = (v) => {
 // @access  Public
 exports.register = async (req, res, next) => {
   try {
-    let { name, email, username, password, role, skills, experienceLevel } = req.body;
+    let { name, email, username, password, role } = req.body;
 
     const nameNorm = normalizeName(name);
     const emailNorm = normalizeEmail(email);
-    const usernameNorm = username ? normalizeUsername(username) : undefined;
+    const usernameNorm = username ? normalizeUsername(username) : null;
 
     if (!nameNorm || !emailNorm || !password) {
       return next(new ErrorResponse("Name, email and password are required", 400));
     }
 
-    // Prevent duplicate accounts
-    const existingEmail = await User.findOne({ email: emailNorm });
-    if (existingEmail) {
+    // Check duplicate email
+    const existingEmail = await pool.query(
+      "SELECT * FROM users WHERE email = $1",
+      [emailNorm]
+    );
+
+    if (existingEmail.rows.length > 0) {
       return next(new ErrorResponse("Email already registered", 400));
     }
 
+    // Check duplicate username
     if (usernameNorm) {
-      const existingUsername = await User.findOne({ username: usernameNorm });
-      if (existingUsername) {
+      const existingUsername = await pool.query(
+        "SELECT * FROM users WHERE username = $1",
+        [usernameNorm]
+      );
+
+      if (existingUsername.rows.length > 0) {
         return next(new ErrorResponse("Username already registered", 400));
       }
     }
 
-    // Create user
-    const user = await User.create({
-      name: nameNorm,
-      email: emailNorm,
-      username: usernameNorm, // only works if your User schema includes it
-      password,
-      role: role || "candidate",
-      status: "active",
-    });
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create profile based on role
-    if (user.role === "candidate") {
-      await Candidate.create({
-        userId: user._id,
-        experienceLevel: experienceLevel || "entry",
-        skills: Array.isArray(skills) ? skills : [],
-        fullName: nameNorm,
-        email: emailNorm,
-      });
-    } else if (user.role === "recruiter") {
-      await Recruiter.create({
-        userId: user._id,
-        name: nameNorm,
-        email: emailNorm,
-        status: "active",
-      });
-    }
+    const newUser = await pool.query(
+      `INSERT INTO users (name, email, username, password, role)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING *`,
+      [nameNorm, emailNorm, usernameNorm, hashedPassword, role || "candidate"]
+    );
+
+    const user = newUser.rows[0];
 
     sendTokenResponse(user, 201, res);
+
   } catch (error) {
     next(error);
   }
@@ -101,63 +91,27 @@ exports.login = async (req, res, next) => {
     const emailNorm = isEmail ? normalizeEmail(identifier) : null;
     const usernameNorm = !isEmail ? normalizeUsername(identifier) : null;
 
-    const userQuery = isEmail
-      ? { email: emailNorm }
-      : { username: usernameNorm };
-
-    let user = await User.findOne(userQuery).select("+password");
-
-    // =============================
-    // 1️⃣ Normal User Login
-    // =============================
-    if (user) {
-      if (user.status && user.status !== "active") {
-        return next(
-          new ErrorResponse("Your account has been deactivated", 401)
-        );
-      }
-
-      const isMatch = await user.comparePassword(password);
-      if (!isMatch) {
-        return next(new ErrorResponse("Invalid credentials", 401));
-      }
-
-      // ✅ USE EXISTING TOKEN HANDLER
-      return sendTokenResponse(user, 200, res);
-    }
-
-    // =============================
-    // 2️⃣ Candidate Fallback Login
-    // =============================
-    const candidateQuery = isEmail
-      ? { email: normalizeEmail(identifier) }
-      : { username: normalizeUsername(identifier) };
-
-    const candidate = await Candidate.findOne(candidateQuery).select(
-      "+passwordHash"
+    const result = await pool.query(
+      isEmail
+        ? "SELECT * FROM users WHERE email = $1"
+        : "SELECT * FROM users WHERE username = $1",
+      [isEmail ? emailNorm : usernameNorm]
     );
 
-    if (!candidate) {
+    if (result.rows.length === 0) {
       return next(new ErrorResponse("Invalid credentials", 401));
     }
 
-    const ok = await bcrypt.compare(password, candidate.passwordHash);
-    if (!ok) {
+    const user = result.rows[0];
+
+    const isMatch = await bcrypt.compare(password, user.password);
+
+    if (!isMatch) {
       return next(new ErrorResponse("Invalid credentials", 401));
     }
 
-    const linkedUser = await User.findById(candidate.userId).select(
-      "-password"
-    );
+    return sendTokenResponse(user, 200, res);
 
-    if (!linkedUser) {
-      return next(
-        new ErrorResponse("Login misconfiguration. Contact admin.", 500)
-      );
-    }
-
-    // ✅ USE EXISTING TOKEN HANDLER
-    return sendTokenResponse(linkedUser, 200, res);
   } catch (error) {
     next(error);
   }
@@ -168,37 +122,33 @@ exports.login = async (req, res, next) => {
 // @access  Private
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id).select("-password");
 
-    if (!user) {
+    const result = await pool.query(
+      "SELECT id,name,email,username,role,created_at FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
       return next(new ErrorResponse("User not found", 404));
     }
 
-    let profile = null;
-
-    if (user.role === "candidate") {
-      profile = await Candidate.findOne({ userId: user._id })
-        .populate("assignedRecruiter", "name email department specialization status phone bio experience")
-        .populate("assignedRecruiterId", "name email department specialization status phone bio experience")
-        .lean();
-    } else if (user.role === "recruiter") {
-      profile = await Recruiter.findOne({ userId: user._id }).lean();
-    }
+    const user = result.rows[0];
 
     res.status(200).json({
       success: true,
-      user,
-      profile,
+      user
     });
+
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Logout user / clear cookie
+// @desc    Logout user
 // @route   GET /api/v1/auth/logout
 // @access  Private
 exports.logout = (req, res, next) => {
+
   res.cookie("token", "none", {
     expires: new Date(Date.now() + 10 * 1000),
     httpOnly: true,
@@ -208,81 +158,100 @@ exports.logout = (req, res, next) => {
     success: true,
     data: {},
   });
+
 };
 
 // @desc    Update user details
 // @route   PUT /api/v1/auth/updatedetails
 // @access  Private
 exports.updateDetails = async (req, res, next) => {
+
   try {
-    const fieldsToUpdate = {};
 
-    if (req.body.name !== undefined) fieldsToUpdate.name = normalizeName(req.body.name);
-    if (req.body.email !== undefined) fieldsToUpdate.email = normalizeEmail(req.body.email);
-    if (req.body.username !== undefined) fieldsToUpdate.username = normalizeUsername(req.body.username);
+    const fields = {};
+    if (req.body.name) fields.name = normalizeName(req.body.name);
+    if (req.body.email) fields.email = normalizeEmail(req.body.email);
+    if (req.body.username) fields.username = normalizeUsername(req.body.username);
 
-    if (Object.keys(fieldsToUpdate).length === 0) {
+    const keys = Object.keys(fields);
+
+    if (keys.length === 0) {
       return next(new ErrorResponse("No fields provided to update", 400));
     }
 
-    if (fieldsToUpdate.email) {
-      const existing = await User.findOne({
-        email: fieldsToUpdate.email,
-        _id: { $ne: req.user.id },
-      });
-      if (existing) return next(new ErrorResponse("Email already in use", 400));
-    }
+    const values = Object.values(fields);
+    const setString = keys.map((k, i) => `${k}=$${i + 1}`).join(",");
 
-    if (fieldsToUpdate.username) {
-      const existingU = await User.findOne({
-        username: fieldsToUpdate.username,
-        _id: { $ne: req.user.id },
-      });
-      if (existingU) return next(new ErrorResponse("Username already in use", 400));
-    }
+    values.push(req.user.id);
 
-    const user = await User.findByIdAndUpdate(req.user.id, fieldsToUpdate, {
-      new: true,
-      runValidators: true,
-    }).select("-password");
+    const result = await pool.query(
+      `UPDATE users SET ${setString} WHERE id=$${values.length} RETURNING id,name,email,username,role`,
+      values
+    );
 
     res.status(200).json({
       success: true,
-      data: user,
+      data: result.rows[0]
     });
+
   } catch (error) {
     next(error);
   }
+
 };
 
 // @desc    Update password
 // @route   PUT /api/v1/auth/updatepassword
 // @access  Private
 exports.updatePassword = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user.id).select("+password");
 
-    if (!user) {
+  try {
+
+    const result = await pool.query(
+      "SELECT password FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
       return next(new ErrorResponse("User not found", 404));
     }
 
+    const user = result.rows[0];
+
     if (!req.body.currentPassword || !req.body.newPassword) {
-      return next(new ErrorResponse("Current password and new password are required", 400));
+      return next(
+        new ErrorResponse(
+          "Current password and new password are required",
+          400
+        )
+      );
     }
 
-    if (typeof user.comparePassword !== "function") {
-      return next(new ErrorResponse("Login misconfiguration. Contact admin.", 500));
-    }
+    const isMatch = await bcrypt.compare(
+      req.body.currentPassword,
+      user.password
+    );
 
-    if (!(await user.comparePassword(req.body.currentPassword))) {
+    if (!isMatch) {
       return next(new ErrorResponse("Password is incorrect", 401));
     }
 
-    user.password = req.body.newPassword;
-    await user.save();
+    const newHash = await bcrypt.hash(req.body.newPassword, 10);
 
-    sendTokenResponse(user, 200, res);
+    await pool.query(
+      "UPDATE users SET password = $1 WHERE id = $2",
+      [newHash, req.user.id]
+    );
+
+    const updatedUser = await pool.query(
+      "SELECT id,name,email,username,role FROM users WHERE id=$1",
+      [req.user.id]
+    );
+
+    sendTokenResponse(updatedUser.rows[0], 200, res);
+
   } catch (error) {
     next(error);
   }
+
 };

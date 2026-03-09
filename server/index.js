@@ -1,11 +1,11 @@
 // server/index.js
 
+const pool = require("./config/db");
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const path = require("path");
 
-const connectDB = require("./config/db");
 const errorHandler = require("./middleware/error");
 
 // Route files
@@ -108,8 +108,9 @@ const PORT = process.env.PORT || 5000;
 ========================================================= */
 async function startServer() {
   try {
-    await connectDB();
-    console.log("✅ MongoDB connected");
+    // Test PostgreSQL connection
+    await pool.query("SELECT 1");
+    console.log("✅ PostgreSQL connected");
 
     if (process.env.NODE_ENV === "production") {
       try {

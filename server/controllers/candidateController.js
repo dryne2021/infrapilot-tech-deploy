@@ -1,9 +1,8 @@
-const Candidate = require('../models/Candidate');
-const JobApplication = require('../models/JobApplication');
-const ErrorResponse = require('../utils/ErrorResponse');
-const { upload, getFileUrl } = require('../utils/fileUpload');
-const path = require('path');
-const fs = require('fs');
+const pool = require("../config/db");
+const ErrorResponse = require("../utils/ErrorResponse");
+const { upload, getFileUrl } = require("../utils/fileUpload");
+const path = require("path");
+const fs = require("fs");
 
 
 // ======================================================
@@ -11,17 +10,21 @@ const fs = require('fs');
 // ======================================================
 exports.getProfile = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id })
-      .populate('assignedRecruiterId', 'name email');
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
+    const result = await pool.query(
+      `SELECT * FROM candidates WHERE user_id = $1`,
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
 
     res.status(200).json({
       success: true,
-      data: candidate
+      data: result.rows[0]
     });
+
   } catch (error) {
     next(error);
   }
@@ -33,36 +36,56 @@ exports.getProfile = async (req, res, next) => {
 // ======================================================
 exports.updateProfile = async (req, res, next) => {
   try {
+
     const { skills, workHistory, experience } = req.body;
 
     const parsedSkills =
       skills !== undefined
-        ? (typeof skills === 'string' ? JSON.parse(skills) : skills)
+        ? (typeof skills === "string" ? JSON.parse(skills) : skills)
         : undefined;
 
     const incomingWorkHistory = workHistory ?? experience;
 
     const parsedWorkHistory =
       incomingWorkHistory !== undefined
-        ? (typeof incomingWorkHistory === 'string'
-            ? JSON.parse(incomingWorkHistory)
-            : incomingWorkHistory)
+        ? typeof incomingWorkHistory === "string"
+          ? JSON.parse(incomingWorkHistory)
+          : incomingWorkHistory
         : undefined;
 
-    const update = {};
-    if (parsedSkills !== undefined) update.skills = parsedSkills;
-    if (parsedWorkHistory !== undefined) update.workHistory = parsedWorkHistory;
+    const updates = [];
+    const values = [];
+    let index = 1;
 
-    const candidate = await Candidate.findOneAndUpdate(
-      { userId: req.user.id },
-      update,
-      { new: true, runValidators: true }
-    ).populate('assignedRecruiterId', 'name email');
+    if (parsedSkills !== undefined) {
+      updates.push(`skills = $${index++}`);
+      values.push(JSON.stringify(parsedSkills));
+    }
+
+    if (parsedWorkHistory !== undefined) {
+      updates.push(`work_history = $${index++}`);
+      values.push(JSON.stringify(parsedWorkHistory));
+    }
+
+    if (updates.length === 0) {
+      return next(new ErrorResponse("Nothing to update", 400));
+    }
+
+    values.push(req.user.id);
+
+    const result = await pool.query(
+      `UPDATE candidates 
+       SET ${updates.join(",")}
+       WHERE user_id = $${values.length}
+       RETURNING *`,
+      values
+    );
 
     res.status(200).json({
       success: true,
-      data: candidate
+      data: result.rows[0]
     });
+
   } catch (error) {
     next(error);
   }
@@ -74,21 +97,26 @@ exports.updateProfile = async (req, res, next) => {
 // ======================================================
 exports.uploadResume = async (req, res, next) => {
   try {
-    const uploadSingle = upload.single('resume');
+
+    const uploadSingle = upload.single("resume");
 
     uploadSingle(req, res, async function (err) {
+
       if (err) {
         return next(new ErrorResponse(err.message, 400));
       }
 
       if (!req.file) {
-        return next(new ErrorResponse('Please upload a file', 400));
+        return next(new ErrorResponse("Please upload a file", 400));
       }
 
-      const candidate = await Candidate.findOne({ userId: req.user.id });
+      const candidate = await pool.query(
+        `SELECT * FROM candidates WHERE user_id = $1`,
+        [req.user.id]
+      );
 
-      if (!candidate) {
-        return next(new ErrorResponse('Candidate profile not found', 404));
+      if (candidate.rows.length === 0) {
+        return next(new ErrorResponse("Candidate profile not found", 404));
       }
 
       const newResume = {
@@ -98,18 +126,26 @@ exports.uploadResume = async (req, res, next) => {
         isActive: true
       };
 
-      candidate.resumes.forEach(resume => {
-        resume.isActive = false;
-      });
-
-      candidate.resumes.push(newResume);
-      await candidate.save();
+      await pool.query(
+        `INSERT INTO resumes 
+        (candidate_id, file_name, file_url, uploaded_at, is_active)
+        VALUES ($1,$2,$3,$4,$5)`,
+        [
+          candidate.rows[0].id,
+          newResume.fileName,
+          newResume.fileUrl,
+          newResume.uploadedAt,
+          true
+        ]
+      );
 
       res.status(200).json({
         success: true,
         data: newResume
       });
+
     });
+
   } catch (error) {
     next(error);
   }
@@ -121,17 +157,27 @@ exports.uploadResume = async (req, res, next) => {
 // ======================================================
 exports.getResumes = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id });
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
+    const candidate = await pool.query(
+      `SELECT id FROM candidates WHERE user_id = $1`,
+      [req.user.id]
+    );
+
+    if (candidate.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
+
+    const resumes = await pool.query(
+      `SELECT * FROM resumes WHERE candidate_id = $1 ORDER BY uploaded_at DESC`,
+      [candidate.rows[0].id]
+    );
 
     res.status(200).json({
       success: true,
-      count: candidate.resumes.length,
-      data: candidate.resumes
+      count: resumes.rows.length,
+      data: resumes.rows
     });
+
   } catch (error) {
     next(error);
   }
@@ -143,26 +189,30 @@ exports.getResumes = async (req, res, next) => {
 // ======================================================
 exports.deleteResume = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id });
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
-    }
-
-    const resumeIndex = candidate.resumes.findIndex(
-      resume => resume._id.toString() === req.params.resumeId
+    const candidate = await pool.query(
+      `SELECT id FROM candidates WHERE user_id = $1`,
+      [req.user.id]
     );
 
-    if (resumeIndex === -1) {
-      return next(new ErrorResponse('Resume not found', 404));
+    if (candidate.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
 
-    const resumeToDelete = candidate.resumes[resumeIndex];
+    const resume = await pool.query(
+      `SELECT * FROM resumes WHERE id = $1`,
+      [req.params.resumeId]
+    );
 
-    const filename = path.basename(resumeToDelete.fileUrl);
+    if (resume.rows.length === 0) {
+      return next(new ErrorResponse("Resume not found", 404));
+    }
+
+    const filename = path.basename(resume.rows[0].file_url);
+
     const filePath = path.join(
-      process.env.UPLOAD_PATH || './uploads',
-      'resumes',
+      process.env.UPLOAD_PATH || "./uploads",
+      "resumes",
       req.user.id,
       filename
     );
@@ -171,18 +221,16 @@ exports.deleteResume = async (req, res, next) => {
       fs.unlinkSync(filePath);
     }
 
-    candidate.resumes.splice(resumeIndex, 1);
-
-    if (resumeToDelete.isActive && candidate.resumes.length > 0) {
-      candidate.resumes[candidate.resumes.length - 1].isActive = true;
-    }
-
-    await candidate.save();
+    await pool.query(
+      `DELETE FROM resumes WHERE id = $1`,
+      [req.params.resumeId]
+    );
 
     res.status(200).json({
       success: true,
       data: {}
     });
+
   } catch (error) {
     next(error);
   }
@@ -194,31 +242,38 @@ exports.deleteResume = async (req, res, next) => {
 // ======================================================
 exports.setActiveResume = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id });
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
-    }
-
-    candidate.resumes.forEach(resume => {
-      resume.isActive = false;
-    });
-
-    const resume = candidate.resumes.find(
-      r => r._id.toString() === req.params.resumeId
+    const candidate = await pool.query(
+      `SELECT id FROM candidates WHERE user_id = $1`,
+      [req.user.id]
     );
 
-    if (!resume) {
-      return next(new ErrorResponse('Resume not found', 404));
+    if (candidate.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
 
-    resume.isActive = true;
-    await candidate.save();
+    await pool.query(
+      `UPDATE resumes SET is_active = false WHERE candidate_id = $1`,
+      [candidate.rows[0].id]
+    );
+
+    const resume = await pool.query(
+      `UPDATE resumes
+       SET is_active = true
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.resumeId]
+    );
+
+    if (resume.rows.length === 0) {
+      return next(new ErrorResponse("Resume not found", 404));
+    }
 
     res.status(200).json({
       success: true,
-      data: resume
+      data: resume.rows[0]
     });
+
   } catch (error) {
     next(error);
   }
@@ -226,54 +281,38 @@ exports.setActiveResume = async (req, res, next) => {
 
 
 // ======================================================
-// 🔥 UPDATED: GET JOB APPLICATIONS (CLEAN RESPONSE)
+// GET JOB APPLICATIONS
 // ======================================================
 exports.getApplications = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id });
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
+    const candidate = await pool.query(
+      `SELECT id FROM candidates WHERE user_id = $1`,
+      [req.user.id]
+    );
+
+    if (candidate.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
 
-    const { page = 1, limit = 10, status } = req.query;
-    const pageInt = parseInt(page);
-    const limitInt = parseInt(limit);
-    const startIndex = (pageInt - 1) * limitInt;
+    const { page = 1, limit = 10 } = req.query;
 
-    const query = { candidateId: candidate._id };
-    if (status) query.status = status;
+    const offset = (page - 1) * limit;
 
-    const total = await JobApplication.countDocuments(query);
-
-    const applications = await JobApplication.find(query)
-      .select(
-        'jobId jobTitle companyName jobDescription resumeUsed resumeDocxUrl status appliedDate'
-      )
-      .sort({ createdAt: -1 })
-      .skip(startIndex)
-      .limit(limitInt);
+    const apps = await pool.query(
+      `SELECT * FROM job_applications
+       WHERE candidate_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [candidate.rows[0].id, limit, offset]
+    );
 
     res.status(200).json({
       success: true,
-      count: applications.length,
-      total,
-      totalPages: Math.ceil(total / limitInt),
-      currentPage: pageInt,
-      data: applications.map(app => ({
-        _id: app._id,
-        jobId: app.jobId,
-        jobTitle: app.jobTitle,
-        companyName: app.companyName,
-        jobDescription: app.jobDescription,
-        status: app.status,
-        appliedDate: app.appliedDate,
-        resumeUrl:
-          app.resumeUsed?.fileUrl ||
-          app.resumeDocxUrl ||
-          null
-      }))
+      count: apps.rows.length,
+      data: apps.rows
     });
+
   } catch (error) {
     next(error);
   }
@@ -285,25 +324,31 @@ exports.getApplications = async (req, res, next) => {
 // ======================================================
 exports.getApplication = async (req, res, next) => {
   try {
-    const candidate = await Candidate.findOne({ userId: req.user.id });
 
-    if (!candidate) {
-      return next(new ErrorResponse('Candidate profile not found', 404));
+    const candidate = await pool.query(
+      `SELECT id FROM candidates WHERE user_id = $1`,
+      [req.user.id]
+    );
+
+    if (candidate.rows.length === 0) {
+      return next(new ErrorResponse("Candidate profile not found", 404));
     }
 
-    const application = await JobApplication.findOne({
-      _id: req.params.id,
-      candidateId: candidate._id
-    });
+    const application = await pool.query(
+      `SELECT * FROM job_applications
+       WHERE id = $1 AND candidate_id = $2`,
+      [req.params.id, candidate.rows[0].id]
+    );
 
-    if (!application) {
-      return next(new ErrorResponse('Application not found', 404));
+    if (application.rows.length === 0) {
+      return next(new ErrorResponse("Application not found", 404));
     }
 
     res.status(200).json({
       success: true,
-      data: application
+      data: application.rows[0]
     });
+
   } catch (error) {
     next(error);
   }

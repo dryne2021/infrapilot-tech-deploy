@@ -1,19 +1,19 @@
-const mongoose = require('mongoose');
+const { Pool } = require("pg");
 
-const connectDB = async () => {
-  try {
-    // Ensure MONGO_URI is provided
-    if (!process.env.MONGO_URI) {
-      throw new Error("MONGO_URI is missing. Please set it in Render Environment Variables.");
-    }
+const pool = new Pool({
+  user: "postgres",
+  host: "localhost",
+  database: "infrapilot_platform",
+  password: "12345678",
+  port: 5432,
+});
 
-    const conn = await mongoose.connect(process.env.MONGO_URI);
+pool.connect()
+  .then(() => {
+    console.log("✅ PostgreSQL Connected Successfully");
+  })
+  .catch((err) => {
+    console.error("❌ PostgreSQL Connection Error:", err);
+  });
 
-    console.log(`MongoDB Connected: ${conn.connection.host}`);
-  } catch (error) {
-    console.error(`MongoDB connection error: ${error.message}`);
-    process.exit(1);
-  }
-};
-
-module.exports = connectDB;
+module.exports = pool;
