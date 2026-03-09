@@ -76,12 +76,7 @@ export default function CandidateDashboard() {
     }
   }
 
-  const downloadResume = async (resumeText?: string, app?: any) => {
-  if (!resumeText) {
-    alert('No resume available')
-    return
-  }
-
+  const downloadResume = async (app: any) => {
   try {
     const res = await fetchWithAuth('/api/v1/resume/download', {
       method: 'POST',
@@ -89,11 +84,7 @@ export default function CandidateDashboard() {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        text: resumeText,
-        name: candidateName,
-        email: app?.candidateEmail || '',
-        phone: app?.candidatePhone || '',
-        location: app?.candidateLocation || ''
+        applicationId: app._id
       }),
     })
 
@@ -272,12 +263,7 @@ export default function CandidateDashboard() {
 
                         <td className="p-4">
                           <button
-                           onClick={() =>
-                          downloadResume(
-                            app?.resumeText,
-                            app
-                          )
-                        }
+                           onClick={() => downloadResume(app)}
                             className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
                           >
                             Download
