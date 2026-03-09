@@ -78,7 +78,7 @@ export default function CandidateDashboard() {
 
   const downloadResume = async (app: any) => {
   try {
-    const res = await fetchWithAuth('https://infrapilot-tech-deploy-1.onrender.com/api/v1/resume/download', {
+    const res = await fetchWithAuth('/api/v1/resume/download', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
