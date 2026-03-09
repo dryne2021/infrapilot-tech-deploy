@@ -1191,63 +1191,51 @@ exports.getDailyResumeReport = async (req, res, next) => {
     endOfDay.setUTCHours(23,59,59,999);
 
     const logs = await ResumeLog.aggregate([
-      {
-        $match: {
-          generatedAt: { $gte: startOfDay, $lte: endOfDay }
-        }
+  {
+    $match: {
+      generatedAt: { $gte: startOfDay, $lte: endOfDay }
+    }
+  },
+
+  {
+    $lookup: {
+      from: "recruiters",
+      localField: "recruiterId",
+      foreignField: "_id",
+      as: "recruiter"
+    }
+  },
+
+  {
+    $lookup: {
+      from: "candidates",
+      localField: "candidateId",
+      foreignField: "_id",
+      as: "candidate"
+    }
+  },
+
+  {
+    $addFields: {
+      recruiter: { $arrayElemAt: ["$recruiter", 0] },
+      candidate: { $arrayElemAt: ["$candidate", 0] }
+    }
+  },
+
+  {
+    $project: {
+      recruiter: {
+        $ifNull: ["$recruiter.email", "$recruiter.name"]
       },
-
-      // Join recruiters
-      {
-  $lookup: {
-    from: "recruiters",
-    localField: "recruiterId",
-    foreignField: "_id",
-    as: "recruiter"
-  }
-},
-      {
-        $unwind: {
-          path: "$recruiter",
-          preserveNullAndEmptyArrays: true
-        }
+      candidate: {
+        $ifNull: ["$candidate.fullName", "Unknown Candidate"]
       },
+      generatedAt: 1
+    }
+  },
 
-      // Join candidates
-      {
-        $lookup: {
-          from: "candidates",
-          localField: "candidateId",
-          foreignField: "_id",
-          as: "candidate"
-        }
-      },
-
-      {
-        $unwind: {
-          path: "$candidate",
-          preserveNullAndEmptyArrays: true
-        }
-      },
-
-      {
-  $project: {
-    recruiter: {
-      $ifNull: [
-        "$recruiter.name",
-        { $ifNull: ["$recruiter.email", "Unknown Recruiter"] }
-      ]
-    },
-    candidate: {
-      $ifNull: ["$candidate.fullName", "Unknown Candidate"]
-    },
-    generatedAt: 1
-  }
-},
-
-      { $sort: { generatedAt: -1 } }
-
-    ]);
+  { $sort: { generatedAt: -1 } }
+]);
 
     return res.status(200).json({
       success: true,
