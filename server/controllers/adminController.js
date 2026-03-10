@@ -115,6 +115,35 @@ const generateRandomPassword = (len = 10) => {
   return out;
 };
 
+// ✅ Helper to ensure user account exists
+const ensureUserAccount = async ({ email, name, role }) => {
+  const emailNorm = String(email).trim().toLowerCase();
+
+  // Check if user exists
+  const existing = await pool.query(
+    "SELECT * FROM users WHERE email=$1",
+    [emailNorm]
+  );
+
+  if (existing.rows[0]) {
+    return existing.rows[0];
+  }
+
+  // Create default password
+  const tempPassword = "Temp@" + Math.random().toString(36).slice(2, 10) + "9!";
+  const salt = await bcrypt.genSalt(10);
+  const hashedPassword = await bcrypt.hash(tempPassword, salt);
+
+  const created = await pool.query(
+    `INSERT INTO users (name,email,password,role,status,created_at,updated_at)
+     VALUES ($1,$2,$3,$4,'active',NOW(),NOW())
+     RETURNING *`,
+    [name || emailNorm, emailNorm, hashedPassword, role]
+  );
+
+  return created.rows[0];
+};
+
 /* =========================================================
    DASHBOARD
    GET /api/v1/admin/dashboard
@@ -375,31 +404,12 @@ exports.createCandidate = async (req, res, next) => {
       }
     }
 
-    let userResult = await pool.query(
-      'SELECT * FROM users WHERE email = $1',
-      [emailNorm]
-    );
-    let user = userResult.rows[0];
-
-    if (!user) {
-      const tempPassword = "Tmp@" + Math.random().toString(36).slice(2, 10) + "9!";
-      const salt = await bcrypt.genSalt(10);
-      const hashedPassword = await bcrypt.hash(tempPassword, salt);
-      
-      const newUserResult = await pool.query(
-        `INSERT INTO users (name, email, password, role, status, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-         RETURNING *`,
-        [fullNameNorm || "Candidate", emailNorm, hashedPassword, 'candidate', 'active']
-      );
-      user = newUserResult.rows[0];
-    } else {
-      if (user.role && user.role !== "candidate") {
-        return next(
-          new ErrorResponse(`Email already belongs to a non-candidate user (${user.role}).`, 400)
-        );
-      }
-    }
+    // Use ensureUserAccount helper
+    const user = await ensureUserAccount({
+      email: emailNorm,
+      name: fullNameNorm,
+      role: "candidate",
+    });
 
     const existingCandidateResult = await pool.query(
       'SELECT * FROM candidates WHERE user_id = $1',
@@ -684,24 +694,43 @@ exports.createRecruiter = async (req, res, next) => {
     const emailNorm = String(email).trim().toLowerCase();
     const usernameNorm = String(username).trim();
 
-    const existingResult = await pool.query(
-      'SELECT * FROM users WHERE email = $1 OR username = $2',
-      [emailNorm, usernameNorm]
+    // Check if username already exists
+    const existingUsernameResult = await pool.query(
+      'SELECT * FROM users WHERE username = $1',
+      [usernameNorm]
     );
     
-    if (existingResult.rows[0]) return next(new ErrorResponse("Email or username already exists", 400));
+    if (existingUsernameResult.rows[0]) {
+      return next(new ErrorResponse("Username already exists", 400));
+    }
 
+    // Use ensureUserAccount helper to get/create user
+    const user = await ensureUserAccount({
+      email: emailNorm,
+      name: `${firstName} ${lastName || ""}`.trim(),
+      role: "recruiter",
+    });
+
+    // Update username and password for the user if they were newly created or need updating
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const createdUserResult = await pool.query(
-      `INSERT INTO users (name, email, username, password, role, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING *`,
-      [`${firstName} ${lastName || ''}`.trim(), emailNorm, usernameNorm, hashedPassword, 'recruiter', isActive === false ? 'inactive' : 'active']
+    await pool.query(
+      `UPDATE users 
+       SET username = $1, password = $2, status = $3, updated_at = NOW()
+       WHERE id = $4`,
+      [usernameNorm, hashedPassword, isActive === false ? 'inactive' : 'active', user.id]
     );
 
-    const createdUser = createdUserResult.rows[0];
+    // Check if recruiter profile already exists
+    const existingRecruiterResult = await pool.query(
+      'SELECT * FROM recruiters WHERE user_id = $1',
+      [user.id]
+    );
+
+    if (existingRecruiterResult.rows[0]) {
+      return next(new ErrorResponse("Recruiter profile already exists for this user", 400));
+    }
 
     const createdRecruiterResult = await pool.query(
       `INSERT INTO recruiters (
@@ -711,8 +740,8 @@ exports.createRecruiter = async (req, res, next) => {
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       RETURNING *`,
       [
-        createdUser.id,
-        createdUser.name,
+        user.id,
+        `${firstName} ${lastName || ''}`.trim(),
         emailNorm,
         phone || '',
         department || 'Technical',
@@ -730,7 +759,7 @@ exports.createRecruiter = async (req, res, next) => {
       success: true,
       data: {
         ...createdRecruiter,
-        username: createdUser.username,
+        username: usernameNorm,
         password: "SET",
       },
     });
@@ -741,35 +770,93 @@ exports.createRecruiter = async (req, res, next) => {
 
 exports.updateRecruiter = async (req, res, next) => {
   try {
-    // Build dynamic SET clause
-    const updates = { ...req.body };
-    const setClauses = [];
-    const values = [];
-    let paramIndex = 1;
+    const recruiterId = req.params.id;
 
-    Object.keys(updates).forEach(key => {
-      // Map camelCase to snake_case
-      const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-      setClauses.push(`${dbKey} = $${paramIndex}`);
-      values.push(updates[key]);
-      paramIndex++;
+    const recruiterResult = await pool.query(
+      "SELECT * FROM recruiters WHERE id=$1",
+      [recruiterId]
+    );
+
+    const recruiter = recruiterResult.rows[0];
+
+    if (!recruiter) {
+      return next(new ErrorResponse("Recruiter not found", 404));
+    }
+
+    const {
+      name,
+      email,
+      username,
+      password,
+      phone,
+      department,
+      specialization,
+      maxCandidates,
+      status,
+      isActive,
+    } = req.body;
+
+    const emailNorm = email ? String(email).trim().toLowerCase() : recruiter.email;
+
+    /* ---------------------------
+       Update USERS table
+    ---------------------------- */
+
+    if (recruiter.user_id) {
+      if (password) {
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        await pool.query(
+          `UPDATE users
+           SET email=$1, username=$2, password=$3, updated_at=NOW()
+           WHERE id=$4`,
+          [emailNorm, username || recruiter.email, hashedPassword, recruiter.user_id]
+        );
+      } else {
+        await pool.query(
+          `UPDATE users
+           SET email=$1, username=$2, updated_at=NOW()
+           WHERE id=$3`,
+          [emailNorm, username || recruiter.email, recruiter.user_id]
+        );
+      }
+    }
+
+    /* ---------------------------
+       Update RECRUITERS table
+    ---------------------------- */
+
+    const updatedRecruiterResult = await pool.query(
+      `UPDATE recruiters
+       SET name=$1,
+           email=$2,
+           phone=$3,
+           department=$4,
+           specialization=$5,
+           max_candidates=$6,
+           status=$7,
+           is_active=$8,
+           updated_at=NOW()
+       WHERE id=$9
+       RETURNING *`,
+      [
+        name || recruiter.name,
+        emailNorm,
+        phone || recruiter.phone,
+        department || recruiter.department,
+        specialization || recruiter.specialization,
+        maxCandidates || recruiter.max_candidates,
+        status || recruiter.status,
+        isActive !== undefined ? isActive : recruiter.is_active,
+        recruiterId,
+      ]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: updatedRecruiterResult.rows[0],
     });
-
-    setClauses.push(`updated_at = NOW()`);
-    values.push(req.params.id);
-
-    const query = `
-      UPDATE recruiters 
-      SET ${setClauses.join(', ')}
-      WHERE id = $${paramIndex}
-      RETURNING *
-    `;
-
-    const result = await pool.query(query, values);
-
-    if (!result.rows[0]) return next(new ErrorResponse("Recruiter not found", 404));
-    
-    return res.status(200).json({ success: true, data: result.rows[0] });
   } catch (error) {
     next(error);
   }
