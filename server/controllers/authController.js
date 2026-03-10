@@ -1,9 +1,7 @@
-// server/controllers/authController.js
-
 const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken");
 const pool = require("../config/db");
 const ErrorResponse = require("../utils/ErrorResponse");
-const { sendTokenResponse } = require("../utils/generateToken");
 
 // helpers
 const normalizeEmail = (v) => (v || "").toString().trim().toLowerCase();
@@ -15,9 +13,39 @@ const looksLikeEmail = (v) => {
   return s.includes("@");
 };
 
+// 🔐 Generate token + send response
+const sendTokenResponse = (user, statusCode, res) => {
+  const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+
+  // cookie options
+  const cookieOptions = {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "none",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  };
+
+  res.cookie("token", token, cookieOptions);
+
+  res.status(statusCode).json({
+    success: true,
+    token,
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+    },
+  });
+};
+
+// ======================================================
 // @desc    Register user
 // @route   POST /api/v1/auth/register
-// @access  Public
+// ======================================================
 exports.register = async (req, res, next) => {
   try {
     let { name, email, username, password, role } = req.body;
@@ -57,7 +85,7 @@ exports.register = async (req, res, next) => {
     const newUser = await pool.query(
       `INSERT INTO users (name, email, username, password, role)
        VALUES ($1,$2,$3,$4,$5)
-       RETURNING *`,
+       RETURNING id,name,email,username,role`,
       [nameNorm, emailNorm, usernameNorm, hashedPassword, role || "candidate"]
     );
 
@@ -70,9 +98,10 @@ exports.register = async (req, res, next) => {
   }
 };
 
+// ======================================================
 // @desc    Login user
 // @route   POST /api/v1/auth/login
-// @access  Public
+// ======================================================
 exports.login = async (req, res, next) => {
   try {
     const identifierRaw =
@@ -110,16 +139,17 @@ exports.login = async (req, res, next) => {
       return next(new ErrorResponse("Invalid credentials", 401));
     }
 
-    return sendTokenResponse(user, 200, res);
+    sendTokenResponse(user, 200, res);
 
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Get current logged in user
+// ======================================================
+// @desc    Get current user
 // @route   GET /api/v1/auth/me
-// @access  Private
+// ======================================================
 exports.getMe = async (req, res, next) => {
   try {
 
@@ -132,11 +162,9 @@ exports.getMe = async (req, res, next) => {
       return next(new ErrorResponse("User not found", 404));
     }
 
-    const user = result.rows[0];
-
     res.status(200).json({
       success: true,
-      user
+      user: result.rows[0],
     });
 
   } catch (error) {
@@ -144,28 +172,26 @@ exports.getMe = async (req, res, next) => {
   }
 };
 
+// ======================================================
 // @desc    Logout user
-// @route   GET /api/v1/auth/logout
-// @access  Private
-exports.logout = (req, res, next) => {
+// ======================================================
+exports.logout = (req, res) => {
 
   res.cookie("token", "none", {
-    expires: new Date(Date.now() + 10 * 1000),
+    expires: new Date(Date.now() + 1000 * 10),
     httpOnly: true,
   });
 
   res.status(200).json({
     success: true,
-    data: {},
   });
 
 };
 
+// ======================================================
 // @desc    Update user details
-// @route   PUT /api/v1/auth/updatedetails
-// @access  Private
+// ======================================================
 exports.updateDetails = async (req, res, next) => {
-
   try {
 
     const fields = {};
@@ -191,20 +217,18 @@ exports.updateDetails = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: result.rows[0]
+      user: result.rows[0],
     });
 
   } catch (error) {
     next(error);
   }
-
 };
 
+// ======================================================
 // @desc    Update password
-// @route   PUT /api/v1/auth/updatepassword
-// @access  Private
+// ======================================================
 exports.updatePassword = async (req, res, next) => {
-
   try {
 
     const result = await pool.query(
@@ -253,5 +277,4 @@ exports.updatePassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-
 };
