@@ -342,8 +342,9 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
+      // ✅ FIXED: Changed fullName to candidateName to match backend expectation
       const payload = {
-        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        candidateName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -446,8 +447,9 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
+      // ✅ FIXED: Changed fullName to candidateName to match backend expectation
       const payload = {
-        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        candidateName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -506,7 +508,7 @@ export default function RecruiterPage() {
       const newResumeEntry = {
         id: `resume_${Date.now()}`,
         candidateId: candidate?.id,
-        candidateName: payload.fullName,
+        candidateName: payload.candidateName,
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume.substring(0, 200) + '...',
         generatedDate: new Date().toISOString(),
