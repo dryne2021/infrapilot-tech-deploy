@@ -1,3 +1,4 @@
+// client/utils/fetchWithAuth.ts
 import API_BASE_URL from '@/utils/apiBase'
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
@@ -6,8 +7,10 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
   const fullUrl = url.startsWith('/') ? `${API_BASE_URL}${url}` : url
 
+  // Normalize headers from RequestInit (can be Headers | object | array)
   const incoming = new Headers(options.headers || undefined)
 
+  // Only set JSON content type if the body is NOT FormData and if not already set
   const isFormData =
     typeof FormData !== 'undefined' && options.body instanceof FormData
 
@@ -21,7 +24,6 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
 
   return fetch(fullUrl, {
     ...options,
-    credentials: 'include', // ⭐ IMPORTANT
     headers: incoming,
   })
 }

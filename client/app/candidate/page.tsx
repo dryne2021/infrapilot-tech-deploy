@@ -83,20 +83,8 @@ export default function CandidateDashboard() {
   const downloadResume = async () => {
     try {
 
-      if (!candidateId) {
-        alert("Candidate ID missing")
-        return
-      }
-
       const res = await fetchWithAuth('/api/v1/resume/download', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          candidateId: candidateId
-        })
+        method: 'POST'
       })
 
       if (!res.ok) {
