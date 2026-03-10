@@ -1,13 +1,11 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User");
+const pool = require("../config/db");
 const ErrorResponse = require("../utils/ErrorResponse");
 
-// Helper: safely read cookie value (works with or without cookie-parser)
+// Helper: safely read cookie value
 function getCookie(req, name) {
-  // If cookie-parser is used
   if (req.cookies && req.cookies[name]) return req.cookies[name];
 
-  // Fallback: manual parse
   const raw = req.headers.cookie;
   if (!raw) return null;
 
@@ -15,8 +13,8 @@ function getCookie(req, name) {
   const found = parts.find((p) => p.startsWith(`${name}=`));
   if (!found) return null;
 
-  // token may be URL encoded
   const value = found.substring(name.length + 1);
+
   try {
     return decodeURIComponent(value);
   } catch {
@@ -24,16 +22,19 @@ function getCookie(req, name) {
   }
 }
 
-// Protect routes - user must be authenticated
+// Protect routes
 exports.protect = async (req, res, next) => {
   let token = null;
 
-  // 1) Check Authorization header (Bearer)
-  if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1]?.trim();
+  // 1️⃣ Authorization header
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer ")
+  ) {
+    token = req.headers.authorization.split(" ")[1].trim();
   }
 
-  // 2) Check cookies
+  // 2️⃣ Cookie
   if (!token) {
     token = getCookie(req, "token");
   }
@@ -43,23 +44,22 @@ exports.protect = async (req, res, next) => {
   }
 
   try {
-    // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // Get user from database
-    const user = await User.findById(decoded.id).select("-password");
-    if (!user) {
+    // ✅ PostgreSQL query
+    const result = await pool.query(
+      "SELECT id,name,email,username,role FROM users WHERE id = $1",
+      [decoded.id]
+    );
+
+    if (result.rows.length === 0) {
       return next(new ErrorResponse("User not found", 401));
     }
 
-    // If status exists, enforce it
-    if (user.status && user.status !== "active") {
-      return next(new ErrorResponse("User account is inactive", 401));
-    }
+    const user = result.rows[0];
 
-    // ✅ attach consistent fields
     req.user = user;
-    req.userId = user._id.toString(); // consistent across code
+    req.userId = user.id;
     req.token = token;
     req.jwt = decoded;
 
@@ -69,43 +69,18 @@ exports.protect = async (req, res, next) => {
   }
 };
 
-// Grant access to specific roles
+// Role authorization
 exports.authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
       return next(
         new ErrorResponse(
-          `User role ${req.user?.role} is not authorized to access this route`,
+          `User role ${req.user?.role} is not authorized`,
           403
         )
       );
     }
+
     next();
-  };
-};
-
-// Check if user owns the resource or is admin
-exports.checkOwnershipOrAdmin = (model, paramName = "id") => {
-  return async (req, res, next) => {
-    try {
-      const resource = await model.findById(req.params[paramName]);
-
-      if (!resource) {
-        return next(new ErrorResponse("Resource not found", 404));
-      }
-
-      const ownerId = resource.userId ? resource.userId.toString() : null;
-      const isOwner = ownerId && ownerId === req.userId;
-      const isAdmin = req.user?.role === "admin";
-
-      if (!isOwner && !isAdmin) {
-        return next(new ErrorResponse("Not authorized to access this resource", 403));
-      }
-
-      req.resource = resource;
-      next();
-    } catch (error) {
-      return next(new ErrorResponse("Server error", 500));
-    }
   };
 };
