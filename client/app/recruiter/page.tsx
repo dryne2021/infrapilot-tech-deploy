@@ -122,39 +122,19 @@ export default function RecruiterPage() {
       method: 'DELETE',
     });
 
-  // ✅ UPDATED: Save resume with version history - NOW USES JOB ID, NOT DB ID
+  // ✅ UPDATED: Save resume - NOW USES JOB ID DIRECTLY, NOT DB ID
   const saveJobResume = async (
     jobIdInput: string, // This is the JOB ID from the input field, not the DB ID
     resumeText: string,
     jobDescriptionFull: string
   ) => {
-    // ✅ FIX 1: Find the job by job_id or jobId (handle both snake_case and camelCase)
-    const job = candidateJobs.find(
-      (j: any) => j.job_id === jobIdInput || j.jobId === jobIdInput
-    );
-    
-    if (!job) {
-      throw new Error(`Job with ID ${jobIdInput} not found`);
-    }
+    // ✅ FIX: Use jobIdInput directly for the update, not looking up the job first
+    console.log("Saving resume to job with Job ID:", jobIdInput);
 
-    const versionEntry = {
-      text: resumeText,
-      createdAt: new Date().toISOString(),
-      jobDescription: jobDescriptionFull
-    };
-
-    console.log("Saving resume to job with DB ID:", job._id, "Job ID:", jobIdInput);
-
-    // ✅ FIX 2: Use job.jobId or job.job_id for the update endpoint, not the MongoDB _id
-    const updateId = job.jobId || job.job_id;
-    return updateCandidateJob(updateId, {
+    return updateCandidateJob(jobIdInput, {
       resumeText,
       jobDescriptionFull,
-      resumeStatus: "Submitted",
-      // version history
-      $push: {
-        resumeVersions: versionEntry
-      }
+      resumeStatus: "Submitted"
     });
   };
 
@@ -314,7 +294,8 @@ export default function RecruiterPage() {
     );
     
     if (existingJob) {
-      return existingJob._id;
+      // ✅ FIX: Return the job_id or jobId, not the MongoDB _id
+      return existingJob.job_id || existingJob.jobId;
     }
 
     // ✅ FIXED: Create new job with EXACT job ID from input
@@ -335,7 +316,8 @@ export default function RecruiterPage() {
     const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
     setCandidateJobs(jobsResp.jobs || []);
 
-    return newJob._id || jobsResp.jobs?.[0]?._id;
+    // ✅ FIX: Return the job_id or jobId from the new job, or fallback to the input jobId
+    return newJob.job_id || newJob.jobId || jobIdForResume;
   };
 
   // ✅ UPDATED: FUNCTION: Generate and download Word resume (non-blocking save)
@@ -427,10 +409,10 @@ export default function RecruiterPage() {
       setGeneratedResume(resumeText);
 
       // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
-      let jobDbId = await autoCreateJobIfNeeded();
+      let jobId = await autoCreateJobIfNeeded();
 
       // ✅ IMPROVED: Create fallback job if none exists
-      if (!jobDbId) {
+      if (!jobId) {
         console.warn("No job found, creating fallback job");
         
         const recruiterId = localStorage.getItem('recruiter_id') || '';
@@ -445,16 +427,16 @@ export default function RecruiterPage() {
           status: "Applied"
         });
         
-        jobDbId = newJob._id;
+        jobId = newJob.job_id || newJob.jobId || jobIdForResume;
       }
 
-      if (!jobDbId) {
+      if (!jobId) {
         throw new Error("No job found to attach resume.");
       }
 
-      await saveJobResume(jobIdForResume, resumeText, jobDescriptionForResume);
+      await saveJobResume(jobId, resumeText, jobDescriptionForResume);
 
-      console.log("✅ Resume saved to DB for job ID:", jobIdForResume);
+      console.log("✅ Resume saved to DB for job ID:", jobId);
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
@@ -559,10 +541,10 @@ export default function RecruiterPage() {
       setGeneratedResume(resumeText);
 
       // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
-      let jobDbId = await autoCreateJobIfNeeded();
+      let jobId = await autoCreateJobIfNeeded();
 
       // ✅ IMPROVED: Create fallback job if none exists
-      if (!jobDbId) {
+      if (!jobId) {
         console.warn("No job found, creating fallback job");
         
         const recruiterId = localStorage.getItem('recruiter_id') || '';
@@ -577,16 +559,16 @@ export default function RecruiterPage() {
           status: "Applied"
         });
         
-        jobDbId = newJob._id;
+        jobId = newJob.job_id || newJob.jobId || jobIdForResume;
       }
 
-      if (!jobDbId) {
+      if (!jobId) {
         throw new Error("No job found to attach resume.");
       }
 
-      await saveJobResume(jobIdForResume, resumeText, jobDescriptionForResume);
+      await saveJobResume(jobId, resumeText, jobDescriptionForResume);
 
-      console.log("✅ Resume saved to DB for job ID:", jobIdForResume);
+      console.log("✅ Resume saved to DB for job ID:", jobId);
 
       // Save to history
       const newResumeEntry = {
