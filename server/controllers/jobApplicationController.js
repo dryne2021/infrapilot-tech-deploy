@@ -60,11 +60,11 @@ exports.createJobApplication = async (req, res) => {
         description,
         job_link,
         status,
-        resume_status,
+        "resumeStatus",
         match_score,
         salary_range,
-        job_description_full,
-        resume_text,
+        "jobDescriptionFull",
+        "resumeText",
         resume_docx_url,
         applied_date
       )
@@ -85,7 +85,7 @@ exports.createJobApplication = async (req, res) => {
         typeof matchScore === "number" ? matchScore : 0,
         salaryRange || "",
         jobDescriptionFull || "",
-        "", // resume_text
+        null, // resumeText - explicitly set to NULL
         "", // resume_docx_url
       ]
     );
@@ -219,7 +219,7 @@ exports.updateJobApplication = async (req, res) => {
     }
 
     if (updates.resumeStatus !== undefined) {
-      setFields.push(`resume_status = $${paramIndex}`);
+      setFields.push(`"resumeStatus" = $${paramIndex}`);
       values.push(updates.resumeStatus);
       paramIndex++;
     }
@@ -237,7 +237,7 @@ exports.updateJobApplication = async (req, res) => {
     }
 
     if (updates.jobDescriptionFull !== undefined) {
-      setFields.push(`job_description_full = $${paramIndex}`);
+      setFields.push(`"jobDescriptionFull" = $${paramIndex}`);
       values.push(updates.jobDescriptionFull);
       paramIndex++;
     }
@@ -294,7 +294,7 @@ exports.attachResumeToApplication = async (req, res) => {
       UPDATE job_applications
       SET 
         resume_docx_url = $1,
-        resume_status = 'Submitted',
+        "resumeStatus" = 'Submitted',
         updated_at = NOW()
       WHERE id = $2
       RETURNING *
