@@ -300,7 +300,11 @@ exports.getCandidates = async (req, res, next) => {
     const userIds = candidates.map((c) => c.user_id).filter(Boolean);
     
     // ✅ Use safe query helper
-    const users = await safeFindUsers(userIds);
+    let users = [];
+
+if (userIds.length > 0) {
+  users = await safeFindUsers(userIds);
+}
     const userMap = new Map(users.map((u) => [String(u.id), u]));
 
     const mapped = candidates.map((c) => {
