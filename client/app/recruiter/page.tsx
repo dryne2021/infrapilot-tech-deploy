@@ -122,13 +122,32 @@ export default function RecruiterPage() {
       method: 'DELETE',
     });
 
-  // ✅ Save resume directly into JobApplication
-  const saveJobResume = (jobDbId: string, resumeText: string, jobDescriptionFull: string) =>
-    updateCandidateJob(jobDbId, {
+  // ✅ UPDATED: Save resume with version history
+  const saveJobResume = async (
+    jobDbId: string,
+    resumeText: string,
+    jobDescriptionFull: string
+  ) => {
+
+    const versionEntry = {
+      text: resumeText,
+      createdAt: new Date().toISOString(),
+      jobDescription: jobDescriptionFull
+    }
+
+    console.log("Saving resume to job:", jobDbId)
+
+    return updateCandidateJob(jobDbId, {
       resumeText,
       jobDescriptionFull,
-      resumeStatus: 'Submitted',
-    });
+      resumeStatus: "Submitted",
+
+      // version history
+      $push: {
+        resumeVersions: versionEntry
+      }
+    })
+  };
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
@@ -390,19 +409,16 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
-      autoCreateJobIfNeeded()
-        .then((jobDbId) => {
-          if (jobDbId) {
-            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
-          }
-        })
-        .then(() => {
-          console.log("✅ Resume saved to DB");
-        })
-        .catch((err) => {
-          console.error("❌ Background save failed:", err);
-        });
+      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
+      const jobDbId = await autoCreateJobIfNeeded();
+
+      if (!jobDbId) {
+        throw new Error("No job found to attach resume.");
+      }
+
+      await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+
+      console.log("✅ Resume saved to DB for job:", jobDbId);
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
@@ -500,19 +516,16 @@ export default function RecruiterPage() {
       // ✅ SHOW RESUME IMMEDIATELY
       setGeneratedResume(resumeText);
 
-      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
-      autoCreateJobIfNeeded()
-        .then((jobDbId) => {
-          if (jobDbId) {
-            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
-          }
-        })
-        .then(() => {
-          console.log("✅ Resume saved to DB");
-        })
-        .catch((err) => {
-          console.error("❌ Background save failed:", err);
-        });
+      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
+      const jobDbId = await autoCreateJobIfNeeded();
+
+      if (!jobDbId) {
+        throw new Error("No job found to attach resume.");
+      }
+
+      await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+
+      console.log("✅ Resume saved to DB for job:", jobDbId);
 
       // Save to history
       const newResumeEntry = {
@@ -575,7 +588,7 @@ export default function RecruiterPage() {
     setGeneratedResume('')
   }
   
-  // ✅ FIXED: loadJobDetails function
+  // ✅ UPDATED: loadJobDetails function
   const loadJobDetails = (jobDbId: string) => {
     const job = candidateJobs.find((j: any) => j._id === jobDbId);
     if (job) {
@@ -584,6 +597,12 @@ export default function RecruiterPage() {
 
       setJobIdForResume(job.jobId || job._id);
       setJobDescriptionForResume(job.jobDescriptionFull || job.description || '');
+      
+      // ✅ Load existing resume if available
+      if (job.resumeText) {
+        setGeneratedResume(job.resumeText);
+      }
+      
       setShowResumeGenerator(true);
     }
   };
