@@ -1,6 +1,7 @@
 // server/controllers/resumeController.js
 
 const OpenAI = require("openai");
+const pool = require("../config/db");
 const {
   Document,
   Packer,
@@ -468,6 +469,13 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
+
+    // 🔥 Save resume to database
+    await pool.query(
+      `INSERT INTO resumes (candidate_id, resume_text)
+       VALUES ($1, $2)`,
+      [req.user.id, hosText]
+    );
 
     return res.status(200).json({
       success: true,
