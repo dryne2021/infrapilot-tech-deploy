@@ -237,8 +237,8 @@ exports.getRecentActivity = async (req, res, next) => {
         `),
         pool.query(`
           SELECT * FROM candidates 
-          WHERE credentials_generated IS NOT NULL
-          ORDER BY credentials_generated DESC 
+          WHERE credentials_generated_at IS NOT NULL
+          ORDER BY credentials_generated_at DESC 
           LIMIT 5
         `),
       ]);
@@ -286,7 +286,7 @@ exports.getRecentActivity = async (req, res, next) => {
           type: "credentials",
           action: "Login credentials created",
           user: c.full_name || c.email || "Candidate",
-          time: c.credentials_generated || c.updated_at || c.created_at,
+          time: c.credentials_generated_at || c.updated_at || c.created_at,
         })
       );
     });
@@ -331,16 +331,16 @@ exports.getCandidates = async (req, res, next) => {
     // ✅ Use safe query helper
     let users = [];
 
-if (userIds.length > 0) {
-  users = await safeFindUsers(userIds);
-}
+    if (userIds.length > 0) {
+      users = await safeFindUsers(userIds);
+    }
     const userMap = new Map(users.map((u) => [String(u.id), u]));
 
     const mapped = candidates.map((c) => {
       const u = userMap.get(String(c.user_id));
 
-      // Use credentials_generated OR username as the canonical UI flag.
-      const credsFlag = !!c.credentials_generated || (!!c.username && String(c.username).trim().length > 0);
+      // Use credentials_generated_at OR username as the canonical UI flag.
+      const credsFlag = !!c.credentials_generated_at || (!!c.username && String(c.username).trim().length > 0);
 
       return {
         ...c,
@@ -359,7 +359,7 @@ if (userIds.length > 0) {
         createdAt: c.created_at,
         updatedAt: c.updated_at,
         assignedDate: c.assigned_date,
-        credentialsGenerated: c.credentials_generated,
+        credentialsGeneratedAt: c.credentials_generated_at,
       };
     });
 
@@ -508,9 +508,9 @@ exports.createCandidate = async (req, res, next) => {
         portfolio_url, github_url, linkedin_url, expected_salary,
         notice_period, visa_status, subscription_plan, subscription_status,
         payment_status, assigned_recruiter_id, recruiter_status, assigned_date,
-        username, password_hash, credentials_generated, credentials_updated_by,
+        username, password_hash, credentials_generated, credentials_generated_at, credentials_updated_by,
         created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, NOW(), NOW())
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, NOW(), NOW())
       RETURNING *`,
       [
         user.id,
@@ -539,7 +539,8 @@ exports.createCandidate = async (req, res, next) => {
         assignedDate,
         body.username || '',
         '', // password_hash initially empty
-        null, // credentials_generated
+        false, // credentials_generated
+        null, // credentials_generated_at
         null, // credentials_updated_by
       ]
     );
@@ -574,6 +575,9 @@ exports.updateCandidate = async (req, res, next) => {
     }
     if (updates.languages && Array.isArray(updates.languages)) {
       updates.languages = JSON.stringify(updates.languages);
+    }
+    if (updates.reference_contacts && Array.isArray(updates.reference_contacts)) {
+      updates.reference_contacts = JSON.stringify(updates.reference_contacts);
     }
 
     // Build dynamic SET clause
@@ -1178,7 +1182,7 @@ exports.setCandidateCredentials = async (req, res, next) => {
 
     await pool.query(
       `UPDATE candidates 
-       SET username = $1, password_hash = $2, credentials_generated = NOW(), credentials_updated_by = $3
+       SET username = $1, password_hash = $2, credentials_generated = true, credentials_generated_at = NOW(), credentials_updated_by = $3
        WHERE id = $4`,
       [usernameNorm, passwordHash, String(req.user?._id || "admin"), candidateId]
     );
@@ -1227,7 +1231,7 @@ exports.setCandidateCredentials = async (req, res, next) => {
         userId: user.id,
         email: user.email,
         username: usernameNorm,
-        credentialsGenerated: new Date(),
+        credentialsGeneratedAt: new Date(),
       },
     });
   } catch (error) {
@@ -1254,7 +1258,7 @@ exports.resetCandidateCredentials = async (req, res, next) => {
 
     await pool.query(
       `UPDATE candidates 
-       SET username = '', password_hash = '', credentials_generated = NULL, credentials_updated_by = $1
+       SET username = '', password_hash = '', credentials_generated = false, credentials_generated_at = NULL, credentials_updated_by = $1
        WHERE id = $2`,
       [String(req.user?._id || "admin"), candidateId]
     );

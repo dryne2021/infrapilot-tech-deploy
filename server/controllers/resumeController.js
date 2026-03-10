@@ -354,14 +354,24 @@ function enforceHosFormat({
 exports.generateResume = async (req, res) => {
   try {
     const {
-      fullName,
       location,
       email,
       phone,
       experience = [],
       education = [],
-      jobDescription,
     } = req.body;
+
+    const fullName =
+      req.body.fullName ||
+      req.body.candidateName ||
+      req.body.name ||
+      "";
+
+    const jobDescription =
+      req.body.jobDescription ||
+      req.body.description ||
+      req.body.jobDescriptionFull ||
+      "";
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
