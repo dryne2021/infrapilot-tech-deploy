@@ -117,8 +117,9 @@ export default function RecruiterPage() {
       body: JSON.stringify(payload),
     });
 
-  const deleteCandidateJob = (jobDbId: string) =>
-    api(`/api/v1/job-applications/${jobDbId}`, {
+  // ✅ FIX 4 — Fix delete call
+  const deleteCandidateJob = (jobId: string) =>
+    api(`/api/v1/job-applications/${jobId}`, {
       method: 'DELETE',
     });
 
@@ -631,9 +632,11 @@ export default function RecruiterPage() {
     setGeneratedResume('')
   }
   
-  // ✅ UPDATED: loadJobDetails function
-  const loadJobDetails = (jobDbId: string) => {
-    const job = candidateJobs.find((j: any) => j._id === jobDbId);
+  // ✅ FIX 1 — Correct loadJobDetails
+  const loadJobDetails = (jobId: string) => {
+    const job = candidateJobs.find(
+      (j: any) => j.job_id === jobId || j.jobId === jobId
+    );
     if (job) {
       // ✅ this ensures saveJobResume uses the correct job
       setEditingJob(job);
@@ -956,13 +959,13 @@ export default function RecruiterPage() {
   }
 
   // ✅ UPDATED: handleDeleteJob (delete in MongoDB)
-  const handleDeleteJob = async (jobDbId: string) => {
+  const handleDeleteJob = async (jobId: string) => {
     if (!selectedCandidate) return;
 
     if (!window.confirm('Are you sure you want to delete this job application?')) return;
 
     try {
-      await deleteCandidateJob(jobDbId);
+      await deleteCandidateJob(jobId);
       
       const recruiterId = localStorage.getItem('recruiter_id') || '';
       const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
@@ -1718,12 +1721,16 @@ export default function RecruiterPage() {
                                 required
                               />
                               <select
+                                // ✅ FIX 2 — Change dropdown value
                                 onChange={(e) => loadJobDetails(e.target.value)}
                                 className="p-3 border border-gray-300 rounded-lg bg-white text-gray-900"
                               >
                                 <option value="">Load from jobs</option>
                                 {candidateJobs.map((job: any) => (
-                                  <option key={job._id} value={job._id}>
+                                  <option 
+                                    key={job.job_id || job.jobId} 
+                                    value={job.job_id || job.jobId}
+                                  >
                                     {job.jobTitle} - {job.companyName || job.company} (ID: {job.job_id || job.jobId})
                                   </option>
                                 ))}
@@ -1867,7 +1874,8 @@ export default function RecruiterPage() {
                       <button
                         onClick={() => {
                           if (candidateJobs.length > 0) {
-                            loadJobDetails((candidateJobs[0] as any)._id)
+                            // ✅ FIX 3 — Fix "Use for Resume" button
+                            loadJobDetails((candidateJobs[0] as any).job_id || (candidateJobs[0] as any).jobId)
                             document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                           }
                         }}
@@ -1910,8 +1918,9 @@ export default function RecruiterPage() {
                               <td className="p-3">
                                 <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.job_id || job.jobId || job._id}</code>
                                 <button
+                                  // ✅ FIX 3 — Fix "Use for Resume" button
                                   onClick={() => {
-                                    loadJobDetails(job._id)
+                                    loadJobDetails(job.job_id || job.jobId)
                                     document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                                   }}
                                   className="mt-1 text-xs text-purple-600 hover:text-purple-800 block"
@@ -1958,7 +1967,8 @@ export default function RecruiterPage() {
                                     Edit
                                   </button>
                                   <button
-                                    onClick={() => handleDeleteJob(job._id)}
+                                    // ✅ FIX 4 — Fix delete call
+                                    onClick={() => handleDeleteJob(job.job_id || job.jobId)}
                                     className="px-3 py-1 text-sm bg-red-100 text-gray-900 rounded hover:bg-red-200"
                                   >
                                     Delete
