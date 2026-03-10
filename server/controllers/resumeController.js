@@ -495,23 +495,32 @@ ${jobDescription}
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
-    const { name, text, email, phone, location } = req.body;
 
-    const hosText = enforceHosFormat({
-      fullName: name,
-      email,
-      phone,
-      location,
-      resumeText: text,
-    });
+    const candidateId = req.user.id;
+
+    const result = await pool.query(
+      `SELECT resume_text
+       FROM resumes
+       WHERE candidate_id = $1
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [candidateId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No resume available",
+      });
+    }
+
+    const hosText = result.rows[0].resume_text;
 
     const doc = new Document({
       sections: [{ children: parseHosTextToParagraphs(hosText) }],
     });
 
     const buffer = await Packer.toBuffer(doc);
-
-    const safeName = (name || "Resume").replace(/\s+/g, "_");
 
     res.setHeader(
       "Content-Type",
@@ -520,10 +529,11 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="Resume_${safeName}.docx"`
+      `attachment; filename="Resume.docx"`
     );
 
     res.send(buffer);
+
   } catch (error) {
     console.error("❌ Word generation failed:", error);
     return res.status(500).json({
