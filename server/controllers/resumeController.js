@@ -355,6 +355,7 @@ function enforceHosFormat({
 exports.generateResume = async (req, res) => {
   try {
     const {
+      candidateId,
       fullName,
       location,
       email,
@@ -480,7 +481,7 @@ ${jobDescription}
        WHERE candidate_id = $2
        ORDER BY created_at DESC
        LIMIT 1`,
-      [hosText, req.user.id]
+      [hosText, candidateId]
     );
 
     return res.status(200).json({
