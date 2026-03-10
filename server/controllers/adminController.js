@@ -199,7 +199,7 @@ exports.getRecentActivity = async (req, res, next) => {
           LIMIT 5
         `),
         pool.query(`
-          SELECT c.*, r.name as recruiter_name, r.email as recruiter_email
+          SELECT c.*, COALESCE(r.name, r.email) as recruiter_name, r.email as recruiter_email
           FROM candidates c
           LEFT JOIN recruiters r ON c.assigned_recruiter_id = r.id
           WHERE c.assigned_recruiter_id IS NOT NULL
@@ -282,9 +282,17 @@ exports.getRecentActivity = async (req, res, next) => {
 exports.getCandidates = async (req, res, next) => {
   try {
     const candidatesResult = await pool.query(`
-      SELECT c.*, r.name as recruiter_name, r.email as recruiter_email, r.department, r.specialization, r.status as recruiter_status, r.max_candidates
+      SELECT 
+        c.*, 
+        r.email as recruiter_email,
+        r.department,
+        r.specialization,
+        r.status as recruiter_status,
+        r.max_candidates,
+        COALESCE(r.name, r.email) as recruiter_name
       FROM candidates c
-      LEFT JOIN recruiters r ON c.assigned_recruiter_id = r.id
+      LEFT JOIN recruiters r 
+      ON c.assigned_recruiter_id = r.id
       ORDER BY c.created_at DESC
     `);
 
