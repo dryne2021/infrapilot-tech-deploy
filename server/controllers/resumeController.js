@@ -471,16 +471,20 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-    // 🔥 Save resume into job_applications
+    // 🔥 Save resume into job_applications - using subquery to get latest application
     await pool.query(
       `UPDATE job_applications
        SET resume_text = $1,
            generated_resume = $1,
            resume_status = 'Generated',
            updated_at = NOW()
-       WHERE candidate_id = $2
-       ORDER BY created_at DESC
-       LIMIT 1`,
+       WHERE id = (
+           SELECT id
+           FROM job_applications
+           WHERE candidate_id = $2
+           ORDER BY created_at DESC
+           LIMIT 1
+       )`,
       [hosText, candidateId]
     );
 
