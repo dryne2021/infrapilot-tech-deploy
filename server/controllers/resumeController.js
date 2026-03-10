@@ -470,11 +470,17 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-    // 🔥 Save resume to database
+    // 🔥 Save resume into job_applications
     await pool.query(
-      `INSERT INTO resumes (candidate_id, resume_text)
-       VALUES ($1, $2)`,
-      [req.user.id, hosText]
+      `UPDATE job_applications
+       SET resume_text = $1,
+           generated_resume = $1,
+           resume_status = 'Generated',
+           updated_at = NOW()
+       WHERE candidate_id = $2
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [hosText, req.user.id]
     );
 
     return res.status(200).json({
@@ -500,9 +506,10 @@ exports.downloadResumeAsWord = async (req, res) => {
 
     const result = await pool.query(
       `SELECT resume_text
-       FROM resumes
+       FROM job_applications
        WHERE candidate_id = $1
-       ORDER BY created_at DESC
+       AND resume_text IS NOT NULL
+       ORDER BY updated_at DESC
        LIMIT 1`,
       [candidateId]
     );
