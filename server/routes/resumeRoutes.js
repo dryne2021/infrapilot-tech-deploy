@@ -26,7 +26,6 @@ router.post(
 router.post(
   "/download",
   protect,
-  authorize("recruiter", "admin", "candidate"),
   downloadResumeAsWord
 );
 
