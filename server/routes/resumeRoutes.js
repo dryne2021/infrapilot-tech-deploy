@@ -1,40 +1,36 @@
-// server/routes/resumeRoutes.js
-
 const express = require("express");
 const router = express.Router();
 
-console.log("✅ resumeRoutes.js loaded");
+const { protect, authorize } = require("../middleware/auth");
 
-// Import controller functions
 const {
   generateResume,
   downloadResumeAsWord,
   generateResumeAsWord,
 } = require("../controllers/resumeController");
 
-// Generate resume (returns JSON)
-router.post("/generate", (req, res, next) => {
-  console.log("✅ /api/v1/resume/generate hit");
-  return generateResume(req, res, next);
-});
+// Generate resume
+router.post(
+  "/generate",
+  protect,
+  authorize("recruiter", "admin"),
+  generateResume
+);
 
-// ✅ Download resume as Word document
-// - GET kept for backward compatibility
-// - POST added (recommended) to avoid URL length issues that cause .txt fallback / failures
-router.get("/download", (req, res, next) => {
-  console.log("📥 /api/v1/resume/download hit (GET)");
-  return downloadResumeAsWord(req, res, next);
-});
+// Download resume
+router.post(
+  "/download",
+  protect,
+  authorize("recruiter", "admin"),
+  downloadResumeAsWord
+);
 
-router.post("/download", (req, res, next) => {
-  console.log("📥 /api/v1/resume/download hit (POST)");
-  return downloadResumeAsWord(req, res, next);
-});
-
-// Generate resume and return as Word directly
-router.post("/generate-word", (req, res, next) => {
-  console.log("📄 /api/v1/resume/generate-word hit");
-  return generateResumeAsWord(req, res, next);
-});
+// Generate resume and download Word directly
+router.post(
+  "/generate-word",
+  protect,
+  authorize("recruiter", "admin"),
+  generateResumeAsWord
+);
 
 module.exports = router;
