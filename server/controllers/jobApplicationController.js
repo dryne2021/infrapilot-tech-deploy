@@ -249,6 +249,12 @@ exports.updateJobApplication = async (req, res) => {
       paramIndex++;
     }
 
+    if (updates.resumeText !== undefined) {
+      setFields.push(`"resumeText" = $${paramIndex}`);
+      values.push(updates.resumeText);
+      paramIndex++;
+    }
+
     // Always update the updated_at timestamp
     setFields.push(`updated_at = NOW()`);
 
