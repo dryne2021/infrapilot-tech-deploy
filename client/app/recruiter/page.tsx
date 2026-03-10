@@ -304,10 +304,10 @@ export default function RecruiterPage() {
       return editingJob._id;
     }
 
-    // Create new job automatically
+    // ✅ UPDATED: Create new job automatically with correct field names
     const payload = {
-      candidateId: selectedCandidate.id,
-      recruiterId,
+      candidate_id: selectedCandidate.id,
+      recruiter_id: recruiterId,
       jobId: jobIdForResume || `job_${Date.now()}`,
       jobTitle: 'Position Applied',
       company: 'Company Name',
@@ -410,7 +410,26 @@ export default function RecruiterPage() {
       setGeneratedResume(resumeText);
 
       // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
-      const jobDbId = await autoCreateJobIfNeeded();
+      let jobDbId = await autoCreateJobIfNeeded();
+
+      // ✅ IMPROVED: Create fallback job if none exists
+      if (!jobDbId) {
+        console.warn("No job found, creating fallback job");
+        
+        const recruiterId = localStorage.getItem('recruiter_id') || '';
+        
+        const newJob = await createCandidateJob({
+          candidate_id: selectedCandidate.id,
+          recruiter_id: recruiterId,
+          jobId: `job_${Date.now()}`,
+          jobTitle: 'Generated Resume Job',
+          company: 'Unknown',
+          description: jobDescriptionForResume,
+          status: 'Applied'
+        });
+        
+        jobDbId = newJob._id;
+      }
 
       if (!jobDbId) {
         throw new Error("No job found to attach resume.");
@@ -517,7 +536,26 @@ export default function RecruiterPage() {
       setGeneratedResume(resumeText);
 
       // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
-      const jobDbId = await autoCreateJobIfNeeded();
+      let jobDbId = await autoCreateJobIfNeeded();
+
+      // ✅ IMPROVED: Create fallback job if none exists
+      if (!jobDbId) {
+        console.warn("No job found, creating fallback job");
+        
+        const recruiterId = localStorage.getItem('recruiter_id') || '';
+        
+        const newJob = await createCandidateJob({
+          candidate_id: selectedCandidate.id,
+          recruiter_id: recruiterId,
+          jobId: `job_${Date.now()}`,
+          jobTitle: 'Generated Resume Job',
+          company: 'Unknown',
+          description: jobDescriptionForResume,
+          status: 'Applied'
+        });
+        
+        jobDbId = newJob._id;
+      }
 
       if (!jobDbId) {
         throw new Error("No job found to attach resume.");
@@ -928,15 +966,15 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ FIXED: addNewJob (Mongo requires recruiterId)
+  // ✅ UPDATED: addNewJob with correct field names
   const addNewJob = async () => {
     if (!selectedCandidate) return;
 
     const recruiterId = localStorage.getItem('recruiter_id') || '';
 
     const payload = {
-      candidateId: selectedCandidate.id,
-      recruiterId,
+      candidate_id: selectedCandidate.id,
+      recruiter_id: recruiterId,
       jobId: `job_${Date.now()}`,
       jobTitle: 'New Position',
       company: 'New Company',
