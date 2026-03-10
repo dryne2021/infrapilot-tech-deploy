@@ -304,18 +304,15 @@ export default function RecruiterPage() {
       return editingJob._id;
     }
 
-    // ✅ UPDATED: Create new job automatically with correct field names
+    // ✅ FIXED: Create new job automatically with correct field names
     const payload = {
-      candidate_id: selectedCandidate.id,
-      recruiter_id: recruiterId,
-      jobId: jobIdForResume || `job_${Date.now()}`,
-      jobTitle: 'Position Applied',
-      company: 'Company Name',
+      candidateId: selectedCandidate.id,
+      recruiterId: recruiterId,
+      jobTitle: "Position Applied",
+      company: "Company Name",
       description: jobDescriptionForResume,
-      status: 'Applied',
-      resumeStatus: 'Pending',
-      matchScore: 0,
-      salaryRange: '',
+      status: "Applied",
+      resumeStatus: "Pending"
     };
 
     const newJob = await createCandidateJob(payload);
@@ -419,13 +416,12 @@ export default function RecruiterPage() {
         const recruiterId = localStorage.getItem('recruiter_id') || '';
         
         const newJob = await createCandidateJob({
-          candidate_id: selectedCandidate.id,
-          recruiter_id: recruiterId,
-          jobId: `job_${Date.now()}`,
-          jobTitle: 'Generated Resume Job',
-          company: 'Unknown',
+          candidateId: selectedCandidate.id,
+          recruiterId: recruiterId,
+          jobTitle: "Generated Resume Job",
+          company: "Unknown",
           description: jobDescriptionForResume,
-          status: 'Applied'
+          status: "Applied"
         });
         
         jobDbId = newJob._id;
@@ -545,13 +541,12 @@ export default function RecruiterPage() {
         const recruiterId = localStorage.getItem('recruiter_id') || '';
         
         const newJob = await createCandidateJob({
-          candidate_id: selectedCandidate.id,
-          recruiter_id: recruiterId,
-          jobId: `job_${Date.now()}`,
-          jobTitle: 'Generated Resume Job',
-          company: 'Unknown',
+          candidateId: selectedCandidate.id,
+          recruiterId: recruiterId,
+          jobTitle: "Generated Resume Job",
+          company: "Unknown",
           description: jobDescriptionForResume,
-          status: 'Applied'
+          status: "Applied"
         });
         
         jobDbId = newJob._id;
@@ -966,23 +961,23 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ UPDATED: addNewJob with correct field names
+  // ✅ UPDATED: addNewJob with correct field names and recruiterId from user object
   const addNewJob = async () => {
     if (!selectedCandidate) return;
 
-    const recruiterId = localStorage.getItem('recruiter_id') || '';
+    const recruiterId = user?.id || localStorage.getItem('recruiter_id');
 
     const payload = {
-      candidate_id: selectedCandidate.id,
-      recruiter_id: recruiterId,
+      candidateId: selectedCandidate.id,
+      recruiterId: recruiterId,
       jobId: `job_${Date.now()}`,
-      jobTitle: 'New Position',
-      company: 'New Company',
-      description: 'Add job description here...',
-      status: 'Applied',
-      resumeStatus: 'Pending',
+      jobTitle: "New Position",
+      companyName: "New Company",
+      description: "Add job description here...",
+      status: "Applied",
+      resumeStatus: "Pending",
       matchScore: 0,
-      salaryRange: 'To be determined',
+      salaryRange: "To be determined"
     };
 
     try {
@@ -1716,7 +1711,7 @@ export default function RecruiterPage() {
                                 <option value="">Load from jobs</option>
                                 {candidateJobs.map((job: any) => (
                                   <option key={job._id} value={job._id}>
-                                    {job.jobTitle} - {job.company}
+                                    {job.jobTitle} - {job.companyName || job.company}
                                   </option>
                                 ))}
                               </select>
@@ -1912,7 +1907,7 @@ export default function RecruiterPage() {
                               </td>
                               <td className="p-3">
                                 <p className="font-medium text-gray-900">{job.jobTitle}</p>
-                                <p className="text-sm text-gray-600">{job.company}</p>
+                                <p className="text-sm text-gray-600">{job.companyName || job.company}</p>
                                 <p className="text-xs text-gray-600">Match: {job.matchScore}%</p>
                               </td>
                               <td className="p-3">
