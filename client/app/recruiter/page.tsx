@@ -224,11 +224,11 @@ export default function RecruiterPage() {
   const downloadDocxFromText = async (candidate: any, resumeText: string) => {
     const token = localStorage.getItem('infrapilot_token');
     const fileSafeName =
-      (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
+      (candidate?.name || candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
         .replace(/\s+/g, '_');
 
     const payload = {
-      name: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim(),
+      name: candidate?.name || candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate',
       email: candidate?.email || '',
       phone: candidate?.phone || '',
       location: candidate?.location || '',
@@ -342,9 +342,13 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      // ✅ FIXED: Changed fullName to candidateName to match backend expectation
+      // ✅ SAFE VERSION: candidateName with multiple fallbacks
       const payload = {
-        candidateName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        candidateName:
+          candidate.name ||
+          candidate.fullName ||
+          `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() ||
+          'Candidate',
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -359,7 +363,8 @@ export default function RecruiterPage() {
         jobDescription: jobDescriptionForResume,
       };
 
-      console.log("Payload experience:", payload.experience);
+      // ✅ DEBUG LINE - Check console to verify candidateName is not empty
+      console.log("RESUME PAYLOAD:", payload);
 
       // 1) Generate resume text (JSON)
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
@@ -447,9 +452,13 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      // ✅ FIXED: Changed fullName to candidateName to match backend expectation
+      // ✅ SAFE VERSION: candidateName with multiple fallbacks
       const payload = {
-        candidateName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
+        candidateName:
+          candidate.name ||
+          candidate.fullName ||
+          `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() ||
+          'Candidate',
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -464,7 +473,8 @@ export default function RecruiterPage() {
         jobDescription: jobDescriptionForResume,
       };
 
-      console.log("Payload experience:", payload.experience);
+      // ✅ DEBUG LINE - Check console to verify candidateName is not empty
+      console.log("RESUME PAYLOAD:", payload);
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
@@ -1402,7 +1412,9 @@ export default function RecruiterPage() {
                               </span>
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
+                              <p className="font-medium text-gray-900">
+                                {candidateWithId.name || candidateWithId.fullName || `${candidateWithId.firstName || ''} ${candidateWithId.lastName || ''}`}
+                              </p>
                               <p className="text-sm text-gray-500">ID: {candidateWithId.id.substring(0, 8)}...</p>
                             </div>
                           </div>
@@ -1484,7 +1496,9 @@ export default function RecruiterPage() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-bold text-gray-800">👁️ Job Applications</h3>
-                    <p className="text-gray-600">For: {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}</p>
+                    <p className="text-gray-600">
+                      For: {selectedCandidate.name || selectedCandidate.fullName || `${selectedCandidate.firstName || ''} ${selectedCandidate.lastName || ''}`}
+                    </p>
                   </div>
                   <button
                     onClick={() => {
@@ -1622,7 +1636,7 @@ export default function RecruiterPage() {
                       <div className="mb-6">
                         <h5 className="font-bold text-gray-800 mb-3">Generate Tailored Resume</h5>
                         <p className="text-sm text-gray-600 mb-4">
-                          Enter job details to generate a customized resume for {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
+                          Enter job details to generate a customized resume for {selectedCandidate.name || selectedCandidate.fullName || `${selectedCandidate.firstName || ''} ${selectedCandidate.lastName || ''}`}
                         </p>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -1954,7 +1968,7 @@ export default function RecruiterPage() {
                   <div>
                     <h3 className="text-xl font-bold text-gray-800">✏️ Edit Job Application</h3>
                     <p className="text-gray-600">
-                      Editing job for: {selectedCandidate?.fullName || `${selectedCandidate?.firstName} ${selectedCandidate?.lastName}`}
+                      Editing job for: {selectedCandidate?.name || selectedCandidate?.fullName || `${selectedCandidate?.firstName || ''} ${selectedCandidate?.lastName || ''}`}
                     </p>
                   </div>
                   <button
@@ -2147,7 +2161,7 @@ export default function RecruiterPage() {
                   const candidateWithId = ensureCandidateDataStructure(candidate);
                   return (
                     <div key={candidateWithId.id} className="p-3 bg-yellow-50 rounded-lg">
-                      <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
+                      <p className="font-medium text-gray-900">{candidateWithId.name || candidateWithId.fullName || `${candidateWithId.firstName || ''} ${candidateWithId.lastName || ''}`}</p>
                       <p className="text-sm text-gray-600">Payment pending - follow up required</p>
                       <button className="mt-2 text-sm text-blue-700 hover:text-blue-900">
                         Contact now →
