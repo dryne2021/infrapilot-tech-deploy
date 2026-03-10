@@ -19,11 +19,11 @@ const sendTokenResponse = (user, statusCode, res) => {
     expiresIn: "7d",
   });
 
-  // cookie options
+  // ✅ FIX 1: Improved cookie settings for both dev and production
   const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   };
 
@@ -60,7 +60,7 @@ exports.register = async (req, res, next) => {
 
     // Check duplicate email
     const existingEmail = await pool.query(
-      "SELECT * FROM users WHERE email = $1",
+      "SELECT id FROM users WHERE email = $1",
       [emailNorm]
     );
 
@@ -71,7 +71,7 @@ exports.register = async (req, res, next) => {
     // Check duplicate username
     if (usernameNorm) {
       const existingUsername = await pool.query(
-        "SELECT * FROM users WHERE username = $1",
+        "SELECT id FROM users WHERE username = $1",
         [usernameNorm]
       );
 
@@ -83,10 +83,10 @@ exports.register = async (req, res, next) => {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const newUser = await pool.query(
-      `INSERT INTO users (name, email, username, password, role)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO users (name, email, username, password, role, status)
+       VALUES ($1,$2,$3,$4,$5,$6)
        RETURNING id,name,email,username,role`,
-      [nameNorm, emailNorm, usernameNorm, hashedPassword, role || "candidate"]
+      [nameNorm, emailNorm, usernameNorm, hashedPassword, role || "candidate", "active"]
     );
 
     const user = newUser.rows[0];
@@ -120,10 +120,11 @@ exports.login = async (req, res, next) => {
     const emailNorm = isEmail ? normalizeEmail(identifier) : null;
     const usernameNorm = !isEmail ? normalizeUsername(identifier) : null;
 
+    // ✅ FIX 2: Improved query - only select needed columns
     const result = await pool.query(
       isEmail
-        ? "SELECT * FROM users WHERE email = $1"
-        : "SELECT * FROM users WHERE username = $1",
+        ? "SELECT id,name,email,username,password,role,status FROM users WHERE email = $1"
+        : "SELECT id,name,email,username,password,role,status FROM users WHERE username = $1",
       [isEmail ? emailNorm : usernameNorm]
     );
 
@@ -132,6 +133,11 @@ exports.login = async (req, res, next) => {
     }
 
     const user = result.rows[0];
+
+    // ✅ FIX 4: Account status check
+    if (user.status && user.status !== "active") {
+      return next(new ErrorResponse("Account is not active. Please contact support.", 403));
+    }
 
     const isMatch = await bcrypt.compare(password, user.password);
 
@@ -152,9 +158,8 @@ exports.login = async (req, res, next) => {
 // ======================================================
 exports.getMe = async (req, res, next) => {
   try {
-
     const result = await pool.query(
-      "SELECT id,name,email,username,role,created_at FROM users WHERE id = $1",
+      "SELECT id,name,email,username,role,status,created_at FROM users WHERE id = $1",
       [req.user.id]
     );
 
@@ -174,30 +179,65 @@ exports.getMe = async (req, res, next) => {
 
 // ======================================================
 // @desc    Logout user
+// @route   GET /api/v1/auth/logout
 // ======================================================
 exports.logout = (req, res) => {
-
+  // ✅ FIX 5: Improved logout cookie
   res.cookie("token", "none", {
-    expires: new Date(Date.now() + 1000 * 10),
+    expires: new Date(0),
     httpOnly: true,
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: process.env.NODE_ENV === "production",
   });
 
   res.status(200).json({
     success: true,
+    message: "Logged out successfully"
   });
-
 };
 
 // ======================================================
 // @desc    Update user details
+// @route   PUT /api/v1/auth/updatedetails
 // ======================================================
 exports.updateDetails = async (req, res, next) => {
   try {
-
     const fields = {};
-    if (req.body.name) fields.name = normalizeName(req.body.name);
-    if (req.body.email) fields.email = normalizeEmail(req.body.email);
-    if (req.body.username) fields.username = normalizeUsername(req.body.username);
+    
+    if (req.body.name) {
+      fields.name = normalizeName(req.body.name);
+    }
+    
+    // ✅ FIX 3: Email duplicate check
+    if (req.body.email) {
+      const emailNorm = normalizeEmail(req.body.email);
+      
+      const check = await pool.query(
+        "SELECT id FROM users WHERE email = $1 AND id != $2",
+        [emailNorm, req.user.id]
+      );
+
+      if (check.rows.length > 0) {
+        return next(new ErrorResponse("Email already in use", 400));
+      }
+
+      fields.email = emailNorm;
+    }
+    
+    if (req.body.username) {
+      const usernameNorm = normalizeUsername(req.body.username);
+      
+      const check = await pool.query(
+        "SELECT id FROM users WHERE username = $1 AND id != $2",
+        [usernameNorm, req.user.id]
+      );
+
+      if (check.rows.length > 0) {
+        return next(new ErrorResponse("Username already in use", 400));
+      }
+
+      fields.username = usernameNorm;
+    }
 
     const keys = Object.keys(fields);
 
@@ -227,10 +267,10 @@ exports.updateDetails = async (req, res, next) => {
 
 // ======================================================
 // @desc    Update password
+// @route   PUT /api/v1/auth/updatepassword
 // ======================================================
 exports.updatePassword = async (req, res, next) => {
   try {
-
     const result = await pool.query(
       "SELECT password FROM users WHERE id = $1",
       [req.user.id]
@@ -274,6 +314,60 @@ exports.updatePassword = async (req, res, next) => {
 
     sendTokenResponse(updatedUser.rows[0], 200, res);
 
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ======================================================
+// @desc    Check auth status
+// @route   GET /api/v1/auth/status
+// ======================================================
+exports.checkAuthStatus = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(200).json({
+        success: true,
+        isAuthenticated: false,
+        user: null
+      });
+    }
+
+    const result = await pool.query(
+      "SELECT id,name,email,username,role,status FROM users WHERE id = $1",
+      [req.user.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(200).json({
+        success: true,
+        isAuthenticated: false,
+        user: null
+      });
+    }
+
+    const user = result.rows[0];
+
+    if (user.status !== "active") {
+      return res.status(200).json({
+        success: true,
+        isAuthenticated: false,
+        user: null,
+        message: "Account is not active"
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      isAuthenticated: true,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        username: user.username,
+        role: user.role,
+      }
+    });
   } catch (error) {
     next(error);
   }

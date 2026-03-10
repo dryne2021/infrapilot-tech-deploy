@@ -1,210 +1,237 @@
-const mongoose = require("mongoose");
+// server/models/Candidate.js
 
-/* =========================
-   Education
-========================= */
-const EducationSchema = new mongoose.Schema(
-  {
-    school: { type: String, required: true, trim: true },
-    degree: { type: String, required: true, trim: true },
-    field: { type: String, required: true, trim: true },
-    startYear: { type: String, trim: true },
-    endYear: { type: String, trim: true },
-  },
-  { _id: false }
-);
+const pool = require("../config/db");
 
-/* =========================
-   Experience
-========================= */
-const ExperienceSchema = new mongoose.Schema(
-  {
-    company: { type: String, required: true, trim: true },
-    title: { type: String, required: true, trim: true },
-    startDate: { type: String, trim: true },
-    endDate: { type: String, trim: true },
-    location: { type: String, trim: true },
-    bullets: [{ type: String, trim: true }],
-  },
-  { _id: false }
-);
+/* =========================================================
+   CREATE CANDIDATE PROFILE
+========================================================= */
+async function createCandidate(data) {
+  const result = await pool.query(
+    `INSERT INTO candidates (
+        user_id,
+        full_name,
+        email,
+        phone,
+        location,
+        target_role,
+        summary,
+        skills,
+        experience_level,
+        subscription_plan,
+        subscription_status,
+        payment_status
+     )
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+     RETURNING *`,
+    [
+      data.userId,
+      data.fullName,
+      data.email?.toLowerCase(),
+      data.phone,
+      data.location,
+      data.targetRole,
+      data.summary,
+      data.skills,
+      data.experienceLevel || "entry",
+      data.subscriptionPlan || "free",
+      data.subscriptionStatus || "inactive",
+      data.paymentStatus || "none",
+    ]
+  );
 
-/* =========================
-   Resume
-========================= */
-const ResumeSchema = new mongoose.Schema(
-  {
-    fileName: { type: String, trim: true },
-    fileUrl: { type: String, trim: true },
-    uploadedAt: { type: Date, default: Date.now },
-    isActive: { type: Boolean, default: true },
-  },
-  { _id: false }
-);
+  return result.rows[0];
+}
 
-/* =========================
-   Candidate
-========================= */
-const CandidateSchema = new mongoose.Schema(
-  {
-    // link to user account
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
-      unique: true,
-      index: true,
-    },
+/* =========================================================
+   GET CANDIDATE BY USER ID
+========================================================= */
+async function findCandidateByUserId(userId) {
+  const result = await pool.query(
+    `SELECT * FROM candidates WHERE user_id = $1`,
+    [userId]
+  );
 
-    // profile
-    fullName: { type: String, trim: true, index: true },
-    email: { type: String, trim: true, lowercase: true, index: true },
-    phone: { type: String, trim: true },
-    location: { type: String, trim: true },
+  return result.rows[0];
+}
 
-    targetRole: { type: String, trim: true },
-    summary: { type: String, trim: true },
+/* =========================================================
+   GET CANDIDATE PROFILE
+========================================================= */
+async function getCandidateProfile(candidateId) {
+  const candidate = await pool.query(
+    `SELECT * FROM candidates WHERE id = $1`,
+    [candidateId]
+  );
 
-    skills: [{ type: String, trim: true }],
+  const education = await pool.query(
+    `SELECT * FROM candidate_education WHERE candidate_id = $1`,
+    [candidateId]
+  );
 
-    experienceLevel: {
-      type: String,
-      enum: ["entry", "mid", "senior", "executive"],
-      default: "entry",
-    },
+  const experience = await pool.query(
+    `SELECT * FROM candidate_experience WHERE candidate_id = $1`,
+    [candidateId]
+  );
 
-    // subscription
-    subscriptionPlan: {
-      type: String,
-      enum: ["free", "silver", "gold", "platinum", "enterprise"],
-      default: "free",
-      index: true,
-    },
-    subscriptionStatus: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "inactive",
-      index: true,
-    },
-    paymentStatus: {
-      type: String,
-      enum: ["none", "pending", "paid"],
-      default: "none",
-      index: true,
-    },
+  const resumes = await pool.query(
+    `SELECT * FROM candidate_resumes WHERE candidate_id = $1`,
+    [candidateId]
+  );
 
-    /* =========================
-       Credentials
-    ========================= */
-    username: {
-      type: String,
-      trim: true,
-      lowercase: true,
-      default: "",
-      index: true,
-    },
-    passwordHash: {
-      type: String,
-      default: "",
-      select: false,
-    },
-    credentialsGenerated: { type: Date, default: null },
-    credentialsUpdatedBy: { type: String, default: "" },
+  return {
+    ...candidate.rows[0],
+    education: education.rows,
+    experience: experience.rows,
+    resumes: resumes.rows,
+  };
+}
 
-    /* =========================
-       Education & Experience
-    ========================= */
-    education: [EducationSchema],
+/* =========================================================
+   ADD EDUCATION
+========================================================= */
+async function addEducation(candidateId, edu) {
+  const result = await pool.query(
+    `INSERT INTO candidate_education
+    (candidate_id, school, degree, field, start_year, end_year)
+    VALUES ($1,$2,$3,$4,$5,$6)
+    RETURNING *`,
+    [
+      candidateId,
+      edu.school,
+      edu.degree,
+      edu.field,
+      edu.startYear,
+      edu.endYear,
+    ]
+  );
 
-    // ✅ CANONICAL FIELD (RENAMED)
-    experience: [ExperienceSchema],
+  return result.rows[0];
+}
 
-    resumes: [ResumeSchema],
+/* =========================================================
+   ADD EXPERIENCE
+========================================================= */
+async function addExperience(candidateId, exp) {
+  const result = await pool.query(
+    `INSERT INTO candidate_experience
+    (candidate_id, company, title, start_date, end_date, location)
+    VALUES ($1,$2,$3,$4,$5,$6)
+    RETURNING *`,
+    [
+      candidateId,
+      exp.company,
+      exp.title,
+      exp.startDate,
+      exp.endDate,
+      exp.location,
+    ]
+  );
 
-    /* =========================
-       Recruiter Assignment
-    ========================= */
-    assignedRecruiterId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-      index: true,
-    },
-    assignedRecruiter: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Recruiter",
-      default: null,
-      index: true,
-    },
+  return result.rows[0];
+}
 
-    recruiterStatus: { type: String, default: "" },
-    assignedDate: { type: Date, default: null },
-  },
-  {
-    timestamps: true,
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  }
-);
+/* =========================================================
+   ADD EXPERIENCE BULLET
+========================================================= */
+async function addExperienceBullet(experienceId, bullet) {
+  const result = await pool.query(
+    `INSERT INTO experience_bullets
+     (experience_id, bullet)
+     VALUES ($1,$2)
+     RETURNING *`,
+    [experienceId, bullet]
+  );
 
-/* =========================
-   Indexes
-========================= */
-CandidateSchema.index({ assignedRecruiterId: 1, subscriptionStatus: 1 });
-CandidateSchema.index({ subscriptionPlan: 1, paymentStatus: 1 });
+  return result.rows[0];
+}
 
-CandidateSchema.index(
-  { username: 1 },
-  {
-    unique: true,
-    sparse: true,
-    collation: { locale: "en", strength: 2 },
-  }
-);
+/* =========================================================
+   ADD RESUME
+========================================================= */
+async function addResume(candidateId, resume) {
+  const result = await pool.query(
+    `INSERT INTO candidate_resumes
+    (candidate_id, file_name, file_url, is_active)
+    VALUES ($1,$2,$3,$4)
+    RETURNING *`,
+    [
+      candidateId,
+      resume.fileName,
+      resume.fileUrl,
+      resume.isActive ?? true,
+    ]
+  );
 
-/* =========================
-   Virtuals
-========================= */
-CandidateSchema.virtual("hasCredentials").get(function () {
-  return Boolean(this.username && this.username.trim() && this.passwordHash);
-});
+  return result.rows[0];
+}
 
-/* =========================
-   🔥 Experience Validation
-========================= */
-CandidateSchema.pre("validate", function (next) {
-  const hasValidExperience =
-    Array.isArray(this.experience) &&
-    this.experience.some(
-      (e) =>
-        e &&
-        String(e.company || "").trim() &&
-        String(e.title || "").trim() &&
-        String(e.startDate || "").trim()
-    );
+/* =========================================================
+   ASSIGN RECRUITER
+========================================================= */
+async function assignRecruiter(candidateId, recruiterId) {
+  const result = await pool.query(
+    `UPDATE candidates
+     SET assigned_recruiter_id = $1,
+         assigned_date = NOW()
+     WHERE id = $2
+     RETURNING *`,
+    [recruiterId, candidateId]
+  );
 
-  if (!hasValidExperience) {
-    return next(
-      new Error(
-        "Student experience is required. Please add at least one experience with Company, Title, and Start Date."
-      )
-    );
-  }
+  return result.rows[0];
+}
 
-  next();
-});
+/* =========================================================
+   UPDATE CANDIDATE PROFILE
+========================================================= */
+async function updateCandidate(candidateId, data) {
+  const result = await pool.query(
+    `UPDATE candidates
+     SET full_name=$1,
+         phone=$2,
+         location=$3,
+         target_role=$4,
+         summary=$5
+     WHERE id=$6
+     RETURNING *`,
+    [
+      data.fullName,
+      data.phone,
+      data.location,
+      data.targetRole,
+      data.summary,
+      candidateId,
+    ]
+  );
 
-/* =========================
-   Normalization guard
-========================= */
-CandidateSchema.pre("save", function (next) {
-  if (typeof this.username === "string") {
-    this.username = this.username.trim().toLowerCase();
-  }
-  if (typeof this.email === "string") {
-    this.email = this.email.trim().toLowerCase();
-  }
-  next();
-});
+  return result.rows[0];
+}
 
-module.exports = mongoose.model("Candidate", CandidateSchema);
+/* =========================================================
+   GET ALL CANDIDATES
+========================================================= */
+async function getAllCandidates() {
+  const result = await pool.query(
+    `SELECT *
+     FROM candidates
+     ORDER BY created_at DESC`
+  );
+
+  return result.rows;
+}
+
+/* =========================================================
+   EXPORT
+========================================================= */
+module.exports = {
+  createCandidate,
+  findCandidateByUserId,
+  getCandidateProfile,
+  addEducation,
+  addExperience,
+  addExperienceBullet,
+  addResume,
+  assignRecruiter,
+  updateCandidate,
+  getAllCandidates,
+};

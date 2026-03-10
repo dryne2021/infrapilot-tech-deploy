@@ -1,205 +1,150 @@
-const mongoose = require('mongoose');
+// server/models/JobApplication.js
 
-const jobApplicationSchema = new mongoose.Schema(
-  {
-    // ✅ Links
-    candidateId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Candidate',
-      required: true,
-      index: true,
-    },
+const pool = require("../config/db");
 
-    recruiterId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Recruiter',
-      required: true,
-      index: true,
-    },
+/* =========================================================
+CREATE JOB APPLICATION
+========================================================= */
+async function createJobApplication(data) {
+  const result = await pool.query(
+    `INSERT INTO job_applications
+    (
+      candidate_id,
+      recruiter_id,
+      job_title,
+      company_name,
+      description,
+      job_link,
+      status,
+      match_score,
+      salary_range
+    )
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+    RETURNING *`,
+    [
+      data.candidateId,
+      data.recruiterId,
+      data.jobTitle,
+      data.companyName,
+      data.description || "",
+      data.jobLink || "",
+      data.status || "pending",
+      data.matchScore || 0,
+      data.salaryRange || "",
+    ]
+  );
 
-    jobId: {
-      type: String,
-      trim: true,
-      index: true,
-    },
+  return result.rows[0];
+}
 
-    // ✅ Core job info
-    jobTitle: {
-      type: String,
-      required: [true, 'Please provide job title'],
-      trim: true,
-      maxlength: [100, 'Job title cannot be more than 100 characters'],
-    },
+/* =========================================================
+GET JOB APPLICATION BY ID
+========================================================= */
+async function getJobApplicationById(id) {
+  const result = await pool.query(
+    `SELECT * FROM job_applications
+     WHERE id = $1`,
+    [id]
+  );
 
-    companyName: {
-      type: String,
-      required: [true, 'Please provide company name'],
-      trim: true,
-      maxlength: [100, 'Company name cannot be more than 100 characters'],
-    },
+  return result.rows[0];
+}
 
-    company: {
-      type: String,
-      trim: true,
-      maxlength: [100, 'Company cannot be more than 100 characters'],
-    },
+/* =========================================================
+GET JOBS FOR CANDIDATE
+========================================================= */
+async function getCandidateJobs(candidateId) {
+  const result = await pool.query(
+    `SELECT *
+     FROM job_applications
+     WHERE candidate_id = $1
+     ORDER BY created_at DESC`,
+    [candidateId]
+  );
 
-    jobDescription: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+  return result.rows;
+}
 
-    description: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+/* =========================================================
+GET JOBS FOR RECRUITER
+========================================================= */
+async function getRecruiterJobs(recruiterId) {
+  const result = await pool.query(
+    `SELECT *
+     FROM job_applications
+     WHERE recruiter_id = $1
+     ORDER BY created_at DESC`,
+    [recruiterId]
+  );
 
-    jobDescriptionFull: {
-      type: String,
-      default: '',
-    },
+  return result.rows;
+}
 
-    jobLink: {
-      type: String,
-      trim: true,
-      default: '',
-    },
+/* =========================================================
+UPDATE JOB STATUS
+========================================================= */
+async function updateJobStatus(jobId, status) {
+  const result = await pool.query(
+    `UPDATE job_applications
+     SET status = $1,
+         updated_at = NOW()
+     WHERE id = $2
+     RETURNING *`,
+    [status, jobId]
+  );
 
-    // ✅ Resume tracking
-    resumeStatus: {
-      type: String,
-      enum: ['Pending', 'Submitted', 'Reviewed'],
-      default: 'Pending',
-      index: true,
-    },
+  return result.rows[0];
+}
 
-    // 🔥 Primary resume download source
-    resumeUsed: {
-      resumeId: {
-        type: mongoose.Schema.Types.ObjectId,
-        default: null,
-      },
-      fileName: { type: String, default: '' },
-      fileUrl: { type: String, default: '' }, // <-- This is what frontend will use
-    },
+/* =========================================================
+UPDATE JOB APPLICATION
+========================================================= */
+async function updateJobApplication(jobId, data) {
+  const result = await pool.query(
+    `UPDATE job_applications
+     SET job_title = $1,
+         company_name = $2,
+         description = $3,
+         job_link = $4,
+         salary_range = $5,
+         updated_at = NOW()
+     WHERE id = $6
+     RETURNING *`,
+    [
+      data.jobTitle,
+      data.companyName,
+      data.description,
+      data.jobLink,
+      data.salaryRange,
+      jobId,
+    ]
+  );
 
-    resumeText: {
-      type: String,
-      default: '',
-    },
+  return result.rows[0];
+}
 
-    // Backward compatibility
-    resumeDocxUrl: {
-      type: String,
-      default: '',
-    },
+/* =========================================================
+DELETE JOB APPLICATION
+========================================================= */
+async function deleteJobApplication(jobId) {
+  await pool.query(
+    `DELETE FROM job_applications
+     WHERE id = $1`,
+    [jobId]
+  );
 
-    status: {
-      type: String,
-      enum: ['pending', 'applied', 'interview', 'offer', 'rejected'],
-      default: 'pending',
-      index: true,
-    },
+  return true;
+}
 
-    uiStatusLabel: {
-      type: String,
-      default: '',
-    },
-
-    matchScore: {
-      type: Number,
-      min: 0,
-      max: 100,
-      default: 0,
-    },
-
-    salaryRange: {
-      type: String,
-      trim: true,
-      default: '',
-    },
-
-    notes: [
-      {
-        content: String,
-        addedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: 'User',
-        },
-        addedAt: {
-          type: Date,
-          default: Date.now,
-        },
-      },
-    ],
-
-    appliedDate: {
-      type: Date,
-      default: Date.now,
-      index: true,
-    },
-
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-
-    updatedAt: {
-      type: Date,
-      default: Date.now,
-    },
-  },
-  { minimize: false }
-);
-
-jobApplicationSchema.pre('save', function (next) {
-  this.updatedAt = Date.now();
-
-  // company sync
-  if (!this.company && this.companyName) this.company = this.companyName;
-  if (!this.companyName && this.company) this.companyName = this.company;
-
-  // job description sync
-  if (!this.jobDescription) {
-    this.jobDescription = this.jobDescriptionFull || this.description || '';
-  }
-
-  if (!this.description && this.jobDescription)
-    this.description = this.jobDescription;
-
-  if (!this.jobDescriptionFull && this.jobDescription)
-    this.jobDescriptionFull = this.jobDescription;
-
-  // resume sync (🔥 important)
-  if (!this.resumeUsed.fileUrl && this.resumeDocxUrl) {
-    this.resumeUsed.fileUrl = this.resumeDocxUrl;
-  }
-
-  if (!this.resumeDocxUrl && this.resumeUsed.fileUrl) {
-    this.resumeDocxUrl = this.resumeUsed.fileUrl;
-  }
-
-  const label = (this.status || '').toString();
-  const map = {
-    Applied: 'applied',
-    'Under Review': 'pending',
-    Interview: 'interview',
-    Offer: 'offer',
-    Rejected: 'rejected',
-  };
-
-  if (map[label]) {
-    this.uiStatusLabel = label;
-    this.status = map[label];
-  }
-
-  next();
-});
-
-jobApplicationSchema.index({ candidateId: 1, appliedDate: -1 });
-jobApplicationSchema.index({ recruiterId: 1, appliedDate: -1 });
-jobApplicationSchema.index({ recruiterId: 1, candidateId: 1, appliedDate: -1 });
-
-module.exports = mongoose.model('JobApplication', jobApplicationSchema);
+/* =========================================================
+EXPORT
+========================================================= */
+module.exports = {
+  createJobApplication,
+  getJobApplicationById,
+  getCandidateJobs,
+  getRecruiterJobs,
+  updateJobStatus,
+  updateJobApplication,
+  deleteJobApplication,
+};

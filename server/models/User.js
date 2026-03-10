@@ -1,127 +1,148 @@
 // server/models/User.js
 
-const mongoose = require("mongoose");
+const pool = require("../config/db");
 const bcrypt = require("bcryptjs");
-const validator = require("validator");
-
-const userSchema = new mongoose.Schema(
-  {
-    name: {
-      type: String,
-      required: [true, "Please provide a name"],
-      trim: true,
-      maxlength: [50, "Name cannot be more than 50 characters"],
-    },
-
-    email: {
-      type: String,
-      required: [true, "Please provide an email"],
-      unique: true,
-      lowercase: true,
-      trim: true,
-      validate: [validator.isEmail, "Please provide a valid email"],
-    },
-
-    // ✅ Login by username OR email
-    username: {
-      type: String,
-      unique: true,
-      sparse: true, // allows multiple docs with null/undefined
-      trim: true,
-      lowercase: true, // ✅ makes username comparisons consistent
-      minlength: [3, "Username must be at least 3 characters"],
-      maxlength: [30, "Username cannot exceed 30 characters"],
-      match: [/^[a-zA-Z0-9_.-]+$/, "Username contains invalid characters"],
-    },
-
-    password: {
-      type: String,
-      required: [true, "Please provide a password"],
-      minlength: [6, "Password must be at least 6 characters"],
-      select: false, // ✅ never return password unless explicitly selected
-    },
-
-    role: {
-      type: String,
-      enum: ["admin", "recruiter", "candidate"],
-      default: "candidate",
-    },
-
-    status: {
-      type: String,
-      enum: ["active", "inactive"],
-      default: "active",
-    },
-  },
-  {
-    timestamps: true, // ✅ createdAt + updatedAt automatically
-    toJSON: { virtuals: true },
-    toObject: { virtuals: true },
-  }
-);
 
 /* =========================================================
-   INDEXES (single source of truth)
+   CREATE USER
 ========================================================= */
-userSchema.index({ email: 1 });
-userSchema.index({ username: 1 });
-userSchema.index({ role: 1 });
+async function createUser({ name, email, username, password, role = "candidate" }) {
+  const hashedPassword = await bcrypt.hash(password, 10);
+
+  const result = await pool.query(
+    `INSERT INTO users (name, email, username, password, role, status)
+     VALUES ($1,$2,$3,$4,$5,'active')
+     RETURNING id,name,email,username,role,status,created_at,updated_at`,
+    [
+      name.trim(),
+      email.trim().toLowerCase(),
+      username ? username.trim().toLowerCase() : null,
+      hashedPassword,
+      role,
+    ]
+  );
+
+  return result.rows[0];
+}
 
 /* =========================================================
-   NORMALIZATION (email/username consistency)
+   FIND USER BY EMAIL
 ========================================================= */
-userSchema.pre("save", function (next) {
-  if (this.email) this.email = String(this.email).trim().toLowerCase();
+async function findUserByEmail(email) {
+  const result = await pool.query(
+    `SELECT * FROM users WHERE email = $1 LIMIT 1`,
+    [email.trim().toLowerCase()]
+  );
 
-  // allow empty username to behave like "unset"
-  if (this.username !== undefined && this.username !== null) {
-    const u = String(this.username).trim().toLowerCase();
-    this.username = u.length ? u : undefined;
-  }
-
-  next();
-});
+  return result.rows[0] || null;
+}
 
 /* =========================================================
-   HASH PASSWORD BEFORE SAVE
-   - hashes ONLY when password is modified
+   FIND USER BY USERNAME
 ========================================================= */
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+async function findUserByUsername(username) {
+  const result = await pool.query(
+    `SELECT * FROM users WHERE username = $1 LIMIT 1`,
+    [username.trim().toLowerCase()]
+  );
 
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-    return next();
-  } catch (error) {
-    return next(error);
-  }
-});
+  return result.rows[0] || null;
+}
 
 /* =========================================================
-   INSTANCE METHODS
+   FIND USER BY ID
 ========================================================= */
-userSchema.methods.matchPassword = async function (enteredPassword) {
-  return bcrypt.compare(String(enteredPassword || ""), this.password);
+async function findUserById(id) {
+  const result = await pool.query(
+    `SELECT id,name,email,username,role,status,created_at,updated_at
+     FROM users
+     WHERE id=$1`,
+    [id]
+  );
+
+  return result.rows[0] || null;
+}
+
+/* =========================================================
+   COMPARE PASSWORD
+========================================================= */
+async function comparePassword(enteredPassword, hashedPassword) {
+  return bcrypt.compare(String(enteredPassword || ""), hashedPassword);
+}
+
+/* =========================================================
+   GET ALL USERS
+========================================================= */
+async function getAllUsers() {
+  const result = await pool.query(
+    `SELECT id,name,email,username,role,status,created_at
+     FROM users
+     ORDER BY created_at DESC`
+  );
+
+  return result.rows;
+}
+
+/* =========================================================
+   UPDATE USER
+========================================================= */
+async function updateUser(id, data) {
+  const result = await pool.query(
+    `UPDATE users
+     SET name=$1,
+         email=$2,
+         role=$3,
+         status=$4,
+         updated_at=NOW()
+     WHERE id=$5
+     RETURNING id,name,email,username,role,status`,
+    [
+      data.name,
+      data.email.toLowerCase(),
+      data.role,
+      data.status,
+      id,
+    ]
+  );
+
+  return result.rows[0];
+}
+
+/* =========================================================
+   DELETE USER
+========================================================= */
+async function deleteUser(id) {
+  await pool.query(`DELETE FROM users WHERE id=$1`, [id]);
+  return true;
+}
+
+/* =========================================================
+   CHANGE USER STATUS
+========================================================= */
+async function changeUserStatus(id, status) {
+  const result = await pool.query(
+    `UPDATE users
+     SET status=$1,
+         updated_at=NOW()
+     WHERE id=$2
+     RETURNING id,name,email,status`,
+    [status, id]
+  );
+
+  return result.rows[0];
+}
+
+/* =========================================================
+   EXPORTS
+========================================================= */
+module.exports = {
+  createUser,
+  findUserByEmail,
+  findUserByUsername,
+  findUserById,
+  comparePassword,
+  getAllUsers,
+  updateUser,
+  deleteUser,
+  changeUserStatus,
 };
-
-// ✅ authController expects comparePassword()
-userSchema.methods.comparePassword = async function (enteredPassword) {
-  return this.matchPassword(enteredPassword);
-};
-
-// Optional helper (safe user object)
-userSchema.methods.getSafeUser = function () {
-  return {
-    id: this._id,
-    name: this.name,
-    email: this.email,
-    username: this.username,
-    role: this.role,
-    status: this.status,
-    createdAt: this.createdAt,
-    updatedAt: this.updatedAt,
-  };
-};
-
-module.exports = mongoose.model("User", userSchema);
