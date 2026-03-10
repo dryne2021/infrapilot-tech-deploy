@@ -471,21 +471,29 @@ ${jobDescription}
       resumeText: resumeTextRaw,
     });
 
-    // 🔥 Save resume into job_applications - using subquery to get latest application
+    // Create Word document buffer
+    const doc = new Document({
+      sections: [{ children: parseHosTextToParagraphs(hosText) }],
+    });
+
+    const buffer = await Packer.toBuffer(doc);
+
+    // 🔥 Save resume with Word file buffer into job_applications
     await pool.query(
       `UPDATE job_applications
        SET resume_text = $1,
            generated_resume = $1,
+           resume_file = $2,
            resume_status = 'Generated',
            updated_at = NOW()
        WHERE id = (
            SELECT id
            FROM job_applications
-           WHERE candidate_id = $2
+           WHERE candidate_id = $3
            ORDER BY created_at DESC
            LIMIT 1
        )`,
-      [hosText, candidateId]
+      [hosText, buffer, candidateId]
     );
 
     return res.status(200).json({
@@ -507,13 +515,15 @@ ${jobDescription}
 exports.downloadResumeAsWord = async (req, res) => {
   try {
 
-    const candidateId = req.user.id;
+    const candidateId = req.user.id || req.user.userId;
+
+    console.log("Candidate downloading resume:", candidateId);
 
     const result = await pool.query(
-      `SELECT resume_text
+      `SELECT resume_file
        FROM job_applications
        WHERE candidate_id = $1
-       AND resume_text IS NOT NULL
+       AND resume_file IS NOT NULL
        ORDER BY updated_at DESC
        LIMIT 1`,
       [candidateId]
@@ -526,13 +536,14 @@ exports.downloadResumeAsWord = async (req, res) => {
       });
     }
 
-    const hosText = result.rows[0].resume_text;
+    const file = result.rows[0].resume_file;
 
-    const doc = new Document({
-      sections: [{ children: parseHosTextToParagraphs(hosText) }],
-    });
-
-    const buffer = await Packer.toBuffer(doc);
+    if (!file) {
+      return res.status(404).json({
+        success: false,
+        message: "Resume file missing"
+      });
+    }
 
     res.setHeader(
       "Content-Type",
@@ -544,7 +555,7 @@ exports.downloadResumeAsWord = async (req, res) => {
       `attachment; filename="Resume.docx"`
     );
 
-    res.send(buffer);
+    res.send(file);
 
   } catch (error) {
     console.error("❌ Word generation failed:", error);

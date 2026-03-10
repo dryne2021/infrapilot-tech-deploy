@@ -81,33 +81,18 @@ export default function CandidateDashboard() {
   }
 
   const downloadResume = async () => {
-    try {
+    const res = await fetchWithAuth('/api/v1/resume/download', {
+      method: 'POST'
+    })
 
-      const res = await fetchWithAuth('/api/v1/resume/download', {
-        method: 'POST'
-      })
+    const blob = await res.blob()
 
-      if (!res.ok) {
-        alert('Resume not found')
-        return
-      }
+    const url = window.URL.createObjectURL(blob)
 
-      const blob = await res.blob()
-      const url = window.URL.createObjectURL(blob)
-
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `Resume_${Date.now()}.docx`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-
-      window.URL.revokeObjectURL(url)
-
-    } catch (err) {
-      console.error(err)
-      alert('Error downloading resume')
-    }
+    const a = document.createElement('a')
+    a.href = url
+    a.download = "resume.docx"
+    a.click()
   }
 
   useEffect(() => {
