@@ -71,6 +71,9 @@ export default function CandidateDashboard() {
       }
 
       const data = await res.json()
+
+      console.log("Applications API response:", data)
+
       setApplications(data?.data || data?.jobs || [])
     } catch (err: any) {
       setError('Failed to load applications')
