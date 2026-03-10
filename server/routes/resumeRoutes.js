@@ -13,6 +13,7 @@ console.log("protect:", protect);
 console.log("authorize:", authorize);
 console.log("generateResume:", generateResume);
 console.log("downloadResumeAsWord:", downloadResumeAsWord);
+console.log("📄 Resume download route registered");
 
 // Generate resume
 router.post(
@@ -22,8 +23,14 @@ router.post(
   generateResume
 );
 
-// Download resume
+// Download resume - both POST and GET methods
 router.post(
+  "/download",
+  protect,
+  downloadResumeAsWord
+);
+
+router.get(
   "/download",
   protect,
   downloadResumeAsWord
