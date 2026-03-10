@@ -111,33 +111,24 @@ export default function RecruiterPage() {
       body: JSON.stringify(payload),
     });
 
-  const updateCandidateJob = (jobId: string, payload: any) =>
-    api(`/api/v1/job-applications/${jobId}`, {
+  const updateCandidateJob = (jobDbId: string, payload: any) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
 
-  // ✅ FIX 4 — Fix delete call
-  const deleteCandidateJob = (jobId: string) =>
-    api(`/api/v1/job-applications/${jobId}`, {
+  const deleteCandidateJob = (jobDbId: string) =>
+    api(`/api/v1/job-applications/${jobDbId}`, {
       method: 'DELETE',
     });
 
-  // ✅ UPDATED: Save resume - NOW USES JOB ID DIRECTLY, NOT DB ID
-  const saveJobResume = async (
-    jobIdInput: string, // This is the JOB ID from the input field, not the DB ID
-    resumeText: string,
-    jobDescriptionFull: string
-  ) => {
-    // ✅ FIX: Use jobIdInput directly for the update, not looking up the job first
-    console.log("Saving resume to job with Job ID:", jobIdInput);
-
-    return updateCandidateJob(jobIdInput, {
+  // ✅ Save resume directly into JobApplication
+  const saveJobResume = (jobDbId: string, resumeText: string, jobDescriptionFull: string) =>
+    updateCandidateJob(jobDbId, {
       resumeText,
       jobDescriptionFull,
-      resumeStatus: "Submitted"
+      resumeStatus: 'Submitted',
     });
-  };
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
   const ensureCandidateDataStructure = (candidate: any) => {
@@ -233,11 +224,11 @@ export default function RecruiterPage() {
   const downloadDocxFromText = async (candidate: any, resumeText: string) => {
     const token = localStorage.getItem('infrapilot_token');
     const fileSafeName =
-      (candidate?.name || candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
+      (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
         .replace(/\s+/g, '_');
 
     const payload = {
-      name: candidate?.name || candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate',
+      name: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim(),
       email: candidate?.email || '',
       phone: candidate?.phone || '',
       location: candidate?.location || '',
@@ -283,32 +274,29 @@ export default function RecruiterPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ STEP 1 — Add helper to auto-create job with the entered Job ID
+  // ✅ STEP 1 — Add helper to auto-create job
   const autoCreateJobIfNeeded = async () => {
     if (!selectedCandidate) return null;
 
     const recruiterId = localStorage.getItem('recruiter_id') || '';
 
-    // ✅ FIX 3: Check for existing job using job_id or jobId (handle both snake_case and camelCase)
-    const existingJob = candidateJobs.find(
-      (j: any) => j.job_id === jobIdForResume || j.jobId === jobIdForResume
-    );
-    
-    if (existingJob) {
-      // ✅ FIX: Return the job_id or jobId, not the MongoDB _id
-      return existingJob.job_id || existingJob.jobId;
+    // If we already loaded a job from dropdown
+    if (editingJob?._id) {
+      return editingJob._id;
     }
 
-    // ✅ FIXED: Create new job with EXACT job ID from input
+    // Create new job automatically
     const payload = {
       candidateId: selectedCandidate.id,
-      recruiterId: recruiterId,
-      jobId: jobIdForResume,  // Use the Job ID from input field, not generated
-      jobTitle: "Position Applied",
-      company: "Company Name",
+      recruiterId,
+      jobId: jobIdForResume || `job_${Date.now()}`,
+      jobTitle: 'Position Applied',
+      company: 'Company Name',
       description: jobDescriptionForResume,
-      status: "Applied",
-      resumeStatus: "Pending"
+      status: 'Applied',
+      resumeStatus: 'Pending',
+      matchScore: 0,
+      salaryRange: '',
     };
 
     const newJob = await createCandidateJob(payload);
@@ -317,20 +305,13 @@ export default function RecruiterPage() {
     const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
     setCandidateJobs(jobsResp.jobs || []);
 
-    // ✅ FIX: Return the job_id or jobId from the new job, or fallback to the input jobId
-    return newJob.job_id || newJob.jobId || jobIdForResume;
+    return newJob._id || jobsResp.jobs?.[0]?._id;
   };
 
   // ✅ UPDATED: FUNCTION: Generate and download Word resume (non-blocking save)
   const generateAndDownloadWordResume = async () => {
-    // ✅ STEP 1 — Require the Job ID field
-    if (!jobIdForResume || jobIdForResume.trim() === "") {
-      alert("Please enter the Job ID before generating the resume.");
-      return;
-    }
-
-    if (!jobDescriptionForResume.trim()) {
-      alert('Please enter the Job Description');
+    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
+      alert('Please enter both Job ID and Job Description');
       return;
     }
 
@@ -361,13 +342,8 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      // ✅ SAFE VERSION: candidateName with multiple fallbacks
       const payload = {
-        candidateName:
-          candidate.name ||
-          candidate.fullName ||
-          `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() ||
-          'Candidate',
+        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -382,8 +358,7 @@ export default function RecruiterPage() {
         jobDescription: jobDescriptionForResume,
       };
 
-      // ✅ DEBUG LINE - Check console to verify candidateName is not empty
-      console.log("RESUME PAYLOAD:", payload);
+      console.log("Payload experience:", payload.experience);
 
       // 1) Generate resume text (JSON)
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
@@ -409,35 +384,19 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
-      let jobId = await autoCreateJobIfNeeded();
-
-      // ✅ IMPROVED: Create fallback job if none exists
-      if (!jobId) {
-        console.warn("No job found, creating fallback job");
-        
-        const recruiterId = localStorage.getItem('recruiter_id') || '';
-        
-        const newJob = await createCandidateJob({
-          candidateId: selectedCandidate.id,
-          recruiterId: recruiterId,
-          jobId: jobIdForResume,  // Use the Job ID from input field
-          jobTitle: "Generated Resume Job",
-          company: "Unknown",
-          description: jobDescriptionForResume,
-          status: "Applied"
+      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
+      autoCreateJobIfNeeded()
+        .then((jobDbId) => {
+          if (jobDbId) {
+            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+          }
+        })
+        .then(() => {
+          console.log("✅ Resume saved to DB");
+        })
+        .catch((err) => {
+          console.error("❌ Background save failed:", err);
         });
-        
-        jobId = newJob.job_id || newJob.jobId || jobIdForResume;
-      }
-
-      if (!jobId) {
-        throw new Error("No job found to attach resume.");
-      }
-
-      await saveJobResume(jobId, resumeText, jobDescriptionForResume);
-
-      console.log("✅ Resume saved to DB for job ID:", jobId);
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
@@ -454,14 +413,8 @@ export default function RecruiterPage() {
 
   // ✅ UPDATED: Function to generate resume (non-blocking save)
   const generateResume = async () => {
-    // ✅ STEP 1 — Require the Job ID field
-    if (!jobIdForResume || jobIdForResume.trim() === "") {
-      alert("Please enter the Job ID before generating the resume.");
-      return;
-    }
-
-    if (!jobDescriptionForResume.trim()) {
-      alert('Please enter the Job Description');
+    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
+      alert('Please enter both Job ID and Job Description');
       return;
     }
 
@@ -493,13 +446,8 @@ export default function RecruiterPage() {
 
       const token = localStorage.getItem('infrapilot_token');
 
-      // ✅ SAFE VERSION: candidateName with multiple fallbacks
       const payload = {
-        candidateName:
-          candidate.name ||
-          candidate.fullName ||
-          `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim() ||
-          'Candidate',
+        fullName: candidate.fullName || `${candidate.firstName || ''} ${candidate.lastName || ''}`.trim(),
         targetRole: candidate.currentPosition || candidate.targetRole || 'Professional',
         location: candidate.location || '',
         email: candidate.email || '',
@@ -514,8 +462,7 @@ export default function RecruiterPage() {
         jobDescription: jobDescriptionForResume,
       };
 
-      // ✅ DEBUG LINE - Check console to verify candidateName is not empty
-      console.log("RESUME PAYLOAD:", payload);
+      console.log("Payload experience:", payload.experience);
 
       const res = await fetch(`${apiBaseUrl}/api/v1/resume/generate`, {
         method: 'POST',
@@ -541,41 +488,25 @@ export default function RecruiterPage() {
       // ✅ SHOW RESUME IMMEDIATELY
       setGeneratedResume(resumeText);
 
-      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
-      let jobId = await autoCreateJobIfNeeded();
-
-      // ✅ IMPROVED: Create fallback job if none exists
-      if (!jobId) {
-        console.warn("No job found, creating fallback job");
-        
-        const recruiterId = localStorage.getItem('recruiter_id') || '';
-        
-        const newJob = await createCandidateJob({
-          candidateId: selectedCandidate.id,
-          recruiterId: recruiterId,
-          jobId: jobIdForResume,  // Use the Job ID from input field
-          jobTitle: "Generated Resume Job",
-          company: "Unknown",
-          description: jobDescriptionForResume,
-          status: "Applied"
+      // ✅ SAVE IN BACKGROUND (NON-BLOCKING)
+      autoCreateJobIfNeeded()
+        .then((jobDbId) => {
+          if (jobDbId) {
+            return saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+          }
+        })
+        .then(() => {
+          console.log("✅ Resume saved to DB");
+        })
+        .catch((err) => {
+          console.error("❌ Background save failed:", err);
         });
-        
-        jobId = newJob.job_id || newJob.jobId || jobIdForResume;
-      }
-
-      if (!jobId) {
-        throw new Error("No job found to attach resume.");
-      }
-
-      await saveJobResume(jobId, resumeText, jobDescriptionForResume);
-
-      console.log("✅ Resume saved to DB for job ID:", jobId);
 
       // Save to history
       const newResumeEntry = {
         id: `resume_${Date.now()}`,
         candidateId: candidate?.id,
-        candidateName: payload.candidateName,
+        candidateName: payload.fullName,
         jobId: jobIdForResume,
         jobDescription: jobDescriptionForResume.substring(0, 200) + '...',
         generatedDate: new Date().toISOString(),
@@ -632,23 +563,15 @@ export default function RecruiterPage() {
     setGeneratedResume('')
   }
   
-  // ✅ FIX 1 — Correct loadJobDetails
-  const loadJobDetails = (jobId: string) => {
-    const job = candidateJobs.find(
-      (j: any) => j.job_id === jobId || j.jobId === jobId
-    );
+  // ✅ FIXED: loadJobDetails function
+  const loadJobDetails = (jobDbId: string) => {
+    const job = candidateJobs.find((j: any) => j._id === jobDbId);
     if (job) {
       // ✅ this ensures saveJobResume uses the correct job
       setEditingJob(job);
 
-      setJobIdForResume(job.job_id || job.jobId || job._id);
+      setJobIdForResume(job.jobId || job._id);
       setJobDescriptionForResume(job.jobDescriptionFull || job.description || '');
-      
-      // ✅ Load existing resume if available
-      if (job.resumeText) {
-        setGeneratedResume(job.resumeText);
-      }
-      
       setShowResumeGenerator(true);
     }
   };
@@ -928,9 +851,7 @@ export default function RecruiterPage() {
     if (!editingJob || !selectedCandidate) return;
 
     try {
-      // Use jobId or job_id for the update endpoint
-      const updateId = editingJob.jobId || editingJob.job_id;
-      await updateCandidateJob(updateId, jobFormData);
+      await updateCandidateJob(editingJob._id, jobFormData);
       
       const recruiterId = localStorage.getItem('recruiter_id') || '';
       const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
@@ -959,13 +880,13 @@ export default function RecruiterPage() {
   }
 
   // ✅ UPDATED: handleDeleteJob (delete in MongoDB)
-  const handleDeleteJob = async (jobId: string) => {
+  const handleDeleteJob = async (jobDbId: string) => {
     if (!selectedCandidate) return;
 
     if (!window.confirm('Are you sure you want to delete this job application?')) return;
 
     try {
-      await deleteCandidateJob(jobId);
+      await deleteCandidateJob(jobDbId);
       
       const recruiterId = localStorage.getItem('recruiter_id') || '';
       const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
@@ -976,23 +897,23 @@ export default function RecruiterPage() {
     }
   };
 
-  // ✅ UPDATED: addNewJob with correct field names and recruiterId from user object
+  // ✅ FIXED: addNewJob (Mongo requires recruiterId)
   const addNewJob = async () => {
     if (!selectedCandidate) return;
 
-    const recruiterId = user?.id || localStorage.getItem('recruiter_id');
+    const recruiterId = localStorage.getItem('recruiter_id') || '';
 
     const payload = {
       candidateId: selectedCandidate.id,
-      recruiterId: recruiterId,
+      recruiterId,
       jobId: `job_${Date.now()}`,
-      jobTitle: "New Position",
-      companyName: "New Company",
-      description: "Add job description here...",
-      status: "Applied",
-      resumeStatus: "Pending",
+      jobTitle: 'New Position',
+      company: 'New Company',
+      description: 'Add job description here...',
+      status: 'Applied',
+      resumeStatus: 'Pending',
       matchScore: 0,
-      salaryRange: "To be determined"
+      salaryRange: 'To be determined',
     };
 
     try {
@@ -1479,9 +1400,7 @@ export default function RecruiterPage() {
                               </span>
                             </div>
                             <div>
-                              <p className="font-medium text-gray-900">
-                                {candidateWithId.name || candidateWithId.fullName || `${candidateWithId.firstName || ''} ${candidateWithId.lastName || ''}`}
-                              </p>
+                              <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
                               <p className="text-sm text-gray-500">ID: {candidateWithId.id.substring(0, 8)}...</p>
                             </div>
                           </div>
@@ -1563,9 +1482,7 @@ export default function RecruiterPage() {
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-xl font-bold text-gray-800">👁️ Job Applications</h3>
-                    <p className="text-gray-600">
-                      For: {selectedCandidate.name || selectedCandidate.fullName || `${selectedCandidate.firstName || ''} ${selectedCandidate.lastName || ''}`}
-                    </p>
+                    <p className="text-gray-600">For: {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}</p>
                   </div>
                   <button
                     onClick={() => {
@@ -1703,13 +1620,13 @@ export default function RecruiterPage() {
                       <div className="mb-6">
                         <h5 className="font-bold text-gray-800 mb-3">Generate Tailored Resume</h5>
                         <p className="text-sm text-gray-600 mb-4">
-                          Enter job details to generate a customized resume for {selectedCandidate.name || selectedCandidate.fullName || `${selectedCandidate.firstName || ''} ${selectedCandidate.lastName || ''}`}
+                          Enter job details to generate a customized resume for {selectedCandidate.fullName || `${selectedCandidate.firstName} ${selectedCandidate.lastName}`}
                         </p>
                         
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Job ID / Reference *
+                              Job ID / Reference
                             </label>
                             <div className="flex gap-2">
                               <input
@@ -1717,26 +1634,20 @@ export default function RecruiterPage() {
                                 value={jobIdForResume}
                                 onChange={(e) => setJobIdForResume(e.target.value)}
                                 className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                placeholder="e.g., JOB-39281 or Google_SE_2024"
-                                required
+                                placeholder="e.g., job_abc123 or Google_SE_2024"
                               />
                               <select
-                                // ✅ FIX 2 — Change dropdown value
                                 onChange={(e) => loadJobDetails(e.target.value)}
                                 className="p-3 border border-gray-300 rounded-lg bg-white text-gray-900"
                               >
                                 <option value="">Load from jobs</option>
                                 {candidateJobs.map((job: any) => (
-                                  <option 
-                                    key={job.job_id || job.jobId} 
-                                    value={job.job_id || job.jobId}
-                                  >
-                                    {job.jobTitle} - {job.companyName || job.company} (ID: {job.job_id || job.jobId})
+                                  <option key={job._id} value={job._id}>
+                                    {job.jobTitle} - {job.company}
                                   </option>
                                 ))}
                               </select>
                             </div>
-                            <p className="text-xs text-gray-500 mt-1">Required - This ID will be used to attach the resume</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1874,8 +1785,7 @@ export default function RecruiterPage() {
                       <button
                         onClick={() => {
                           if (candidateJobs.length > 0) {
-                            // ✅ FIX 3 — Fix "Use for Resume" button
-                            loadJobDetails((candidateJobs[0] as any).job_id || (candidateJobs[0] as any).jobId)
+                            loadJobDetails((candidateJobs[0] as any)._id)
                             document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                           }
                         }}
@@ -1916,21 +1826,20 @@ export default function RecruiterPage() {
                           {candidateJobs.map((job: any) => (
                             <tr key={job._id} className="hover:bg-gray-50">
                               <td className="p-3">
-                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.job_id || job.jobId || job._id}</code>
+                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.jobId || job._id}</code>
                                 <button
-                                  // ✅ FIX 3 — Fix "Use for Resume" button
                                   onClick={() => {
-                                    loadJobDetails(job.job_id || job.jobId)
+                                    loadJobDetails(job._id)
                                     document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                                   }}
-                                  className="mt-1 text-xs text-purple-600 hover:text-purple-800 block"
+                                  className="mt-1 text-xs text-purple-600 hover:text-purple-800"
                                 >
                                   Use for Resume
                                 </button>
                               </td>
                               <td className="p-3">
                                 <p className="font-medium text-gray-900">{job.jobTitle}</p>
-                                <p className="text-sm text-gray-600">{job.companyName || job.company}</p>
+                                <p className="text-sm text-gray-600">{job.company}</p>
                                 <p className="text-xs text-gray-600">Match: {job.matchScore}%</p>
                               </td>
                               <td className="p-3">
@@ -1967,8 +1876,7 @@ export default function RecruiterPage() {
                                     Edit
                                   </button>
                                   <button
-                                    // ✅ FIX 4 — Fix delete call
-                                    onClick={() => handleDeleteJob(job.job_id || job.jobId)}
+                                    onClick={() => handleDeleteJob(job._id)}
                                     className="px-3 py-1 text-sm bg-red-100 text-gray-900 rounded hover:bg-red-200"
                                   >
                                     Delete
@@ -2044,7 +1952,7 @@ export default function RecruiterPage() {
                   <div>
                     <h3 className="text-xl font-bold text-gray-800">✏️ Edit Job Application</h3>
                     <p className="text-gray-600">
-                      Editing job for: {selectedCandidate?.name || selectedCandidate?.fullName || `${selectedCandidate?.firstName || ''} ${selectedCandidate?.lastName || ''}`}
+                      Editing job for: {selectedCandidate?.fullName || `${selectedCandidate?.firstName} ${selectedCandidate?.lastName}`}
                     </p>
                   </div>
                   <button
@@ -2177,9 +2085,6 @@ export default function RecruiterPage() {
                       <p className="text-sm text-gray-700">
                         Job DB ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?._id}</code>
                       </p>
-                      <p className="text-sm text-gray-700 mt-1">
-                        Job ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?.job_id || editingJob?.jobId}</code>
-                      </p>
                       {editingJob?.appliedDate && (
                         <p className="text-sm text-gray-700 mt-1">
                           Applied: {new Date(editingJob.appliedDate).toLocaleDateString()} at {new Date(editingJob.appliedDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
@@ -2240,7 +2145,7 @@ export default function RecruiterPage() {
                   const candidateWithId = ensureCandidateDataStructure(candidate);
                   return (
                     <div key={candidateWithId.id} className="p-3 bg-yellow-50 rounded-lg">
-                      <p className="font-medium text-gray-900">{candidateWithId.name || candidateWithId.fullName || `${candidateWithId.firstName || ''} ${candidateWithId.lastName || ''}`}</p>
+                      <p className="font-medium text-gray-900">{candidateWithId.fullName || `${candidateWithId.firstName} ${candidateWithId.lastName}`}</p>
                       <p className="text-sm text-gray-600">Payment pending - follow up required</p>
                       <button className="mt-2 text-sm text-blue-700 hover:text-blue-900">
                         Contact now →
