@@ -1,7 +1,6 @@
 // server/controllers/resumeController.js
 
 const OpenAI = require("openai");
-const pool = require("../config/db");
 const {
   Document,
   Packer,
@@ -355,24 +354,14 @@ function enforceHosFormat({
 exports.generateResume = async (req, res) => {
   try {
     const {
+      fullName,
       location,
       email,
       phone,
       experience = [],
       education = [],
+      jobDescription,
     } = req.body;
-
-    const fullName =
-      req.body.fullName ||
-      req.body.candidateName ||
-      req.body.name ||
-      "";
-
-    const jobDescription =
-      req.body.jobDescription ||
-      req.body.description ||
-      req.body.jobDescriptionFull ||
-      "";
 
     if (!fullName || !jobDescription) {
       return res.status(400).json({
@@ -479,43 +468,6 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
-
-    // ==========================================================
-    // 🔥 SAVE RESUME VERSION
-    // ==========================================================
-
-    const applicationId =
-      req.body.applicationId ||
-      req.body.jobApplicationId ||
-      req.body.id;
-
-    if (applicationId) {
-      try {
-
-        // Get next version number
-        const versionResult = await pool.query(
-          `SELECT COALESCE(MAX(version_number),0) + 1 AS next_version
-           FROM resume_versions
-           WHERE job_application_id = $1`,
-          [applicationId]
-        );
-
-        const nextVersion = versionResult.rows[0].next_version;
-
-        // Save new resume version
-        await pool.query(
-          `INSERT INTO resume_versions
-           (job_application_id, version_number, resume_text)
-           VALUES ($1,$2,$3)`,
-          [applicationId, nextVersion, hosText]
-        );
-
-        console.log("✅ Resume version stored:", nextVersion);
-
-      } catch (err) {
-        console.error("❌ Resume version save failed:", err);
-      }
-    }
 
     return res.status(200).json({
       success: true,
