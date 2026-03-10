@@ -8,6 +8,12 @@ const {
   downloadResumeAsWord,
 } = require("../controllers/resumeController");
 
+// DEBUG
+console.log("protect:", protect);
+console.log("authorize:", authorize);
+console.log("generateResume:", generateResume);
+console.log("downloadResumeAsWord:", downloadResumeAsWord);
+
 // Generate resume
 router.post(
   "/generate",
