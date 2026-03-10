@@ -217,7 +217,7 @@ exports.deleteResume = async (req, res, next) => {
     const filePath = path.join(
       process.env.UPLOAD_PATH || "./uploads",
       "resumes",
-      req.user.id,
+      getUserId(req),
       filename
     );
 
