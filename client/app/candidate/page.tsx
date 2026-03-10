@@ -81,6 +81,7 @@ export default function CandidateDashboard() {
     try {
       const res = await fetchWithAuth('/api/v1/resume/download', {
         method: 'POST',
+        credentials: 'include',
       })
 
       if (!res.ok) {

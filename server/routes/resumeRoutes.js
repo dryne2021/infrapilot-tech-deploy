@@ -23,7 +23,7 @@ router.post(
   generateResume
 );
 
-// Download resume - both POST and GET methods
+// Download resume - temporarily removed authorize for testing
 router.post(
   "/download",
   protect,
