@@ -1,6 +1,7 @@
 // server/controllers/resumeController.js
 
 const OpenAI = require("openai");
+const pool = require("../config/db");
 const {
   Document,
   Packer,
@@ -478,6 +479,43 @@ ${jobDescription}
       location,
       resumeText: resumeTextRaw,
     });
+
+    // ==========================================================
+    // 🔥 SAVE RESUME VERSION
+    // ==========================================================
+
+    const applicationId =
+      req.body.applicationId ||
+      req.body.jobApplicationId ||
+      req.body.id;
+
+    if (applicationId) {
+      try {
+
+        // Get next version number
+        const versionResult = await pool.query(
+          `SELECT COALESCE(MAX(version_number),0) + 1 AS next_version
+           FROM resume_versions
+           WHERE job_application_id = $1`,
+          [applicationId]
+        );
+
+        const nextVersion = versionResult.rows[0].next_version;
+
+        // Save new resume version
+        await pool.query(
+          `INSERT INTO resume_versions
+           (job_application_id, version_number, resume_text)
+           VALUES ($1,$2,$3)`,
+          [applicationId, nextVersion, hosText]
+        );
+
+        console.log("✅ Resume version stored:", nextVersion);
+
+      } catch (err) {
+        console.error("❌ Resume version save failed:", err);
+      }
+    }
 
     return res.status(200).json({
       success: true,
