@@ -6,7 +6,6 @@ const { protect, authorize } = require("../middleware/auth");
 const {
   generateResume,
   downloadResumeAsWord,
-  generateResumeAsWord,
 } = require("../controllers/resumeController");
 
 // Generate resume
@@ -23,14 +22,6 @@ router.post(
   protect,
   authorize("recruiter", "admin"),
   downloadResumeAsWord
-);
-
-// Generate resume and download Word directly
-router.post(
-  "/generate-word",
-  protect,
-  authorize("recruiter", "admin"),
-  generateResumeAsWord
 );
 
 module.exports = router;
