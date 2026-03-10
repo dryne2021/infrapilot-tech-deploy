@@ -34,7 +34,7 @@ export default function CandidateDashboard() {
 
   const loadProfile = async () => {
     try {
-      const res = await fetchWithAuth('/api/v1/auth/me')
+      const res = await fetchWithAuth('/api/v1/candidate/profile')
 
       if (res.status === 401) {
         redirectToLogin()
@@ -42,15 +42,14 @@ export default function CandidateDashboard() {
       }
 
       const data = await res.json()
+      const profile = data?.data
 
-      const profile = data?.data || data?.profile
-
-      if (!profile?.id) {
+      if (!profile) {
         setError('Candidate profile not found.')
         return null
       }
 
-      setCandidateName(data.user?.name || 'Candidate')
+      setCandidateName(profile.full_name || profile.name || 'Candidate')
       setCandidateId(profile.id)
 
       return profile.id
@@ -72,7 +71,7 @@ export default function CandidateDashboard() {
       }
 
       const data = await res.json()
-      setApplications(data?.jobs || [])
+      setApplications(data?.data || data?.jobs || [])
     } catch (err: any) {
       setError('Failed to load applications')
     }
@@ -129,8 +128,8 @@ export default function CandidateDashboard() {
   const sortedApplications = useMemo(() => {
     return [...applications].sort((a, b) => {
       return (
-        new Date(b.appliedDate).getTime() -
-        new Date(a.appliedDate).getTime()
+        new Date(b.created_at || b.appliedDate).getTime() -
+        new Date(a.created_at || a.appliedDate).getTime()
       )
     })
   }, [applications])
@@ -265,7 +264,7 @@ export default function CandidateDashboard() {
 
                         <td className="p-4">
                           {new Date(
-                            app.appliedDate
+                            app.created_at || app.appliedDate
                           ).toLocaleDateString()}
                         </td>
 
