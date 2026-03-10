@@ -111,8 +111,8 @@ export default function RecruiterPage() {
       body: JSON.stringify(payload),
     });
 
-  const updateCandidateJob = (jobDbId: string, payload: any) =>
-    api(`/api/v1/job-applications/${jobDbId}`, {
+  const updateCandidateJob = (jobId: string, payload: any) =>
+    api(`/api/v1/job-applications/${jobId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     });
@@ -122,31 +122,40 @@ export default function RecruiterPage() {
       method: 'DELETE',
     });
 
-  // ✅ UPDATED: Save resume with version history
+  // ✅ UPDATED: Save resume with version history - NOW USES JOB ID, NOT DB ID
   const saveJobResume = async (
-    jobDbId: string,
+    jobIdInput: string, // This is the JOB ID from the input field, not the DB ID
     resumeText: string,
     jobDescriptionFull: string
   ) => {
+    // ✅ FIX 1: Find the job by job_id or jobId (handle both snake_case and camelCase)
+    const job = candidateJobs.find(
+      (j: any) => j.job_id === jobIdInput || j.jobId === jobIdInput
+    );
+    
+    if (!job) {
+      throw new Error(`Job with ID ${jobIdInput} not found`);
+    }
 
     const versionEntry = {
       text: resumeText,
       createdAt: new Date().toISOString(),
       jobDescription: jobDescriptionFull
-    }
+    };
 
-    console.log("Saving resume to job:", jobDbId)
+    console.log("Saving resume to job with DB ID:", job._id, "Job ID:", jobIdInput);
 
-    return updateCandidateJob(jobDbId, {
+    // ✅ FIX 2: Use job.jobId or job.job_id for the update endpoint, not the MongoDB _id
+    const updateId = job.jobId || job.job_id;
+    return updateCandidateJob(updateId, {
       resumeText,
       jobDescriptionFull,
       resumeStatus: "Submitted",
-
       // version history
       $push: {
         resumeVersions: versionEntry
       }
-    })
+    });
   };
 
   // ✅ HELPER FUNCTION - Ensure candidate data has proper structure
@@ -293,21 +302,26 @@ export default function RecruiterPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  // ✅ STEP 1 — Add helper to auto-create job
+  // ✅ STEP 1 — Add helper to auto-create job with the entered Job ID
   const autoCreateJobIfNeeded = async () => {
     if (!selectedCandidate) return null;
 
     const recruiterId = localStorage.getItem('recruiter_id') || '';
 
-    // If we already loaded a job from dropdown
-    if (editingJob?._id) {
-      return editingJob._id;
+    // ✅ FIX 3: Check for existing job using job_id or jobId (handle both snake_case and camelCase)
+    const existingJob = candidateJobs.find(
+      (j: any) => j.job_id === jobIdForResume || j.jobId === jobIdForResume
+    );
+    
+    if (existingJob) {
+      return existingJob._id;
     }
 
-    // ✅ FIXED: Create new job automatically with correct field names
+    // ✅ FIXED: Create new job with EXACT job ID from input
     const payload = {
       candidateId: selectedCandidate.id,
       recruiterId: recruiterId,
+      jobId: jobIdForResume,  // Use the Job ID from input field, not generated
       jobTitle: "Position Applied",
       company: "Company Name",
       description: jobDescriptionForResume,
@@ -326,8 +340,14 @@ export default function RecruiterPage() {
 
   // ✅ UPDATED: FUNCTION: Generate and download Word resume (non-blocking save)
   const generateAndDownloadWordResume = async () => {
-    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
-      alert('Please enter both Job ID and Job Description');
+    // ✅ STEP 1 — Require the Job ID field
+    if (!jobIdForResume || jobIdForResume.trim() === "") {
+      alert("Please enter the Job ID before generating the resume.");
+      return;
+    }
+
+    if (!jobDescriptionForResume.trim()) {
+      alert('Please enter the Job Description');
       return;
     }
 
@@ -406,7 +426,7 @@ export default function RecruiterPage() {
       // ✅ show in UI
       setGeneratedResume(resumeText);
 
-      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
+      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
       let jobDbId = await autoCreateJobIfNeeded();
 
       // ✅ IMPROVED: Create fallback job if none exists
@@ -418,6 +438,7 @@ export default function RecruiterPage() {
         const newJob = await createCandidateJob({
           candidateId: selectedCandidate.id,
           recruiterId: recruiterId,
+          jobId: jobIdForResume,  // Use the Job ID from input field
           jobTitle: "Generated Resume Job",
           company: "Unknown",
           description: jobDescriptionForResume,
@@ -431,9 +452,9 @@ export default function RecruiterPage() {
         throw new Error("No job found to attach resume.");
       }
 
-      await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+      await saveJobResume(jobIdForResume, resumeText, jobDescriptionForResume);
 
-      console.log("✅ Resume saved to DB for job:", jobDbId);
+      console.log("✅ Resume saved to DB for job ID:", jobIdForResume);
 
       // 2) Download Word (.docx) from POST /download
       await downloadDocxFromText(candidate, resumeText);
@@ -450,8 +471,14 @@ export default function RecruiterPage() {
 
   // ✅ UPDATED: Function to generate resume (non-blocking save)
   const generateResume = async () => {
-    if (!jobIdForResume.trim() || !jobDescriptionForResume.trim()) {
-      alert('Please enter both Job ID and Job Description');
+    // ✅ STEP 1 — Require the Job ID field
+    if (!jobIdForResume || jobIdForResume.trim() === "") {
+      alert("Please enter the Job ID before generating the resume.");
+      return;
+    }
+
+    if (!jobDescriptionForResume.trim()) {
+      alert('Please enter the Job Description');
       return;
     }
 
@@ -531,7 +558,7 @@ export default function RecruiterPage() {
       // ✅ SHOW RESUME IMMEDIATELY
       setGeneratedResume(resumeText);
 
-      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT)
+      // ✅ UPDATED: SAVE RESUME WITH VERSION HISTORY (AWAIT) - USING JOB ID
       let jobDbId = await autoCreateJobIfNeeded();
 
       // ✅ IMPROVED: Create fallback job if none exists
@@ -543,6 +570,7 @@ export default function RecruiterPage() {
         const newJob = await createCandidateJob({
           candidateId: selectedCandidate.id,
           recruiterId: recruiterId,
+          jobId: jobIdForResume,  // Use the Job ID from input field
           jobTitle: "Generated Resume Job",
           company: "Unknown",
           description: jobDescriptionForResume,
@@ -556,9 +584,9 @@ export default function RecruiterPage() {
         throw new Error("No job found to attach resume.");
       }
 
-      await saveJobResume(jobDbId, resumeText, jobDescriptionForResume);
+      await saveJobResume(jobIdForResume, resumeText, jobDescriptionForResume);
 
-      console.log("✅ Resume saved to DB for job:", jobDbId);
+      console.log("✅ Resume saved to DB for job ID:", jobIdForResume);
 
       // Save to history
       const newResumeEntry = {
@@ -628,7 +656,7 @@ export default function RecruiterPage() {
       // ✅ this ensures saveJobResume uses the correct job
       setEditingJob(job);
 
-      setJobIdForResume(job.jobId || job._id);
+      setJobIdForResume(job.job_id || job.jobId || job._id);
       setJobDescriptionForResume(job.jobDescriptionFull || job.description || '');
       
       // ✅ Load existing resume if available
@@ -915,7 +943,9 @@ export default function RecruiterPage() {
     if (!editingJob || !selectedCandidate) return;
 
     try {
-      await updateCandidateJob(editingJob._id, jobFormData);
+      // Use jobId or job_id for the update endpoint
+      const updateId = editingJob.jobId || editingJob.job_id;
+      await updateCandidateJob(updateId, jobFormData);
       
       const recruiterId = localStorage.getItem('recruiter_id') || '';
       const jobsResp: any = await fetchCandidateJobs(selectedCandidate.id, recruiterId);
@@ -1694,7 +1724,7 @@ export default function RecruiterPage() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
-                              Job ID / Reference
+                              Job ID / Reference *
                             </label>
                             <div className="flex gap-2">
                               <input
@@ -1702,7 +1732,8 @@ export default function RecruiterPage() {
                                 value={jobIdForResume}
                                 onChange={(e) => setJobIdForResume(e.target.value)}
                                 className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                placeholder="e.g., job_abc123 or Google_SE_2024"
+                                placeholder="e.g., JOB-39281 or Google_SE_2024"
+                                required
                               />
                               <select
                                 onChange={(e) => loadJobDetails(e.target.value)}
@@ -1711,11 +1742,12 @@ export default function RecruiterPage() {
                                 <option value="">Load from jobs</option>
                                 {candidateJobs.map((job: any) => (
                                   <option key={job._id} value={job._id}>
-                                    {job.jobTitle} - {job.companyName || job.company}
+                                    {job.jobTitle} - {job.companyName || job.company} (ID: {job.job_id || job.jobId})
                                   </option>
                                 ))}
                               </select>
                             </div>
+                            <p className="text-xs text-gray-500 mt-1">Required - This ID will be used to attach the resume</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1894,13 +1926,13 @@ export default function RecruiterPage() {
                           {candidateJobs.map((job: any) => (
                             <tr key={job._id} className="hover:bg-gray-50">
                               <td className="p-3">
-                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.jobId || job._id}</code>
+                                <code className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-900">{job.job_id || job.jobId || job._id}</code>
                                 <button
                                   onClick={() => {
                                     loadJobDetails(job._id)
                                     document.getElementById('resume-generator')?.scrollIntoView({ behavior: 'smooth' })
                                   }}
-                                  className="mt-1 text-xs text-purple-600 hover:text-purple-800"
+                                  className="mt-1 text-xs text-purple-600 hover:text-purple-800 block"
                                 >
                                   Use for Resume
                                 </button>
@@ -2152,6 +2184,9 @@ export default function RecruiterPage() {
                       <h4 className="font-medium text-gray-900 mb-2">Additional Information</h4>
                       <p className="text-sm text-gray-700">
                         Job DB ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?._id}</code>
+                      </p>
+                      <p className="text-sm text-gray-700 mt-1">
+                        Job ID: <code className="bg-white px-2 py-1 rounded text-gray-900">{editingJob?.job_id || editingJob?.jobId}</code>
                       </p>
                       {editingJob?.appliedDate && (
                         <p className="text-sm text-gray-700 mt-1">

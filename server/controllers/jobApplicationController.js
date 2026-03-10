@@ -39,6 +39,13 @@ exports.createJobApplication = async (req, res) => {
       });
     }
 
+    // 🔥 Ensure jobId is required
+    if (!jobId || jobId.trim() === "") {
+      return res.status(400).json({
+        message: "jobId is required"
+      });
+    }
+
     // 🔥 Normalize status
     status = (status || "applied").toString().toLowerCase().trim();
 
@@ -74,7 +81,7 @@ exports.createJobApplication = async (req, res) => {
       [
         candidateId,
         recruiterId,
-        jobId || "",
+        jobId,
         jobTitle,
         company || companyName,
         companyName || company,
@@ -139,11 +146,11 @@ exports.getJobsByCandidate = async (req, res) => {
 };
 
 // ============================================================
-// ✅ Update job by id (Used to attach resume later)
+// ✅ Update job by job_id (Used to attach resume later)
 // ============================================================
 exports.updateJobApplication = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
 
     const updates = { ...req.body };
 
@@ -250,13 +257,13 @@ exports.updateJobApplication = async (req, res) => {
       return res.status(400).json({ message: "No valid fields to update" });
     }
 
-    // Add the ID as the last parameter
-    values.push(id);
+    // Add the jobId as the last parameter
+    values.push(jobId);
 
     const query = `
       UPDATE job_applications
       SET ${setFields.join(', ')}
-      WHERE id = $${paramIndex}
+      WHERE job_id = $${paramIndex}
       RETURNING *
     `;
 
@@ -282,7 +289,7 @@ exports.updateJobApplication = async (req, res) => {
 // ============================================================
 exports.attachResumeToApplication = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
     const { resumeDocxUrl, resumeFileName } = req.body;
 
     if (!resumeDocxUrl) {
@@ -296,10 +303,10 @@ exports.attachResumeToApplication = async (req, res) => {
         resume_docx_url = $1,
         "resumeStatus" = 'Submitted',
         updated_at = NOW()
-      WHERE id = $2
+      WHERE job_id = $2
       RETURNING *
       `,
-      [resumeDocxUrl, id]
+      [resumeDocxUrl, jobId]
     );
 
     const job = result.rows[0];
@@ -318,16 +325,16 @@ exports.attachResumeToApplication = async (req, res) => {
 };
 
 // ============================================================
-// ✅ Delete job by id
+// ✅ Delete job by job_id
 // ============================================================
 exports.deleteJobApplication = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
 
-    // ✅ PostgreSQL DELETE
+    // ✅ PostgreSQL DELETE using job_id
     const result = await pool.query(
-      `DELETE FROM job_applications WHERE id = $1 RETURNING *`,
-      [id]
+      `DELETE FROM job_applications WHERE job_id = $1 RETURNING *`,
+      [jobId]
     );
 
     const job = result.rows[0];
@@ -349,15 +356,15 @@ exports.deleteJobApplication = async (req, res) => {
 };
 
 // ============================================================
-// ✅ Get job application by ID
+// ✅ Get job application by job_id
 // ============================================================
 exports.getJobApplicationById = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
 
     const result = await pool.query(
-      `SELECT * FROM job_applications WHERE id = $1`,
-      [id]
+      `SELECT * FROM job_applications WHERE job_id = $1`,
+      [jobId]
     );
 
     const job = result.rows[0];
@@ -403,11 +410,11 @@ exports.getJobsByRecruiter = async (req, res) => {
 };
 
 // ============================================================
-// ✅ Update job status
+// ✅ Update job status by job_id
 // ============================================================
 exports.updateJobStatus = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { jobId } = req.params;
     const { status } = req.body;
 
     if (!status) {
@@ -428,10 +435,10 @@ exports.updateJobStatus = async (req, res) => {
       SET 
         status = $1,
         updated_at = NOW()
-      WHERE id = $2
+      WHERE job_id = $2
       RETURNING *
       `,
-      [normalizedStatus, id]
+      [normalizedStatus, jobId]
     );
 
     const job = result.rows[0];
