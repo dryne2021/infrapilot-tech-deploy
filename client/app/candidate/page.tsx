@@ -77,26 +77,14 @@ export default function CandidateDashboard() {
     }
   }
 
-  const downloadResume = async (resumeText?: string) => {
-    if (!resumeText) {
-      alert('No resume available')
-      return
-    }
-
+  const downloadResume = async () => {
     try {
       const res = await fetchWithAuth('/api/v1/resume/download', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: resumeText,
-          name: candidateName,
-        }),
       })
 
       if (!res.ok) {
-        alert('Failed to generate resume file')
+        alert('Resume not found')
         return
       }
 
@@ -111,6 +99,7 @@ export default function CandidateDashboard() {
       document.body.removeChild(a)
 
       window.URL.revokeObjectURL(url)
+
     } catch (err) {
       console.error(err)
       alert('Error downloading resume')
@@ -270,11 +259,7 @@ export default function CandidateDashboard() {
 
                         <td className="p-4">
                           <button
-                            onClick={() =>
-                              downloadResume(
-                                app?.resumeText
-                              )
-                            }
+                            onClick={downloadResume}
                             className="bg-green-600 hover:bg-green-500 px-3 py-1 rounded text-sm"
                           >
                             Download
