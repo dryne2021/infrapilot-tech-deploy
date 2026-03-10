@@ -43,15 +43,17 @@ export default function CandidateDashboard() {
 
       const data = await res.json()
 
-      if (!data?.profile?._id) {
+      const profile = data?.data || data?.profile
+
+      if (!profile?.id) {
         setError('Candidate profile not found.')
         return null
       }
 
       setCandidateName(data.user?.name || 'Candidate')
-      setCandidateId(data.profile._id)
+      setCandidateId(profile.id)
 
-      return data.profile._id
+      return profile.id
     } catch (err: any) {
       setError('Failed to load profile')
       return null
@@ -223,10 +225,10 @@ export default function CandidateDashboard() {
                     const fullText =
                       app.description || app.jobDescriptionFull || '-'
 
-                    const isExpanded = expandedId === app._id
+                    const isExpanded = expandedId === app.id
 
                     return (
-                      <tr key={app._id}>
+                      <tr key={app.id}>
                         <td className="p-4 font-semibold">
                           {app.jobTitle}
                           <div className="text-xs text-gray-400">
@@ -245,7 +247,7 @@ export default function CandidateDashboard() {
                             <button
                               onClick={() =>
                                 setExpandedId(
-                                  isExpanded ? null : app._id
+                                  isExpanded ? null : app.id
                                 )
                               }
                               className="text-blue-400 text-xs mt-1 hover:underline"
@@ -290,4 +292,4 @@ export default function CandidateDashboard() {
       </div>
     </div>
   )
-}                   
+}
