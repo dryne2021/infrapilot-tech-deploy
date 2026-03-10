@@ -4,6 +4,10 @@ const { upload, getFileUrl } = require("../utils/fileUpload");
 const path = require("path");
 const fs = require("fs");
 
+// Helper function to safely get user ID from different possible locations
+function getUserId(req) {
+  return req.user?.id || req.user?._id || req.user?.userId;
+}
 
 // ======================================================
 // GET CANDIDATE PROFILE
@@ -13,7 +17,7 @@ exports.getProfile = async (req, res, next) => {
 
     const result = await pool.query(
       `SELECT * FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (result.rows.length === 0) {
@@ -71,7 +75,7 @@ exports.updateProfile = async (req, res, next) => {
       return next(new ErrorResponse("Nothing to update", 400));
     }
 
-    values.push(req.user.id);
+    values.push(getUserId(req));
 
     const result = await pool.query(
       `UPDATE candidates 
@@ -112,7 +116,7 @@ exports.uploadResume = async (req, res, next) => {
 
       const candidate = await pool.query(
         `SELECT * FROM candidates WHERE user_id = $1`,
-        [req.user.id]
+        [getUserId(req)]
       );
 
       if (candidate.rows.length === 0) {
@@ -160,7 +164,7 @@ exports.getResumes = async (req, res, next) => {
 
     const candidate = await pool.query(
       `SELECT id FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (candidate.rows.length === 0) {
@@ -192,7 +196,7 @@ exports.deleteResume = async (req, res, next) => {
 
     const candidate = await pool.query(
       `SELECT id FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (candidate.rows.length === 0) {
@@ -245,7 +249,7 @@ exports.setActiveResume = async (req, res, next) => {
 
     const candidate = await pool.query(
       `SELECT id FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (candidate.rows.length === 0) {
@@ -288,7 +292,7 @@ exports.getApplications = async (req, res, next) => {
 
     const candidate = await pool.query(
       `SELECT id FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (candidate.rows.length === 0) {
@@ -327,7 +331,7 @@ exports.getApplication = async (req, res, next) => {
 
     const candidate = await pool.query(
       `SELECT id FROM candidates WHERE user_id = $1`,
-      [req.user.id]
+      [getUserId(req)]
     );
 
     if (candidate.rows.length === 0) {
