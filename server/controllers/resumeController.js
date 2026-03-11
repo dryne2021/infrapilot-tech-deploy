@@ -514,10 +514,32 @@ ${jobDescription}
 // ==========================================================
 exports.downloadResumeAsWord = async (req, res) => {
   try {
+    let candidateId;
 
-    const candidateId = req.user.id || req.user.userId;
+    // Recruiter downloading generated resume for candidate
+    if (req.user.role === "recruiter" || req.user.role === "admin") {
+      candidateId = req.body.candidateId;
 
-    console.log("Candidate downloading resume:", candidateId);
+      console.log(
+        "Recruiter downloading generated resume for candidate:",
+        candidateId
+      );
+    }
+
+    // Candidate downloading their stored resume
+    if (req.user.role === "candidate") {
+      candidateId = req.user.id || req.user.userId;
+
+      console.log("Candidate downloading stored resume:", candidateId);
+    }
+
+    // Safety check - ensure candidateId is provided
+    if (!candidateId) {
+      return res.status(400).json({
+        success: false,
+        message: "Candidate ID is required"
+      });
+    }
 
     const result = await pool.query(
       `SELECT resume_file
@@ -558,10 +580,10 @@ exports.downloadResumeAsWord = async (req, res) => {
     res.send(file);
 
   } catch (error) {
-    console.error("❌ Word generation failed:", error);
+    console.error("❌ Resume download failed:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to generate Word document",
+      message: "Failed to download resume",
     });
   }
 };

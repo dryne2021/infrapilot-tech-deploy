@@ -222,18 +222,18 @@ export default function RecruiterPage() {
 
   // ✅ HELPER: download .docx from backend using POST /resume/download
   const downloadDocxFromText = async (candidate: any, resumeText: string) => {
+    if (!candidate?.id) {
+  alert("Candidate ID missing. Cannot download resume.");
+  return;
+}
     const token = localStorage.getItem('infrapilot_token');
     const fileSafeName =
       (candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim() || 'Candidate')
         .replace(/\s+/g, '_');
 
     const payload = {
-      name: candidate?.fullName || `${candidate?.firstName || ''} ${candidate?.lastName || ''}`.trim(),
-      email: candidate?.email || '',
-      phone: candidate?.phone || '',
-      location: candidate?.location || '',
-      text: resumeText,
-    };
+  candidateId: candidate?.id
+};
 
     const res = await fetch(`${apiBaseUrl}/api/v1/resume/download`, {
       method: 'POST',
