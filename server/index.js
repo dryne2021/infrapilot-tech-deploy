@@ -13,7 +13,7 @@ const authRoutes = require("./routes/auth");
 const adminRoutes = require("./routes/admin");
 const candidateRoutes = require("./routes/candidate");
 const recruiterRoutes = require("./routes/recruiter");
-const resumeRoutes = require("./routes/resume");
+const resumeRoutes = require("./routes/resumeRoutes");
 const candidatesRoutes = require("./routes/candidatesRoutes");
 
 // Job applications routes
